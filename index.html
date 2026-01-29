@@ -645,6 +645,18 @@
             text-shadow: 0 0 20px rgba(254, 60, 114, 0.6);
         }
 
+        a[data-brand="Wishlist"] {
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        a[data-brand="Wishlist"]:hover {
+            color: #d8b4fe;
+            border-color: rgba(167, 139, 250, 0.4) !important;
+            box-shadow: 0 0 20px rgba(167, 139, 250, 0.3);
+            transform: translateY(-2px) scale(1.05);
+        }
+
+
         /* Connect & Support - Colored Borders */
         .link-item[data-brand="Telegram"] {
             border-color: rgba(36, 161, 222, 0.5);
@@ -896,6 +908,14 @@
                     </a>
                     <a href="https://tinder.com/@lordskamp" target="_blank" class="social-icon" title="Tinder">
                         <i class="fa-solid fa-fire"></i>
+                    </a>
+                </div>
+                <div class="flex justify-center">
+                    <a href="https://rewish.io/YMQAAA/wishes" target="_blank"
+                        class="inline-flex items-center gap-2 px-4 py-1.5 mt-4 text-xs font-medium rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all duration-300 group"
+                        data-brand="Wishlist">
+                        <i class="fas fa-gift text-violet-400 group-hover:text-violet-300 transition-colors"></i>
+                        <span data-i18n="wishlist">Wishlist</span>
                     </a>
                 </div>
             </div>
@@ -1401,6 +1421,7 @@
                     local: "Локалізація ігор",
                     parallel: "Паралельний Всесвіт",
                     sideProjects: "Сторонні проєкти",
+                    wishlist: "Список бажань",
                 },
                 en: {
                     enterText: "Click<br>for enter...",
@@ -1435,6 +1456,7 @@
                     local: "Localization game",
                     parallel: "Parallel University",
                     sideProjects: "Side Projects",
+                    wishlist: "Wishlist",
                 }
             };
 
@@ -2039,8 +2061,10 @@
                     'Viber': '#7360f2',
                     'Email': '#4ade80',
                     'Music': '#8b5cf6',
-                    'Language': '#06b6d4'
+                    'Language': '#06b6d4',
+                    'Wishlist': '#a78bfa'
                 };
+
 
                 // Helper to convert hex to rgba for glass effect
                 function hexToRgba(hex, alpha) {
