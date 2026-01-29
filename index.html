@@ -47,6 +47,7 @@
             height: 100%;
             z-index: 1;
             overflow: hidden;
+            will-change: transform;
         }
 
         .gradient-sphere {
@@ -54,6 +55,7 @@
             border-radius: 50%;
             filter: blur(80px);
             mix-blend-mode: screen;
+            will-change: transform, opacity;
         }
 
         .sphere-1 {
@@ -356,14 +358,19 @@
             height: 100%;
             z-index: 3;
             pointer-events: none;
+            contain: layout paint;
         }
 
         .particle {
             position: absolute;
+            left: 0;
+            top: 0;
             background: white;
             border-radius: 50%;
             opacity: 0;
             pointer-events: none;
+            transform: translate3d(0, 0, 0);
+            will-change: transform, opacity;
         }
 
         /* ---------- Content overlay ---------- */
@@ -459,18 +466,20 @@
             pointer-events: none;
             z-index: -1;
             transform-style: preserve-3d;
+            will-change: transform;
+            --wheel-offset: 0px;
         }
 
         .layer-1 {
-            transform: translateZ(-2px) scale(1.2);
+            transform: translate3d(0, var(--wheel-offset), 0) translateZ(-2px) scale(1.2);
         }
 
         .layer-2 {
-            transform: translateZ(-1px) scale(1.1);
+            transform: translate3d(0, var(--wheel-offset), 0) translateZ(-1px) scale(1.1);
         }
 
         .layer-3 {
-            transform: translateZ(0) scale(1);
+            transform: translate3d(0, var(--wheel-offset), 0) translateZ(0) scale(1);
         }
 
         #profileImg {
@@ -597,7 +606,9 @@
             justify-content: center;
             font-size: 32px;
             color: #fff;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                filter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                color 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
             cursor: pointer;
             text-decoration: none;
             transform-origin: center center;
@@ -646,7 +657,11 @@
         }
 
         a[data-brand="Wishlist"] {
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                color 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                background 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         a[data-brand="Wishlist"]:hover {
@@ -729,6 +744,8 @@
         /* ---------- Custom Cursor ---------- */
         .custom-cursor {
             position: fixed;
+            left: 0;
+            top: 0;
             width: 20px;
             height: 20px;
             border-radius: 50%;
@@ -737,6 +754,7 @@
             z-index: 2147483647 !important;
             /* mix-blend-mode: difference; REMOVED to fix color distortion */
             transform: translate(-50%, -50%);
+            will-change: transform;
             transition: width 0.2s ease, height 0.2s ease, background 0.2s ease, opacity 0.2s ease;
             box-shadow:
                 0 0 10px rgba(255, 255, 255, 0.5),
@@ -1081,121 +1099,169 @@
                 </p>
             </div>
         </div>
-        <!-- BG.js Script -->
+        <!-- BG.js Script (optimized for FPS, same visuals/features) -->
         <script>
-            // Create particle effect
-            const particlesContainer = document.getElementById('particles-container');
-            const particleCount = 80;
+            (() => {
+                const particlesContainer = document.getElementById('particles-container');
+                if (!particlesContainer) return;
 
-            // Create particles
-            for (let i = 0; i < particleCount; i++) {
-                createParticle();
-            }
+                const AMBIENT_COUNT = 80;
+                const TRAIL_POOL_SIZE = 48;
+                const TRAIL_DURATION_MS = 2000;
+                const TRAIL_MAX_PER_SEC = 60; // matches refresh rate; prevents runaway DOM work
 
-            function createParticle() {
-                const particle = document.createElement('div');
-                particle.className = 'particle';
+                const supportsWAAPI = typeof Element !== 'undefined' && typeof Element.prototype.animate === 'function';
+                const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
 
-                // Random size (small)
-                const size = Math.random() * 3 + 1;
-                particle.style.width = `${size}px`;
-                particle.style.height = `${size}px`;
+                // Cache background containers and move them as a whole so we don't override sphere keyframe transforms
+                const bgLayers = [
+                    document.querySelector('.gradient-background'),
+                    document.querySelector('#splash-screen .splash-background') || document.querySelector('.splash-background')
+                ].filter(Boolean);
 
-                // Initial position
-                resetParticle(particle);
+                const supportsTranslateProp = !!(window.CSS && CSS.supports && CSS.supports('translate: 1px 1px'));
+                function setTranslatePx(el, x, y) {
+                    if (supportsTranslateProp) el.style.translate = `${x}px ${y}px`;
+                    else el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+                }
 
-                particlesContainer.appendChild(particle);
+                function cancelAnimations(el) {
+                    const anims = el.getAnimations?.();
+                    if (anims && anims.length) anims.forEach(a => a.cancel());
+                }
 
-                // Animate
-                animateParticle(particle);
-            }
+                /* ==== Ambient particles (pooled, compositor transform/opacity) ==== */
+                const ambient = [];
+                for (let i = 0; i < AMBIENT_COUNT; i++) {
+                    const p = document.createElement('div');
+                    p.className = 'particle';
+                    const size = Math.random() * 3 + 1;
+                    p.style.width = `${size}px`;
+                    p.style.height = `${size}px`;
+                    particlesContainer.appendChild(p);
+                    ambient.push(p);
+                }
 
-            function resetParticle(particle) {
-                // Random position
-                const posX = Math.random() * 100;
-                const posY = Math.random() * 100;
+                function animateAmbient(p) {
+                    const startX = Math.random() * 100;
+                    const startY = Math.random() * 100;
+                    const endX = startX + (Math.random() * 20 - 10);
+                    const endY = startY - Math.random() * 30;
+                    const duration = (Math.random() * 10 + 10) * 1000;
+                    const delay = Math.random() * 5000;
+                    const peakOpacity = Math.random() * 0.3 + 0.1;
 
-                particle.style.left = `${posX}%`;
-                particle.style.top = `${posY}%`;
-                particle.style.opacity = '0';
+                    if (supportsWAAPI) {
+                        cancelAnimations(p);
+                        const anim = p.animate([
+                            { transform: `translate3d(${startX}vw, ${startY}vh, 0)`, opacity: 0 },
+                            { transform: `translate3d(${startX}vw, ${startY}vh, 0)`, opacity: peakOpacity, offset: 0.12 },
+                            { transform: `translate3d(${endX}vw, ${endY}vh, 0)`, opacity: 0 }
+                        ], { duration, delay, easing: 'linear', fill: 'forwards' });
+                        anim.onfinish = () => animateAmbient(p);
+                    } else {
+                        // Fallback: still avoid left/top + transition:all to reduce layout/recalc
+                        p.style.opacity = '0';
+                        p.style.transition = 'none';
+                        p.style.transform = `translate3d(${startX}vw, ${startY}vh, 0)`;
+                        setTimeout(() => {
+                            p.style.transition = `transform ${duration}ms linear, opacity ${duration}ms linear`;
+                            p.style.opacity = String(peakOpacity);
+                            p.style.transform = `translate3d(${endX}vw, ${endY}vh, 0)`;
+                            setTimeout(() => animateAmbient(p), duration);
+                        }, delay);
+                    }
+                }
 
-                return {
-                    x: posX,
-                    y: posY
-                };
-            }
+                ambient.forEach(animateAmbient);
 
-            function animateParticle(particle) {
-                // Initial position
-                const pos = resetParticle(particle);
+                /* ==== Mouse trail particles (pool reuse, max 1 per frame) ==== */
+                const trailPool = [];
+                for (let i = 0; i < TRAIL_POOL_SIZE; i++) {
+                    const p = document.createElement('div');
+                    p.className = 'particle';
+                    p.style.opacity = '0';
+                    particlesContainer.appendChild(p);
+                    trailPool.push(p);
+                }
 
-                // Random animation properties
-                const duration = Math.random() * 10 + 10;
-                const delay = Math.random() * 5;
+                let trailIdx = 0;
+                function spawnTrail(clientX, clientY) {
+                    const p = trailPool[trailIdx];
+                    trailIdx = (trailIdx + 1) % trailPool.length;
 
-                // Animate with GSAP-like timing
-                setTimeout(() => {
-                    particle.style.transition = `all ${duration}s linear`;
-                    particle.style.opacity = Math.random() * 0.3 + 0.1;
+                    const size = Math.random() * 4 + 2;
+                    p.style.width = `${size}px`;
+                    p.style.height = `${size}px`;
 
-                    // Move in a slight direction
-                    const moveX = pos.x + (Math.random() * 20 - 10);
-                    const moveY = pos.y - Math.random() * 30; // Move upwards
+                    const x = (clientX / innerWidth) * 100;
+                    const y = (clientY / innerHeight) * 100;
+                    const endX = x + (Math.random() * 10 - 5);
+                    const endY = y + (Math.random() * 10 - 5);
 
-                    particle.style.left = `${moveX}%`;
-                    particle.style.top = `${moveY}%`;
+                    if (supportsWAAPI) {
+                        cancelAnimations(p);
+                        p.animate([
+                            { transform: `translate3d(${x}vw, ${y}vh, 0)`, opacity: 0.6 },
+                            { transform: `translate3d(${endX}vw, ${endY}vh, 0)`, opacity: 0 }
+                        ], { duration: TRAIL_DURATION_MS, easing: 'ease-out', fill: 'forwards' });
+                    } else {
+                        p.style.transition = 'none';
+                        p.style.opacity = '0.6';
+                        p.style.transform = `translate3d(${x}vw, ${y}vh, 0)`;
+                        setTimeout(() => {
+                            p.style.transition = `transform ${TRAIL_DURATION_MS}ms ease-out, opacity ${TRAIL_DURATION_MS}ms ease-out`;
+                            p.style.opacity = '0';
+                            p.style.transform = `translate3d(${endX}vw, ${endY}vh, 0)`;
+                        }, 0);
+                    }
+                }
 
-                    // Reset after animation completes
-                    setTimeout(() => {
-                        animateParticle(particle);
-                    }, duration * 1000);
-                }, delay * 1000);
-            }
+                /* ==== Pointer work (coalesced to rAF) ==== */
+                let lastX = innerWidth * 0.5;
+                let lastY = innerHeight * 0.5;
+                let rafPending = false;
+                let lastTrailTime = 0;
 
-            // Mouse interaction
-            document.addEventListener('mousemove', (e) => {
-                // Create particles at mouse position
-                const mouseX = (e.clientX / window.innerWidth) * 100;
-                const mouseY = (e.clientY / window.innerHeight) * 100;
+                function tick() {
+                    rafPending = false;
 
-                // Create temporary particle
-                const particle = document.createElement('div');
-                particle.className = 'particle';
+                    // Background parallax (move container to preserve sphere keyframes)
+                    const moveX = (lastX / innerWidth - 0.5) * 5;
+                    const moveY = (lastY / innerHeight - 0.5) * 5;
+                    bgLayers.forEach(layer => setTranslatePx(layer, moveX, moveY));
 
-                // Small size
-                const size = Math.random() * 4 + 2;
-                particle.style.width = `${size}px`;
-                particle.style.height = `${size}px`;
+                    // Trail: cap to refresh-rate to keep effect but avoid runaway DOM work
+                    const now = performance.now();
+                    if (now - lastTrailTime >= (1000 / TRAIL_MAX_PER_SEC)) {
+                        spawnTrail(lastX, lastY);
+                        lastTrailTime = now;
+                    }
+                }
 
-                // Position at mouse
-                particle.style.left = `${mouseX}%`;
-                particle.style.top = `${mouseY}%`;
-                particle.style.opacity = '0.6';
+                function onMove(e) {
+                    // Keep original behavior: only react to mouse movement (not touch/pen)
+                    if (e.pointerType && e.pointerType !== 'mouse') return;
+                    lastX = e.clientX;
+                    lastY = e.clientY;
+                    if (!rafPending) {
+                        rafPending = true;
+                        requestAnimationFrame(tick);
+                    }
+                }
 
-                particlesContainer.appendChild(particle);
+                document.addEventListener(moveEvent, onMove, { passive: true });
 
-                // Animate outward
-                setTimeout(() => {
-                    particle.style.transition = 'all 2s ease-out';
-                    particle.style.left = `${mouseX + (Math.random() * 10 - 5)}%`;
-                    particle.style.top = `${mouseY + (Math.random() * 10 - 5)}%`;
-                    particle.style.opacity = '0';
-
-                    // Remove after animation
-                    setTimeout(() => {
-                        particle.remove();
-                    }, 2000);
-                }, 10);
-
-                // Subtle movement of gradient spheres
-                const spheres = document.querySelectorAll('.gradient-sphere');
-                const moveX = (e.clientX / window.innerWidth - 0.5) * 5;
-                const moveY = (e.clientY / window.innerHeight - 0.5) * 5;
-
-                spheres.forEach(sphere => {
-                    sphere.style.transform = `translate(${moveX}px, ${moveY}px)`;
+                // Pause/restart animations when tab is hidden/visible (saves CPU, no feature loss)
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        ambient.forEach(cancelAnimations);
+                        trailPool.forEach(cancelAnimations);
+                    } else {
+                        ambient.forEach(animateAmbient);
+                    }
                 });
-            });
+            })();
         </script>
 
         <!-- Splash Screen Handler -->
@@ -1706,141 +1772,29 @@
             }
         </script>
 
-        <!-- 🖥️ RETRO TERMINAL -->
-        <script>
-            document.addEventListener('keydown', e => {
-                if (e.key === '~') {
-                    document.body.classList.toggle('retro');
-                    // turn links into typed commands
-                    $$('.link-item').forEach(el => el.dataset.text = el.textContent.trim());
-                }
-            });
-        </script>
-
+        <!-- Retro Terminal + Matrix Rain removed (per request) -->
         <script>
             (() => {
-                const doc = document;
-                let retroActive = false;
-                const promptDiv = document.createElement('div');
-                promptDiv.style.cssText = 'position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,0.85);border:1px solid rgba(255,255,255,0.06);color:#00ff00;padding:10px 12px;border-radius:8px;font-family:monospace;display:none;';
-                const input = document.createElement('input');
-                input.placeholder = "type command: open github | open email | help";
-                input.style.cssText = 'background:transparent;border:none;outline:none;color:#00ff00;font-family:monospace;width:36ch';
-                promptDiv.appendChild(input);
-                document.body.appendChild(promptDiv);
-
-                document.addEventListener('keydown', (e) => {
-                    if (e.key === '~') {
-                        retroActive = !document.body.classList.toggle('retro');
-                        // show prompt when retro activated
-                        if (document.body.classList.contains('retro')) {
-                            promptDiv.style.display = 'flex';
-                            setTimeout(() => input.focus(), 80);
-                        } else {
-                            promptDiv.style.display = 'none';
-                        }
-                    }
-                });
-
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        const cmd = input.value.trim().toLowerCase();
-                        input.value = '';
-                        handleCommand(cmd);
-                    } else if (e.key === 'Escape') {
-                        input.blur();
-                    }
-                });
-
-                function handleCommand(cmd) {
-                    if (!cmd) return;
-                    if (cmd.includes('open github') || cmd === 'github') {
-                        window.open('https://github.com/lordskamp', '_self');
-                    } else if (cmd.includes('open email') || cmd.includes('email')) {
-                        window.location = 'mailto:lordskamp@yahoo.com';
-                    } else if (cmd === 'help') {
-                        alert('Commands: open github · open email · open instagram · copy email');
-                    } else if (cmd.includes('open instagram') || cmd === 'instagram') {
-                        window.open('https://www.instagram.com/lordskamp/', '_self');
-                    } else if (cmd.includes('copy email')) {
-                        navigator.clipboard.writeText('lordskamp@yahoo.com').then(() => alert('Email copied'));
-                    } else {
-                        alert('Unknown command — try "help"');
-                    }
-                }
-            })();
-        </script>
-
-
-        <style>
-            .retro {
-                background: #000 !important;
-                color: #00ff00 !important;
-                font-family: 'Courier New', monospace !important;
-                filter: contrast(1.2) brightness(1.1);
-            }
-
-            .retro .link-item {
-                background: transparent;
-                border: none;
-                color: #00ff00;
-                position: relative;
-                overflow: hidden;
-            }
-
-            .retro .link-item::before {
-                content: attr(data-text);
-                width: 0;
-                white-space: nowrap;
-                overflow: hidden;
-                animation: type 1.5s steps(40, end) forwards;
-            }
-
-            @keyframes type {
-                to {
-                    width: 100%;
-                }
-            }
-        </style>
-
-        <!-- 🧪 MATRIX RAIN -->
-        <script>
-            const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
-            let konamiIdx = 0; // Renamed idx to konamiIdx to avoid redeclaration
-            document.addEventListener('keydown', e => {
-                if (e.code === KONAMI[konamiIdx]) konamiIdx++; else konamiIdx = 0;
-                if (konamiIdx === KONAMI.length) matrixRain();
-            });
-
-            function matrixRain() {
-                const cvs = document.createElement('canvas');
-                const ctx = cvs.getContext('2d');
-                cvs.className = 'fixed inset-0 z-[9999] pointer-events-none';
-                document.body.appendChild(cvs);
-                const W = innerWidth, H = innerHeight;
-                cvs.width = W; cvs.height = H;
-                const cols = Math.floor(W / 20);
-                const drops = Array(cols).fill(1);
-                const chars = '01'.split('');
-                function draw() {
-                    ctx.fillStyle = 'rgba(0,0,0,0.05)'; ctx.fillRect(0, 0, W, H);
-                    ctx.fillStyle = '#0f0'; ctx.font = '15px monospace';
-                    drops.forEach((y, i) => {
-                        const text = chars[Math.floor(Math.random() * chars.length)];
-                        ctx.fillText(text, i * 20, y * 20);
-                        if (y * 20 > H && Math.random() > 0.975) drops[i] = 0;
-                        drops[i]++;
-                    });
-                }
-                const id = setInterval(draw, 50);
-                setTimeout(() => { clearInterval(id); cvs.remove() }, 10000);
-            }
-        </script>
-        <script>
-            window.addEventListener('wheel', e => {
                 const layers = $$('.constellation-layer');
-                layers.forEach((l, i) => l.style.transform = `translateY(${-e.deltaY * (i + 1) * 0.2}px)`);
-            });
+                if (!layers.length) return;
+
+                // Coalesce wheel events to one update/frame for smoother scrolling
+                let lastDelta = 0;
+                let rafPending = false;
+
+                function apply() {
+                    rafPending = false;
+                    layers.forEach((l, i) => l.style.setProperty('--wheel-offset', `${-lastDelta * (i + 1) * 0.2}px`));
+                }
+
+                window.addEventListener('wheel', (e) => {
+                    lastDelta = e.deltaY;
+                    if (!rafPending) {
+                        rafPending = true;
+                        requestAnimationFrame(apply);
+                    }
+                }, { passive: true });
+            })();
         </script>
         <script>
             (() => {
@@ -1851,23 +1805,24 @@
                     // We prioritize interaction: No pointer-events hack.
                     // Instead, we handle the transition smoothly when tracking is lost.
 
-                    el.addEventListener('mouseenter', () => {
-                        // Add a small transition delay to smooth out the initial "jump" 
-                        // and fast movements. 
-                        // 0.2s is enough to kill the jitter but keep it responsive.
-                        el.style.transition = 'transform 0.2s ease-out';
-                    });
+                    let raf = 0;
+                    let lastX = 0;
+                    let lastY = 0;
+                    let hovering = false;
 
-                    el.addEventListener('mousemove', e => {
+                    function update() {
+                        raf = 0;
+                        if (!hovering) return;
+
                         const rect = el.getBoundingClientRect();
                         const cx = rect.left + rect.width / 2;
                         const cy = rect.top + rect.height / 2;
 
                         // Calculate distance from center
-                        let dx = (e.clientX - cx) / (rect.width / 2); // -1..1
-                        let dy = (e.clientY - cy) / (rect.height / 2);
+                        let dx = (lastX - cx) / (rect.width / 2); // -1..1
+                        let dy = (lastY - cy) / (rect.height / 2);
 
-                        // Clamp values to prevent extreme rotation when hovering the "buffer" zone
+                        // Clamp values to prevent extreme rotation
                         dx = Math.max(-1.05, Math.min(1.05, dx));
                         dy = Math.max(-1.05, Math.min(1.05, dy));
 
@@ -1875,18 +1830,38 @@
                         const ry = dx * 12; // rotateY
 
                         el.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.03) translateY(-5px)`;
+                    }
+
+                    el.addEventListener('pointerenter', (e) => {
+                        if (e.pointerType && e.pointerType !== 'mouse') return;
+                        hovering = true;
+                        // Add a small transition delay to smooth out the initial "jump" 
+                        // and fast movements. 
+                        // 0.2s is enough to kill the jitter but keep it responsive.
+                        el.style.transition = 'transform 0.2s ease-out';
                         el.style.zIndex = '20';
                         el.classList.add('tilted');
-                    });
+                        el.style.willChange = 'transform';
+                    }, { passive: true });
+
+                    el.addEventListener('pointermove', (e) => {
+                        if (!hovering) return;
+                        lastX = e.clientX;
+                        lastY = e.clientY;
+                        if (!raf) raf = requestAnimationFrame(update);
+                    }, { passive: true });
 
                     // This triggers when leaving the element OR entering an iframe inside it
-                    el.addEventListener('mouseleave', () => {
+                    el.addEventListener('pointerleave', () => {
+                        hovering = false;
+                        if (raf) { cancelAnimationFrame(raf); raf = 0; }
                         // Add transition back for a smooth "landing"
                         el.style.transition = 'transform 0.6s cubic-bezier(0.23, 1, 0.32, 1)';
                         el.style.transform = '';
                         el.style.zIndex = '';
                         el.classList.remove('tilted');
-                    });
+                        el.style.willChange = '';
+                    }, { passive: true });
                 });
             })();
         </script>
@@ -1985,21 +1960,28 @@
                 let cursorX = 0, cursorY = 0;
                 const speed = 0.15; // Smooth following speed
                 let isHoveringIframe = false;
+                const supportsTranslateProp = !!(window.CSS && CSS.supports && CSS.supports('translate: 1px 1px'));
+                const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
 
                 // Update cursor position smoothly
                 function animateCursor() {
                     if (!isHoveringIframe) {
                         cursorX += (mouseX - cursorX) * speed;
                         cursorY += (mouseY - cursorY) * speed;
-                        cursor.style.left = cursorX + 'px';
-                        cursor.style.top = cursorY + 'px';
+                        if (supportsTranslateProp) {
+                            cursor.style.translate = `${cursorX}px ${cursorY}px`;
+                        } else {
+                            // Preserve the CSS centering translate(-50%, -50%)
+                            cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`;
+                        }
                     }
                     requestAnimationFrame(animateCursor);
                 }
                 animateCursor();
 
                 // Track mouse movement
-                document.addEventListener('mousemove', (e) => {
+                document.addEventListener(moveEvent, (e) => {
+                    if (e.pointerType && e.pointerType !== 'mouse') return;
                     mouseX = e.clientX;
                     mouseY = e.clientY;
                     // Ensure cursor shows if we moved out of iframe technically but missed event
@@ -2008,14 +1990,21 @@
                         isHoveringIframe = false;
                         document.body.classList.remove('iframe-hover');
                     }
-                });
+                }, { passive: true });
 
                 // Hover effect on interactive elements
-                const interactiveElements = document.querySelectorAll('a, button, input, textarea, select, .link-item, .social-icon, .island, [role="button"]');
-                interactiveElements.forEach(el => {
-                    el.addEventListener('mouseenter', () => cursor.classList.add('cursor-hover'));
-                    el.addEventListener('mouseleave', () => cursor.classList.remove('cursor-hover'));
-                });
+                const hoverSelector = 'a, button, input, textarea, select, .link-item, .social-icon, .island, [role="button"]';
+                document.addEventListener('mouseover', (e) => {
+                    if (e.target.closest && e.target.closest(hoverSelector)) cursor.classList.add('cursor-hover');
+                }, { passive: true });
+                document.addEventListener('mouseout', (e) => {
+                    if (!e.target.closest) return;
+                    const from = e.target.closest(hoverSelector);
+                    if (!from) return;
+                    const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest(hoverSelector) : null;
+                    if (to) return; // moved between interactive elements
+                    cursor.classList.remove('cursor-hover');
+                }, { passive: true });
 
                 // Handle Iframes (Spotify etc) - Hide custom cursor, show default
                 const iframeWrappers = document.querySelectorAll('.island');
@@ -2043,10 +2032,11 @@
                 // Initial hide until mouse moves
                 cursor.style.opacity = '0';
                 document.body.appendChild(cursor); // Move to end of body to ensure it's on top of everything
-                document.addEventListener('mousemove', () => {
+                document.addEventListener(moveEvent, (e) => {
+                    if (e.pointerType && e.pointerType !== 'mouse') return;
                     document.body.classList.add('custom-cursor-active');
                     if (!isHoveringIframe) cursor.style.opacity = '1';
-                }, { once: true });
+                }, { once: true, passive: true });
 
                 // Brand color cursor effect
                 const brandColors = {
@@ -2087,7 +2077,7 @@
                                 cursor.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.5)';
                             } else {
                                 // Use semi-transparent background for glass effect
-                                cursor.style.backgroundColor = hexToRgba(color, 0.2);
+                                cursor.style.backgroundColor = hexToRgba(color, 0.3);
                                 // Keep the glow (box-shadow) stronger but maybe slightly less opaque than solid
                                 cursor.style.boxShadow = `0 0 20px ${hexToRgba(color, 0.6)}, 0 0 40px ${hexToRgba(color, 0.3)}`;
                             }
@@ -2176,6 +2166,7 @@
                 }
             });
         </script>
-</body>
+        dy>
+
 
 </html>
