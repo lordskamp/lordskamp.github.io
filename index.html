@@ -208,9 +208,9 @@
                 <i class="fas fa-star mr-2"></i>Social
             </h2>
             <div class="space-y-3">
-                <a href="https://www.instagram.com/lordskamp/" target="_blank" class="link-item flex items-center p-4 rounded-lg">
-                    <i class="fab fa-instagram text-pink-500 text-xl w-8"></i>
-                    <span class="ml-3 font-medium">Instagram</span>
+                <a href="https://tinder.com/@lordskamp" target="_blank" class="link-item flex items-center p-4 rounded-lg">
+                    <i class="fab fa-tinder text-red-500 text-xl w-8"></i>
+                    <span class="ml-3 font-medium">Tinder</span>
                     <i class="fas fa-external-link-alt ml-auto text-gray-400 text-sm"></i>
                 </a>
                 
@@ -737,7 +737,7 @@
 
     <!-- Add Smooth page transitions -->
     <div id="page-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .35s ease, transform .35s ease;z-index:9999;">
-        <div style="width:120px;height:120px;border-radius:16px;background:linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.06));backdrop-filter: blur(6px);display:flex;align-items:center;justify-content:center;transform:scale(.98);">
+        <div style="width:120px;height:120px;border-radius:16px;background:linear-gradient(135deg, rgba(140,61,193,0.12), rgba(140,61,193,0.06));backdrop-filter: blur(6px);display:flex;align-items:center;justify-content:center;transform:scale(.98);">
             <div style="font-family:monospace;color:var(--red);font-weight:700;">Loading</div>
         </div>
     </div>
@@ -785,7 +785,7 @@
             const match = cards.find(c => c.textContent.toLowerCase().includes(buffer));
             clearHighlights();
             if (match) {
-                match.style.outline = '2px solid rgba(239,68,68,0.85)';
+                match.style.outline = '2px solid rgba(140,61,193,0.85)';
                 match.style.transform = 'translateY(-6px)';
                 match.scrollIntoView({behavior:'smooth', block:'center'});
             }
@@ -809,10 +809,10 @@
     <script>
         (() => {
         const map = {
-            'g': 'https://github.com/iammuhammadnoumankhan',
-            'y': 'https://www.youtube.com/@NoumanKhanonAI',
+            'i': 'https://github.com/iammuhammadnoumankhan',
+            'x': 'https://x.com/lordskamp_',
             'l': 'https://www.linkedin.com/in/muhammad-nouman-khan-248530233/',
-            'e': 'mailto:noumankhanonai@gmail.com'
+            'e': 'mailto:lordskamp@yahoo.com'
         };
 
         document.addEventListener('keydown', (e) => {
@@ -906,205 +906,16 @@
     <script>
         (() => {
         const quotes = [
-            "AI is not replacing humans — it's augmenting them.",
-            "The future belongs to those who master human + machine intelligence.",
-            "Generative AI is the new electricity.",
-            "LLMs are not just models, they are tools for amplifying thought.",
-            "Trustworthy AI is built on fairness, transparency, and ethics."
+            "Я сосав, мене їбали",
+            "Будеш шось мав - дзвони",
+            "Го в Сперанцу",
+            "Бобкет хуйня",
+            "На фрі лудіках Стеллу"
         ];
         const q = quotes[Math.floor(Math.random() * quotes.length)];
         document.getElementById('quote').textContent = q;
         })();
     </script>
-
-
-    <!-- NOUMAN AI CHAT -->
-     <!-- Add this to your existing index.html before closing </body> tag -->
-
-<!-- AI Chat Icon -->
-<div id="aiChatIcon" class="fixed bottom-6 right-6 z-50">
-    <!-- Main Chat Button -->
-    <button id="chatBtn" 
-            class="w-16 h-16 bg-gradient-to-br from-red-500 to-red-600 rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 flex items-center justify-center text-white text-xl hover:scale-110 group relative overflow-hidden">
-        <!-- Animated Background Ring -->
-        <div class="absolute inset-0 rounded-full bg-red-500 opacity-30 animate-ping"></div>
-        
-        <!-- Icon -->
-        <i id="chatIcon" class="fas fa-robot relative z-10 transition-transform duration-300 group-hover:scale-110"></i>
-        
-        <!-- Notification Dot -->
-        <div id="notificationDot" class="absolute -top-1 -right-1 w-5 h-5 bg-green-400 rounded-full border-2 border-white animate-pulse">
-            <div class="w-full h-full bg-green-400 rounded-full animate-ping"></div>
-        </div>
-    </button>
-
-    <!-- Tooltip -->
-    <div id="chatTooltip" 
-         class="absolute bottom-20 right-0 bg-black/80 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 transform translate-y-2 transition-all duration-300 pointer-events-none backdrop-blur-sm border border-red-500/20">
-        Chat with Nouman AI
-        <div class="absolute -bottom-1 right-6 w-2 h-2 bg-black/80 rotate-45 border-r border-b border-red-500/20"></div>
-    </div>
-
-</div>
-
-<style>
-    /* Enhanced AI Chat Icon Styles */
-    #aiChatIcon {
-        user-select: none;
-    }
-
-    #chatBtn {
-        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
-    }
-
-    #chatBtn:hover {
-        box-shadow: 0 12px 35px rgba(239, 68, 68, 0.6);
-        transform: translateY(-2px) scale(1.05);
-    }
-
-    #chatBtn:active {
-        transform: translateY(0) scale(1.02);
-    }
-
-    /* Pulsing animation for notification dot */
-    @keyframes pulse-glow {
-        0%, 100% {
-            box-shadow: 0 0 5px rgba(34, 197, 94, 0.7);
-        }
-        50% {
-            box-shadow: 0 0 15px rgba(34, 197, 94, 0.9), 0 0 25px rgba(34, 197, 94, 0.5);
-        }
-    }
-
-    #notificationDot {
-        animation: pulse-glow 2s infinite;
-    }
-
-    /* Tooltip hover effects */
-    #chatBtn:hover + #chatTooltip,
-    #chatBtn:focus + #chatTooltip {
-        opacity: 1;
-        transform: translateY(0);
-        pointer-events: auto;
-    }
-
-    /* Quick menu visibility */
-    #aiChatIcon:hover #quickMenu {
-        opacity: 1;
-        transform: scale(1);
-        pointer-events: auto;
-    }
-
-    /* Mobile responsiveness */
-    @media (max-width: 768px) {
-        #aiChatIcon {
-            bottom: 20px;
-            right: 20px;
-        }
-        
-        #chatBtn {
-            width: 60px;
-            height: 60px;
-        }
-        
-        #quickMenu {
-            right: -10px;
-            bottom: 75px;
-        }
-        
-        #chatTooltip {
-            bottom: 75px;
-            right: -5px;
-        }
-    }
-
-    /* Smooth entrance animation */
-    @keyframes slideInScale {
-        from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.8);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-        }
-    }
-
-    #aiChatIcon {
-        animation: slideInScale 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-        animation-delay: 1s;
-        opacity: 0;
-    }
-</style>
-
-<script>
-    // AI Chat Icon Functionality
-    document.addEventListener('DOMContentLoaded', function() {
-        const chatBtn = document.getElementById('chatBtn');
-        const chatIcon = document.getElementById('chatIcon');
-        const notificationDot = document.getElementById('notificationDot');
-        const tooltip = document.getElementById('chatTooltip');
-        
-        // Make icon visible after page load
-        setTimeout(() => {
-            document.getElementById('aiChatIcon').style.opacity = '1';
-        }, 1000);
-
-        // Click handler
-        chatBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            // Add click animation
-            chatBtn.style.transform = 'scale(0.95)';
-            setTimeout(() => {
-                chatBtn.style.transform = '';
-            }, 150);
-            
-            // Remove notification dot
-            if (notificationDot) {
-                notificationDot.style.display = 'none';
-            }
-            
-        });
-
-        // Long press for quick menu (mobile)
-        let longPressTimer;
-        
-        chatBtn.addEventListener('touchstart', function(e) {
-            longPressTimer = setTimeout(() => {
-                // Show quick menu
-                document.getElementById('quickMenu').style.opacity = '1';
-                document.getElementById('quickMenu').style.transform = 'scale(1)';
-                document.getElementById('quickMenu').style.pointerEvents = 'auto';
-                
-                // Add haptic feedback if available
-                if (navigator.vibrate) {
-                    navigator.vibrate(50);
-                }
-            }, 500);
-        });
-        
-        chatBtn.addEventListener('touchend', function(e) {
-            clearTimeout(longPressTimer);
-        });
-
-        // Hide notification dot after some time
-        setTimeout(() => {
-            if (notificationDot) {
-                notificationDot.style.animation = 'fadeOut 1s forwards';
-            }
-        }, 10000);
-
-        // Keyboard accessibility
-        chatBtn.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                chatBtn.click();
-            }
-        });
-    });
-
-    }
 </script>
 </body>
 </html>
