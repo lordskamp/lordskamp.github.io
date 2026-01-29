@@ -1,12 +1,12 @@
 {
-  "name": "Muhammad Nouman Khan – Linktree",
-  "short_name": "MNK Linktree",
-  "description": "AI & MLOps Engineer | IEEE-Published",
-  "theme_color": "#ef4444",
+  "name": "Lordskamp link",
+  "short_name": "Lordskamp",
+  "description": "Graphic Designer",
+  "theme_color": "#8c3dc1",
   "background_color": "#0a0a0a",
   "display": "standalone",
   "orientation": "portrait",
-  "start_url": "/linktree/",
+  "start_url": "/",
   "icons": [
     {
       "src": "icon-192.png",
