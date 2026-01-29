@@ -22,6 +22,7 @@
             --bg: #0a0a0a;
             --glass: rgba(31, 41, 55, 0.35);
             --blur: blur(12px);
+            --page-bg: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
         }
 
         * {
@@ -32,14 +33,14 @@
 
         html {
             height: 100%;
-            background: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
+            background: var(--page-bg);
             background-color: var(--bg);
             overflow-x: hidden;
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
+            background: var(--page-bg);
             background-color: var(--bg);
             color: #fff;
             min-height: 100vh;
@@ -562,7 +563,8 @@
             height: 100%;
             z-index: 1;
             overflow: hidden;
-            background: radial-gradient(ellipse at bottom, #1a1a1a 0%, #0a0a0a 70%);
+            background: var(--page-bg);
+            background-color: var(--bg);
         }
 
         .island {
@@ -590,23 +592,23 @@
 
         /* Weather/Time themes */
         body[data-theme="day"] {
-            background: radial-gradient(ellipse, #e0f7fa, #0288d1);
+            --page-bg: radial-gradient(ellipse, #e0f7fa, #0288d1);
         }
 
         body[data-theme="morning"] {
-            background: radial-gradient(ellipse, #fff3e0, #f57c00);
+            --page-bg: radial-gradient(ellipse, #fff3e0, #f57c00);
         }
 
         body[data-theme="night"] {
-            background: radial-gradient(ellipse, #1a237e, #000);
+            --page-bg: radial-gradient(ellipse, #1a237e, #000);
         }
 
         body[data-theme="rain"] {
-            background: linear-gradient(#37474f, #263238);
+            --page-bg: linear-gradient(#37474f, #263238);
         }
 
         body[data-theme="cloudy"] {
-            background: linear-gradient(#cfd8dc, #90a4ae);
+            --page-bg: linear-gradient(#cfd8dc, #90a4ae);
         }
 
         /* Social Icons Styling */
