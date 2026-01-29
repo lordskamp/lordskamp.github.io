@@ -8,10 +8,18 @@
             overflow: hidden;
             background-color: #050505;
             color: white;
-            height: 100vh;
+            min-height: 100dvh;
             display: flex;
             align-items: center;
             justify-content: center;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        @supports (min-height: 100svh) {
+            body {
+                min-height: 100svh;
+            }
         }
 
         .content-container {

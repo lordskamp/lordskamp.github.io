@@ -43,10 +43,41 @@
             background: var(--page-bg);
             background-color: var(--bg);
             color: #fff;
-            min-height: 100vh;
-            min-height: 100svh;
             min-height: 100dvh;
             overflow-x: hidden;
+        }
+
+        @supports (min-height: 100svh) {
+            body {
+                min-height: 100svh;
+            }
+        }
+
+        /* iOS-safe fullscreen */
+        .fullscreen {
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
+            box-sizing: border-box;
+        }
+
+        @supports (min-height: 100svh) {
+            .fullscreen {
+                min-height: 100svh;
+            }
+        }
+
+        /* Respect the notch/status bar for fixed top controls */
+        .safe-top {
+            top: calc(env(safe-area-inset-top) + 1rem) !important;
+        }
+
+        #splash-screen.fullscreen {
+            top: 0;
+            left: 0;
+            right: 0;
         }
 
         /* ---------- Background Gradients (BG.css styles) ---------- */
@@ -556,11 +587,8 @@
 
         /* Splash Screen Background */
         .splash-background {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            position: absolute;
+            inset: 0;
             z-index: 1;
             overflow: hidden;
             background: var(--page-bg);
@@ -588,27 +616,6 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
-        }
-
-        /* Weather/Time themes */
-        body[data-theme="day"] {
-            --page-bg: radial-gradient(ellipse, #e0f7fa, #0288d1);
-        }
-
-        body[data-theme="morning"] {
-            --page-bg: radial-gradient(ellipse, #fff3e0, #f57c00);
-        }
-
-        body[data-theme="night"] {
-            --page-bg: radial-gradient(ellipse, #1a237e, #000);
-        }
-
-        body[data-theme="rain"] {
-            --page-bg: linear-gradient(#37474f, #263238);
-        }
-
-        body[data-theme="cloudy"] {
-            --page-bg: linear-gradient(#cfd8dc, #90a4ae);
         }
 
         /* Social Icons Styling */
@@ -852,7 +859,8 @@
     </audio>
 
     <!-- Splash Screen / Entry Screen -->
-    <div id="splash-screen" class="fixed inset-0 flex items-center justify-center cursor-none" style="z-index: 10000;">
+    <div id="splash-screen" class="fixed fullscreen flex items-center justify-center cursor-none"
+        style="z-index: 10000;">
         <!-- Splash Background -->
         <div class="splash-background">
             <div class="gradient-sphere sphere-1"></div>
@@ -875,7 +883,7 @@
     <!-- Content Wrapper -->
     <div class="content-wrapper">
         <!-- Left Controls (Language & Clock) -->
-        <div id="left-controls" class="fixed top-4 left-4 z-50 flex items-center gap-3">
+        <div id="left-controls" class="fixed top-4 safe-top left-4 z-50 flex items-center gap-3">
             <!-- Language Toggle -->
             <button id="langBtn" data-brand="Language"
                 class="p-2 bg-black/30 hover:bg-black/50 backdrop-blur-md rounded-full text-white shadow-lg transition w-10 h-10 flex items-center justify-center border border-transparent"
@@ -885,7 +893,7 @@
         </div>
 
         <!-- Music Control -->
-        <div class="fixed top-4 right-4 z-50 flex items-center gap-3">
+        <div class="fixed top-4 safe-top right-4 z-50 flex items-center gap-3">
             <!-- Music Control -->
             <div class="flex items-center group relative">
                 <div id="volumeControl"
@@ -2178,7 +2186,4 @@
                 }
             });
         </script>
-        dy>
-
-
 </html>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Nouman AI - Smart Professional Assistant</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -40,9 +40,29 @@
             font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-tertiary) 100%);
             color: var(--text-primary);
-            min-height: 100vh;
+            min-height: 100dvh;
             overflow-x: hidden;
             position: relative;
+        }
+
+        @supports (min-height: 100svh) {
+            body {
+                min-height: 100svh;
+            }
+        }
+
+        /* iOS-safe fullscreen containers */
+        .fullscreen {
+            min-height: 100dvh;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            box-sizing: border-box;
+        }
+
+        @supports (min-height: 100svh) {
+            .fullscreen {
+                min-height: 100svh;
+            }
         }
 
         /* Animated background particles */
@@ -68,7 +88,7 @@
 
         @keyframes float {
             0% {
-                transform: translateY(100vh) rotate(0deg);
+                transform: translateY(100dvh) rotate(0deg);
                 opacity: 0;
             }
             10% {
@@ -80,6 +100,25 @@
             100% {
                 transform: translateY(-10px) rotate(360deg);
                 opacity: 0;
+            }
+        }
+
+        @supports (transform: translateY(100svh)) {
+            @keyframes float {
+                0% {
+                    transform: translateY(100svh) rotate(0deg);
+                    opacity: 0;
+                }
+                10% {
+                    opacity: 0.3;
+                }
+                90% {
+                    opacity: 0.3;
+                }
+                100% {
+                    transform: translateY(-10px) rotate(360deg);
+                    opacity: 0;
+                }
             }
         }
 
@@ -785,7 +824,7 @@
     <div class="bg-particles" id="particles"></div>
 
     <!-- Main Container -->
-    <div class="min-h-screen flex flex-col">
+    <div class="fullscreen flex flex-col">
         <!-- Enhanced Header -->
         <header class="p-6 relative z-10">
             <div class="max-w-7xl mx-auto">
