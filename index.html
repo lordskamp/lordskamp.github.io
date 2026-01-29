@@ -340,9 +340,9 @@
             height: 100%;
             background-size: 40px 40px;
             background-image:
-                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            z-index: 2;
+                linear-gradient(to right, rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+            z-index: 1;
         }
 
         .glow {
@@ -506,12 +506,6 @@
         .link-item:hover {
             background: rgba(55, 65, 81, 0.6);
             border-color: rgba(140, 61, 193, 0.5);
-        }
-
-        /* ---------- Live Clock ---------- */
-        #live-clock {
-            letter-spacing: 0.05em;
-            font-variant-numeric: tabular-nums;
         }
 
         /* 🌌 PARALLAX CONSTELLATION */
@@ -1814,31 +1808,6 @@
                 navigator.serviceWorker.register('/linktree/sw.js');
             }
         </script>
-
-        <!-- Retro Terminal + Matrix Rain removed (per request) -->
-        <script>
-            (() => {
-                const layers = $$('.constellation-layer');
-                if (!layers.length) return;
-
-                // Coalesce wheel events to one update/frame for smoother scrolling
-                let lastDelta = 0;
-                let rafPending = false;
-
-                function apply() {
-                    rafPending = false;
-                    layers.forEach((l, i) => l.style.setProperty('--wheel-offset', `${-lastDelta * (i + 1) * 0.2}px`));
-                }
-
-                window.addEventListener('wheel', (e) => {
-                    lastDelta = e.deltaY;
-                    if (!rafPending) {
-                        rafPending = true;
-                        requestAnimationFrame(apply);
-                    }
-                }, { passive: true });
-            })();
-        </script>
         <script>
             (() => {
                 // Target profile image and all island blocks
@@ -1905,89 +1874,6 @@
                         el.classList.remove('tilted');
                         el.style.willChange = '';
                     }, { passive: true });
-                });
-            })();
-        </script>
-
-        <!-- Add Smooth page transitions -->
-        <div id="page-overlay"
-            style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .35s ease, transform .35s ease;z-index:9999;">
-            <div
-                style="width:120px;height:120px;border-radius:16px;background:linear-gradient(135deg, rgba(140,61,193,0.12), rgba(140,61,193,0.06));backdrop-filter: blur(6px);display:flex;align-items:center;justify-content:center;transform:scale(.98);">
-                <div style="font-family:monospace;color:var(--red);font-weight:700;">Loading</div>
-            </div>
-        </div>
-
-        <script>
-            (() => {
-                const overlay = document.getElementById('page-overlay');
-                // Applies on anchor clicks that navigate away
-                document.addEventListener('click', (e) => {
-                    const a = e.target.closest('a');
-                    if (!a) return;
-                    // ignore anchors that don't leave page or are # links or have target _blank or are mailto links
-                    if (a.getAttribute('href')?.startsWith('#') || a.target === '_blank' || a.getAttribute('href')?.startsWith('mailto:')) return;
-                    e.preventDefault();
-                    overlay.style.pointerEvents = 'auto';
-                    overlay.style.opacity = 1;
-                    overlay.firstElementChild.style.transform = 'scale(1) translateY(0)';
-                    // small delay for animation
-                    setTimeout(() => { window.location = a.href; }, 380);
-                });
-            })();
-        </script>
-
-        <!-- Type-to-search links -->
-        <script>
-            (() => {
-                const cards = $$('.link-item');
-                if (!cards.length) return;
-                let buffer = '';
-                let timeout;
-                // show a small hint UI
-                const hint = document.createElement('div');
-                hint.style.cssText = 'position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:white;padding:8px 12px;border-radius:999px;font-family:monospace;z-index:9999;opacity:0;transition:opacity .2s';
-                document.body.appendChild(hint);
-
-                document.addEventListener('keydown', (e) => {
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                    if (e.key.length === 1) {
-                        buffer += e.key.toLowerCase();
-                        hint.textContent = `Search: ${buffer}`;
-                        hint.style.opacity = 1;
-                        clearTimeout(timeout);
-                        timeout = setTimeout(() => { buffer = ''; hint.style.opacity = 0; clearHighlights(); }, 1200);
-                        // highlight first matching card
-                        const match = cards.find(c => c.textContent.toLowerCase().includes(buffer));
-                        clearHighlights();
-                        if (match) {
-                            match.style.outline = '2px solid rgba(140,61,193,0.85)';
-                            match.style.transform = 'translateY(-6px)';
-                            match.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }
-                    } else if (e.key === 'Escape') {
-                        buffer = '';
-                        hint.style.opacity = 0;
-                        clearHighlights();
-                    } else if (e.key === 'Enter' && buffer) {
-                        const match = cards.find(c => c.textContent.toLowerCase().includes(buffer));
-                        if (match) match.click();
-                    }
-                });
-
-                function clearHighlights() {
-                    cards.forEach(c => { c.style.outline = ''; c.style.transform = ''; });
-                }
-            })();
-        </script>
-
-        <!-- Social Icons Animation -->
-        <script>
-            (() => {
-                const socialIcons = document.querySelectorAll('.social-icon');
-                socialIcons.forEach((icon, index) => {
-                    icon.style.animationDelay = `${index * 0.1}s`;
-                    icon.classList.add('animate-blur-up');
                 });
             })();
         </script>
