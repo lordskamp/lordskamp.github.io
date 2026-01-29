@@ -1083,8 +1083,6 @@
                 notificationDot.style.display = 'none';
             }
             
-            // Navigate to chat
-            window.location.href = 'chat.html';
         });
 
         // Long press for quick menu (mobile)
@@ -1124,11 +1122,6 @@
         });
     });
 
-    // Quick message function
-    function openChatWithMessage(message) {
-        // Store the message in sessionStorage to auto-send in chat page
-        sessionStorage.setItem('autoMessage', message);
-        window.location.href = 'chat.html';
     }
 </script>
 </body>
