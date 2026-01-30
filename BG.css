@@ -70,18 +70,14 @@
 
        .gradient-background {
            position: fixed;
-           top: -100px;
-           left: -100px;
-           width: calc(100vw + 200px);
-           height: calc(100vh + 200px);
-           /* Ensure coverage even with dynamic browser bars */
-           height: calc(100dvh + 200px);
+           top: 50%;
+           left: 50%;
+           width: 120vw;
+           height: 120dvh;
+           transform: translate(-50%, -50%) translateZ(0);
            z-index: 1;
            overflow: hidden;
            pointer-events: none;
-           /* iOS Safari fix for address bar */
-           -webkit-transform: translateZ(0);
-           transform: translateZ(0);
        }
 
        .gradient-sphere {
