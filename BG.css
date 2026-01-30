@@ -70,14 +70,16 @@
 
        .gradient-background {
            position: fixed;
-           top: 50%;
-           left: 50%;
-           width: 120vw;
-           height: 120dvh;
-           transform: translate(-50%, -50%) translateZ(0);
+           top: -50vh;
+           left: -50vw;
+           right: -50vw;
+           bottom: -50vh;
+           width: auto;
+           height: auto;
            z-index: 1;
            overflow: hidden;
            pointer-events: none;
+           transform: none;
        }
 
        .gradient-sphere {

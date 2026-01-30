@@ -34,8 +34,8 @@
         html {
             height: 100%;
             min-height: -webkit-fill-available;
-            background: var(--page-bg);
-            background-color: var(--bg);
+            background: #0a0a0a;
+            background-color: #0a0a0a;
             overflow-x: hidden;
         }
 
@@ -87,15 +87,18 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            width: 120vw;
-            height: 120dvh;
-            transform: translate(-50%, -50%) translateZ(0);
+            top: -50vh;
+            left: -50vw;
+            right: -50vw;
+            bottom: -50vh;
+            width: auto;
+            height: auto;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
-            will-change: transform;
+            /* Remove transform on the container to avoid clipping contexts */
+            transform: none;
+            will-change: auto;
         }
 
         .gradient-sphere {
@@ -587,11 +590,18 @@
         /* Splash Screen Background */
         .splash-background {
             position: absolute;
-            inset: 0;
+            top: -50vh;
+            left: -50vw;
+            right: -50vw;
+            bottom: -50vh;
+            width: auto;
+            height: auto;
             z-index: 1;
             overflow: hidden;
             background: var(--page-bg);
             background-color: var(--bg);
+            pointer-events: none;
+            transform: none;
         }
 
         .island {
