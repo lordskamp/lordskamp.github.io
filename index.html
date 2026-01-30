@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Lordskamp</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="hsl(250, 15%, 30%)" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="apple-touch-icon" sizes="180x180" href="fav/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="fav/favicon-32x32.png">
@@ -26,33 +29,28 @@
         }
 
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+            color: white;
         }
 
         html {
-            height: 100%;
-            min-height: -webkit-fill-available;
-            background: #0a0a0a;
-            background-color: #0a0a0a;
-            overflow-x: hidden;
+            padding-top: env(safe-area-inset-top);
+        }
+
+        html,
+        body {
+            height: 100vh;
+            overflow-y: hidden;
+            background: linear-gradient(180deg, hsl(250, 15%, 30%), hsl(250, 15%, 10%));
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background: var(--page-bg);
-            background-color: var(--bg);
-            color: #fff;
-            min-height: 100dvh;
-            min-height: -webkit-fill-available;
-            overflow-x: hidden;
-        }
-
-        @supports (min-height: 100svh) {
-            body {
-                min-height: 100svh;
-            }
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         /* iOS-safe fullscreen */
@@ -426,6 +424,10 @@
         .content-wrapper {
             position: relative;
             z-index: 10;
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         /* ---------- Cinematic Entrance ---------- */
