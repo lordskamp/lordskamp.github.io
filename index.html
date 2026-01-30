@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Lordskamp</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.9.3/tsparticles.bundle.min.js"></script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="hsl(250, 15%, 30%)" />
@@ -500,31 +502,7 @@
             border-color: rgba(140, 61, 193, 0.5);
         }
 
-        /* 🌌 PARALLAX CONSTELLATION */
-        .constellation-layer {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: -1;
-            transform-style: preserve-3d;
-            will-change: transform;
-            --wheel-offset: 0px;
-        }
 
-        .layer-1 {
-            transform: translate3d(0, var(--wheel-offset), 0) translateZ(-2px) scale(1.2);
-        }
-
-        .layer-2 {
-            transform: translate3d(0, var(--wheel-offset), 0) translateZ(-1px) scale(1.1);
-        }
-
-        .layer-3 {
-            transform: translate3d(0, var(--wheel-offset), 0) translateZ(0) scale(1);
-        }
 
         #profileImg {
             transform-style: preserve-3d;
@@ -835,6 +813,41 @@
                 cursor: auto !important;
             }
         }
+
+        /* Logos Slider */
+        .logos-slider {
+            overflow: hidden;
+            display: flex;
+            mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+            -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .logos-slide {
+            display: flex;
+            align-items: center;
+            animation: slide 35s infinite linear;
+            flex-shrink: 0;
+        }
+
+        .logos-slide img {
+            height: 80px;
+            margin: 0 30px;
+            filter: brightness(0) invert(1);
+            opacity: 0.9;
+            object-fit: contain;
+        }
+
+        @keyframes slide {
+            from {
+                transform: translateX(0);
+            }
+
+            to {
+                transform: translateX(-100%);
+            }
+        }
     </style>
 </head>
 
@@ -851,10 +864,10 @@
     </div>
     <!-- Particles (separate from gradient-background for correct cursor tracking) -->
     <div class="particles-container" id="particles-container"></div>
+    <div id="tsparticles"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;"></div>
 
-    <div class="constellation-layer layer-1"></div>
-    <div class="constellation-layer layer-2"></div>
-    <div class="constellation-layer layer-3"></div>
+
 
     <!-- Background Music -->
     <audio id="bgMusic" loop autoplay muted>
@@ -922,7 +935,8 @@
                         class="w-32 h-32 rounded-full mx-auto border-4 border-violet-500 object-cover glow-effect">
                 </div>
                 <h1 class="text-3xl font-bold mb-2" data-i18n="name">YURII HONCHARENKO</h1>
-                <p class="text-gray-300 text-lg" data-i18n="role">Graphic \ Motion Designer</p>
+                <p id="tagline" class="text-gray-300 text-lg min-h-[1.75rem]" data-i18n="role">Graphic \ Motion Designer
+                </p>
                 <p class="text-gray-400 mt-2" data-i18n="status">Looking for job</p>
 
                 <div id="social-icons" class="flex justify-center gap-4 mt-6">
@@ -977,7 +991,7 @@
 
                     <a href="https://www.instagram.com/enko.agency/" target="_blank"
                         class="link-item flex items-center p-4 rounded-lg">
-                        <i class="fab fa-instagram text-pink-500 text-xl w-8"></i>
+                        <i class="fab fa-instagram text-white text-xl w-8"></i>
                         <span class="ml-3 font-medium" data-i18n="instagramPortfolio">Instagram-Portfolio</span>
                         <i class="fas fa-external-link-alt ml-auto text-gray-400 text-sm"></i>
                     </a>
@@ -1024,16 +1038,41 @@
                 </div>
             </div>
 
-
-
-            <!-- Favorite songs -->
-            <section class="island mb-8 no-parallax">
-                <iframe data-testid="embed-iframe" style="border-radius:12px"
-                    src="https://open.spotify.com/embed/playlist/5fOQ8BESV65fGFmrEHPu9u?utm_source=generator&theme=0"
-                    width="100%" height="500" frameBorder="0" allowfullscreen=""
-                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                    loading="lazy"></iframe>
-            </section>
+            <!-- Companies Slider -->
+            <div class="island mb-8">
+                <h2 class="text-xl font-semibold mb-4 text-center section-title">
+                    <i class="fas fa-briefcase mr-2"></i><span data-i18n="companies">Companies</span>
+                </h2>
+                <div class="link-item rounded-lg p-4 pointer-events-none">
+                    <div class="logos-slider">
+                        <div class="logos-slide">
+                            <img src="logos/logo-01.svg" alt="Company Logo">
+                            <img src="logos/logo-02.svg" alt="Company Logo">
+                            <img src="logos/logo-03.svg" alt="Company Logo">
+                            <img src="logos/logo-04.svg" alt="Company Logo">
+                            <img src="logos/logo-05.svg" alt="Company Logo">
+                            <img src="logos/logo-06.svg" alt="Company Logo">
+                            <img src="logos/logo-07.svg" alt="Company Logo">
+                            <img src="logos/logo-08.svg" alt="Company Logo">
+                            <img src="logos/logo-09.svg" alt="Company Logo">
+                            <img src="logos/logo-10.svg" alt="Company Logo">
+                        </div>
+                        <!-- Duplicate for infinite scroll -->
+                        <div class="logos-slide">
+                            <img src="logos/logo-01.svg" alt="Company Logo">
+                            <img src="logos/logo-02.svg" alt="Company Logo">
+                            <img src="logos/logo-03.svg" alt="Company Logo">
+                            <img src="logos/logo-04.svg" alt="Company Logo">
+                            <img src="logos/logo-05.svg" alt="Company Logo">
+                            <img src="logos/logo-06.svg" alt="Company Logo">
+                            <img src="logos/logo-07.svg" alt="Company Logo">
+                            <img src="logos/logo-08.svg" alt="Company Logo">
+                            <img src="logos/logo-09.svg" alt="Company Logo">
+                            <img src="logos/logo-10.svg" alt="Company Logo">
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- Extras Section -->
             <div class="island mb-8">
@@ -1111,9 +1150,17 @@
                 </script>
             </div>
 
+            <!-- Favorite songs -->
+            <section class="island mb-8 no-parallax">
+                <iframe data-testid="embed-iframe" style="border-radius:12px"
+                    src="https://open.spotify.com/embed/playlist/5fOQ8BESV65fGFmrEHPu9u?utm_source=generator&theme=0"
+                    width="100%" height="500" frameBorder="0"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"></iframe>
+            </section>
+
             <!-- Footer -->
             <div class="text-center mt-12 pb-8">
-                <p id="visitor-counter" class="text-gray-400 text-sm mt-2"></p>
                 <p class="text-gray-400 text-sm" data-i18n="madeWith">
                     Made with <i class="fas fa-heart text-violet-500"></i> by Yurii Honcharenko
                 </p>
@@ -1253,10 +1300,7 @@
                 function tick() {
                     rafPending = false;
 
-                    // Background parallax (move container to preserve sphere keyframes)
-                    const moveX = (lastX / innerWidth - 0.5) * 5;
-                    const moveY = (lastY / innerHeight - 0.5) * 5;
-                    bgLayers.forEach(layer => setTranslatePx(layer, moveX, moveY));
+
 
                     // Trail: cap to refresh-rate to keep effect but avoid runaway DOM work
                     const now = performance.now();
@@ -1493,7 +1537,7 @@
                     emailLabel: "Email",
                     telegram: "Telegram",
                     email: "lordskamp@yahoo.com",
-                    instagramPortfolio: "Instagram-Портфоліо",
+                    instagramPortfolio: "Instagram-портфоліо",
                     madeWith: 'Зроблено з допомогою ШІ',
                     viewCV: "Переглянути резюме",
                     copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
@@ -1516,6 +1560,7 @@
                     local: "Локалізація ігор",
                     parallel: "Паралельний Всесвіт",
                     sideProjects: "Сторонні проєкти",
+                    companies: "Компанії",
                     wishlist: "Список бажань",
                 },
                 en: {
@@ -1551,6 +1596,7 @@
                     local: "Localization game",
                     parallel: "Parallel University",
                     sideProjects: "Side Projects",
+                    companies: "Companies",
                     wishlist: "Wishlist",
                 }
             };
@@ -1662,25 +1708,6 @@
                 });
             });
 
-            /* ==== Live Clock ==== */
-            const clock = document.createElement('div');
-            clock.id = 'live-clock';
-            // Removed fixed positioning, let it flow in flex container
-            clock.className = 'px-3 py-1 bg-black/30 backdrop-blur-sm rounded text-sm text-white font-mono border border-white/10';
-
-            // Append to left-controls if exists, else body
-            const leftControls = document.getElementById('left-controls');
-            if (leftControls) leftControls.appendChild(clock);
-            else {
-                clock.style.position = 'fixed';
-                clock.style.top = '1rem';
-                clock.style.left = '1rem';
-                document.body.appendChild(clock);
-            }
-
-            setInterval(() => {
-                clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            }, 1000);
 
             /* ==== Auto-Typing Tagline ==== */
             let idx = 0, pos = 0, forward = true;
@@ -1695,7 +1722,7 @@
                     tagEl.textContent = taglines[idx].slice(0, ++pos);
                     if (pos === taglines[idx].length) { forward = false; setTimeout(type, 1500); return; }
                 } else {
-                    tagEl.textContent = taglines[idx].slice(0, --pos);
+                    tagEl.textContent = taglines[idx].slice(0, --pos) || '\u00A0';
                     if (pos === 0) { forward = true; idx = (idx + 1) % taglines.length; setTimeout(type, 300); return; }
                 }
                 setTimeout(type, 60);
@@ -1755,8 +1782,8 @@
             tsParticles.load("tsparticles", {
                 fpsLimit: 60,
                 particles: {
-                    color: { value: "#8c3dc1" },
-                    links: { color: "#8c3dc1", distance: 150, enable: true, opacity: 0.3, width: 1 },
+                    color: { value: "#ffffff" },
+                    links: { color: "#ffffff", distance: 150, enable: true, opacity: 0.3, width: 1 },
                     move: { enable: true, speed: 1, direction: "none", outModes: "out" },
                     number: { value: 60 },
                     size: { value: { min: 1, max: 3 } }
@@ -1775,31 +1802,7 @@
                 $$('*').forEach((el) => el.style.animationDuration = '0.001ms');
             }
         </script>
-        <!-- 3-D Tilt -->
-        <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
 
-        <!-- Particle Network -->
-        <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.9.3/tsparticles.bundle.min.js"></script>
-
-        <style>
-            /* Dark overrides */
-            html.dark {
-                --bg: #000000;
-                --glass: rgba(0, 0, 0, 0.45);
-            }
-
-            /* smooth color transition */
-            html,
-            body {
-                transition: background 0.3s, color 0.3s;
-            }
-        </style>
-
-        <script>
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/linktree/sw.js');
-            }
-        </script>
         <script>
             (() => {
                 // Target profile image and all island blocks
@@ -1887,14 +1890,17 @@
                 // Export cursor position for particles to use
                 window.customCursorPos = { x: 0, y: 0 };
 
-                // Update cursor position smoothly
+                // Update cursor position (instant, no smoothing)
                 function animateCursor() {
                     if (!isHoveringIframe) {
-                        cursorX += (mouseX - cursorX) * speed;
-                        cursorY += (mouseY - cursorY) * speed;
+                        // Remove smoothing/lerp
+                        cursorX = mouseX;
+                        cursorY = mouseY;
+
                         // Update global position for particles
                         window.customCursorPos.x = cursorX;
                         window.customCursorPos.y = cursorY;
+
                         if (supportsTranslateProp) {
                             cursor.style.translate = `${cursorX}px ${cursorY}px`;
                         } else {
@@ -2093,5 +2099,6 @@
                 }
             });
         </script>
+</body>
 
 </html>
