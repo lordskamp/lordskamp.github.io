@@ -4,22 +4,22 @@
            box-sizing: border-box;
        }
 
+       html,
        body {
+           height: 100%;
+           margin: 0;
+           padding: 0;
            overflow-x: hidden;
            background-color: #000;
+       }
+
+       body {
+           font-family: 'Inter', sans-serif;
            color: white;
            min-height: 100dvh;
            display: flex;
            align-items: center;
            justify-content: center;
-           padding-top: env(safe-area-inset-top);
-           padding-bottom: env(safe-area-inset-bottom);
-       }
-
-       @supports (min-height: 100svh) {
-           body {
-               min-height: 100svh;
-           }
        }
 
        .content-container {
@@ -70,17 +70,16 @@
 
        .gradient-background {
            position: fixed;
-           top: -20vh;
-           left: -20vw;
-           right: -20vw;
-           bottom: -20vh;
-           width: auto;
-           height: auto;
+           top: 50%;
+           left: 50%;
+           width: 140dvw;
+           height: 140dvh;
+           transform: translate(-50%, -50%);
            display: flex;
            align-items: center;
            justify-content: center;
-           z-index: 1;
-           overflow: visible;
+           z-index: 0;
+           overflow: hidden;
            pointer-events: none;
            background-color: #000;
        }
@@ -88,9 +87,7 @@
        .gradient-viewport {
            position: relative;
            width: 100vw;
-           height: 140vh;
-           height: 140dvh;
-           margin-top: -20dvh;
+           height: 100vh;
            overflow: visible;
        }
 
