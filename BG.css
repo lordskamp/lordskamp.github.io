@@ -70,10 +70,12 @@
 
        .gradient-background {
            position: fixed;
-           top: 0;
-           left: 0;
-           width: 100vw;
-           height: 100dvh;
+           top: -100px;
+           left: -100px;
+           width: calc(100vw + 200px);
+           height: calc(100vh + 200px);
+           /* Ensure coverage even with dynamic browser bars */
+           height: calc(100dvh + 200px);
            z-index: 1;
            overflow: hidden;
            pointer-events: none;
