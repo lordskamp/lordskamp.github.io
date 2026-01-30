@@ -9,7 +9,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.9.3/tsparticles.bundle.min.js"></script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="hsl(250, 15%, 30%)" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="apple-touch-icon" sizes="180x180" href="fav/apple-touch-icon.png">
@@ -82,21 +81,24 @@
         }
 
         #splash-screen.fullscreen {
+            position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
+            height: 100%;
             height: 100dvh;
         }
 
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            width: 120vw;
-            height: 120dvh;
-            transform: translate(-50%, -50%) translateZ(0);
+            top: -10vh;
+            left: -10vw;
+            right: -10vw;
+            bottom: -10vh;
+            width: auto;
+            height: auto;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
@@ -568,7 +570,10 @@
         /* Splash Screen Background */
         .splash-background {
             position: absolute;
-            inset: 0;
+            top: -10vh;
+            left: -10vw;
+            bottom: -10vh;
+            right: -10vw;
             z-index: 1;
             overflow: hidden;
             background: var(--page-bg);

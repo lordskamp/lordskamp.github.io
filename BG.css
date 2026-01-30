@@ -88,8 +88,9 @@
        .gradient-viewport {
            position: relative;
            width: 100vw;
-           height: 100vh;
-           height: 100dvh;
+           height: 120vh;
+           height: 120dvh;
+           margin-top: -10dvh;
            overflow: visible;
        }
 
