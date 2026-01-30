@@ -87,26 +87,16 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            inset: -50px;
-            width: calc(100% + 100px);
-            height: calc(100% + 100px);
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
             z-index: 1;
             overflow: hidden;
+            pointer-events: none;
             will-change: transform;
-            /* iOS Safari fullscreen fix */
-            min-height: calc(100dvh + 100px);
-            min-height: calc(-webkit-fill-available + 100px);
-        }
-
-        @supports (-webkit-touch-callout: none) {
-
-            /* iOS-specific fix */
-            .gradient-background {
-                inset: -100px;
-                width: calc(100% + 200px);
-                height: calc(100% + 200px);
-                min-height: calc(100vh + 200px);
-            }
+            transform: translateZ(0);
         }
 
         .gradient-sphere {

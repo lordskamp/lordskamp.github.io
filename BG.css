@@ -73,10 +73,10 @@
            top: 0;
            left: 0;
            width: 100vw;
-           height: 100vh;
            height: 100dvh;
            z-index: 1;
            overflow: hidden;
+           pointer-events: none;
            /* iOS Safari fix for address bar */
            -webkit-transform: translateZ(0);
            transform: translateZ(0);
