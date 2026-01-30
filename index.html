@@ -90,11 +90,10 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            width: 120vw;
-            height: 120dvh;
-            transform: translate(-50%, -50%) translateZ(0);
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100dvh;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
@@ -1254,9 +1253,10 @@
                     rafPending = false;
 
                     // Background parallax (move container to preserve sphere keyframes)
-                    const moveX = (lastX / innerWidth - 0.5) * 5;
-                    const moveY = (lastY / innerHeight - 0.5) * 5;
-                    bgLayers.forEach(layer => setTranslatePx(layer, moveX, moveY));
+                    // Background parallax disabled
+                    // const moveX = (lastX / innerWidth - 0.5) * 5;
+                    // const moveY = (lastY / innerHeight - 0.5) * 5;
+                    // bgLayers.forEach(layer => setTranslatePx(layer, moveX, moveY));
 
                     // Trail: cap to refresh-rate to keep effect but avoid runaway DOM work
                     const now = performance.now();
