@@ -70,16 +70,27 @@
 
        .gradient-background {
            position: fixed;
-           top: -50vh;
-           left: -50vw;
-           right: -50vw;
-           bottom: -50vh;
+           top: -100vmax;
+           left: -100vmax;
+           right: -100vmax;
+           bottom: -100vmax;
            width: auto;
            height: auto;
+           display: flex;
+           align-items: center;
+           justify-content: center;
            z-index: 1;
-           overflow: hidden;
+           overflow: visible;
            pointer-events: none;
-           transform: none;
+           background-color: #050505;
+       }
+
+       .gradient-viewport {
+           position: relative;
+           width: 100vw;
+           height: 100vh;
+           height: 100dvh;
+           overflow: visible;
        }
 
        .gradient-sphere {
