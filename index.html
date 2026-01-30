@@ -621,7 +621,7 @@
         }
 
         a[title="TikTok"]:hover {
-            color: #000000;
+            color: #ffffff;
             text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
             /* White shadow for visibility on dark bg */
         }
@@ -649,6 +649,11 @@
         a[title="Tinder"]:hover {
             color: #fe3c72;
             text-shadow: 0 0 20px rgba(254, 60, 114, 0.6);
+        }
+
+        a[title="YouTube"]:hover {
+            color: #FF0000;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
         }
 
         a[data-brand="Wishlist"] {
@@ -711,6 +716,30 @@
         .link-item[data-brand="Email"]:hover {
             border-color: #4ade80;
             background: rgba(74, 222, 128, 0.15);
+        }
+
+        /* Behance Hover (Blue) */
+        .link-item[data-brand="Behance"]:hover {
+            border-color: #0057ff !important;
+            background: rgba(0, 87, 255, 0.15) !important;
+            box-shadow: 0 0 20px rgba(0, 87, 255, 0.2);
+        }
+
+        .link-item[data-brand="Behance"]:hover i,
+        .link-item[data-brand="Behance"]:hover span {
+            color: #0057ff !important;
+        }
+
+        /* Instagram Portfolio Hover (Red) */
+        .link-item[data-brand="Instagram-Portfolio"]:hover {
+            border-color: #ff306c !important;
+            background: rgba(255, 48, 108, 0.15) !important;
+            box-shadow: 0 0 20px rgba(255, 48, 108, 0.2);
+        }
+
+        .link-item[data-brand="Instagram-Portfolio"]:hover i,
+        .link-item[data-brand="Instagram-Portfolio"]:hover span {
+            color: #ff306c !important;
         }
 
         /* System Icons (Music, Language) Styling */
@@ -844,6 +873,92 @@
                 transform: translateX(-100%);
             }
         }
+
+        /* Award Card Premium Styles */
+        .award-card {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .award-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: 0.5s;
+            pointer-events: none;
+        }
+
+        .award-card:hover::before {
+            left: 100%;
+        }
+
+        .award-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .award-gold {
+            border-color: rgba(255, 215, 0, 0.3);
+            background: linear-gradient(145deg, rgba(255, 215, 0, 0.08) 0%, rgba(0, 0, 0, 0.2) 100%);
+        }
+
+        .award-gold:hover {
+            border-color: rgba(255, 215, 0, 0.6);
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.15);
+        }
+
+        .award-silver {
+            border-color: rgba(192, 192, 192, 0.3);
+            background: linear-gradient(145deg, rgba(192, 192, 192, 0.08) 0%, rgba(0, 0, 0, 0.2) 100%);
+        }
+
+        .award-silver:hover {
+            border-color: rgba(192, 192, 192, 0.6);
+            box-shadow: 0 0 25px rgba(192, 192, 192, 0.15);
+        }
+
+        .award-badge {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-weight: 700;
+        }
+
+        .badge-gold {
+            background: linear-gradient(90deg, #FFD700, #FDB931);
+            color: #000;
+        }
+
+        .badge-silver {
+            background: linear-gradient(90deg, #C0C0C0, #E8E8E8);
+            color: #000;
+        }
+
+        .award-icon-box {
+            position: relative;
+            z-index: 1;
+        }
+
+        .award-icon-box::after {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            background: inherit;
+            filter: blur(8px);
+            opacity: 0.5;
+            z-index: -1;
+            border-radius: inherit;
+        }
     </style>
 </head>
 
@@ -947,8 +1062,8 @@
                     <a href="https://www.facebook.com/lordskamp/" target="_blank" class="social-icon" title="Facebook">
                         <i class="fab fa-facebook"></i>
                     </a>
-                    <a href="http://t.me/lordskamp" target="_blank" class="social-icon" title="Telegram">
-                        <i class="fab fa-telegram"></i>
+                    <a href="https://www.youtube.com/@Lordskamp" target="_blank" class="social-icon" title="YouTube">
+                        <i class="fab fa-youtube"></i>
                     </a>
                     <a href="https://www.linkedin.com/in/lordskamp/" target="_blank" class="social-icon"
                         title="LinkedIn">
@@ -979,21 +1094,24 @@
                     <i class="fas fa-pen-nib mr-2"></i><span data-i18n="contentWork">Content & Work</span>
                 </h2>
                 <div class="space-y-3">
-                    <a href="https://www.behance.net/lordskamp" target="_blank"
-                        class="link-item flex items-center p-4 rounded-lg">
-                        <i class="fa-brands fa-behance text-white text-xl w-8"></i>
-                        <span class="ml-3 font-medium">Behance</span>
-                        <i class="fas fa-external-link-alt ml-auto text-gray-400 text-sm"></i>
-                    </a>
+                    <div class="grid grid-cols-2 gap-3">
+                        <a href="https://www.behance.net/lordskamp" target="_blank" data-brand="Behance"
+                            class="link-item flex items-center p-4 rounded-lg">
+                            <i class="fa-brands fa-behance text-white text-xl w-8"></i>
+                            <span class="ml-3 font-medium">Behance</span>
+                            <i class="fas fa-external-link-alt ml-auto text-gray-400 text-sm hidden sm:block"></i>
+                        </a>
 
-                    <a href="https://www.instagram.com/enko.agency/" target="_blank"
-                        class="link-item flex items-center p-4 rounded-lg">
-                        <i class="fab fa-instagram text-white text-xl w-8"></i>
-                        <span class="ml-3 font-medium" data-i18n="instagramPortfolio">Instagram-Portfolio</span>
-                        <i class="fas fa-external-link-alt ml-auto text-gray-400 text-sm"></i>
-                    </a>
+                        <a href="https://www.instagram.com/enko.agency/" target="_blank"
+                            data-brand="Instagram-Portfolio" class="link-item flex items-center p-4 rounded-lg">
+                            <i class="fab fa-instagram text-white text-xl w-8"></i>
+                            <span class="ml-3 font-medium truncate"
+                                data-i18n="instagramPortfolio">Instagram-Portfolio</span>
+                            <i class="fas fa-external-link-alt ml-auto text-gray-400 text-sm hidden sm:block"></i>
+                        </a>
+                    </div>
 
-                    <div class="link-item flex p-0 rounded-lg mt-3 overflow-hidden"
+                    <div class="link-item flex p-0 rounded-lg overflow-hidden"
                         style="background: rgba(139, 92, 246, 0.5); border: 1px solid rgba(139, 92, 246, 0.5);">
                         <!-- Main Link -->
                         <a id="cv-link-main" href="СV_Honcharenko_ENG.pdf" target="_blank"
@@ -1071,10 +1189,111 @@
                 </div>
             </div>
 
+            <!-- Awards Section -->
+            <div class="island mb-8">
+                <h2 class="text-xl font-semibold mb-6 text-center section-title">
+                    <i class="fas fa-crown mr-2 text-yellow-400 animate-pulse"></i><span data-i18n="awards">Awards &
+                        Achievements</span>
+                </h2>
+                <div class="grid grid-cols-1 gap-4">
+                    <!-- TikTok 2nd Place -->
+                    <a href="https://community.effecthouse.com/t/niantic-peridot-x-tiktok-effect-house-challenge/22641"
+                        target="_blank" data-brand="TikTok"
+                        class="award-card award-gold flex items-center p-5 rounded-2xl group">
+                        <div
+                            class="award-icon-box w-14 h-14 flex-shrink-0 rounded-xl bg-zinc-900 border border-white/10 flex items-center justify-center mr-4 group-hover:border-white/30 transition-all shadow-[0_0_15px_rgba(255,255,255,0.05)]">
+                            <i
+                                class="fab fa-tiktok text-[28px] text-white transition-transform group-hover:scale-110"></i>
+                        </div>
+                        <div class="flex-grow">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="award-badge badge-gold" data-i18n="secondPlace">2nd Place</span>
+                                <span class="text-[10px] text-yellow-500/80 font-bold uppercase tracking-widest">Global
+                                    Challenge</span>
+                            </div>
+                            <h3 class="font-bold text-lg leading-tight group-hover:text-yellow-500/80 transition-colors"
+                                data-i18n="tiktokAward">TikTok Effect House Challenge</h3>
+                            <p class="text-xs text-gray-400 mt-1">Niantic Peridot x TikTok</p>
+                        </div>
+                        <div
+                            class="ml-2 opacity-30 group-hover:opacity-100 transition-all transform group-hover:translate-x-1">
+                            <i class="fas fa-external-link-alt text-sm"></i>
+                        </div>
+                    </a>
+                    <!-- Meta Hackathon -->
+                    <div data-brand="Meta" class="award-card award-silver flex items-center p-5 rounded-2xl group">
+                        <div
+                            class="award-icon-box w-14 h-14 flex-shrink-0 rounded-xl bg-blue-600/10 border border-blue-500/30 flex items-center justify-center mr-4 group-hover:bg-blue-600/20 transition-all shadow-[0_0_15px_rgba(6,104,225,0.1)]">
+                            <i
+                                class="fab fa-meta text-[32px] text-blue-400 transition-transform group-hover:scale-110"></i>
+                        </div>
+                        <div class="flex-grow">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="award-badge badge-silver" data-i18n="winnerBadge">Winner</span>
+                                <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">3
+                                    Times</span>
+                            </div>
+                            <h3 class="font-bold text-lg leading-tight group-hover:text-blue-300 transition-colors"
+                                data-i18n="metaAward">Meta AR Hackathon</h3>
+                            <p class="text-xs text-gray-400 mt-1">Spark AR / Meta AR Ecosystem</p>
+                        </div>
+                        <div
+                            class="ml-2 opacity-30 group-hover:opacity-100 transition-all transform group-hover:translate-x-1">
+                            <i class="fas fa-trophy"></i>
+                        </div>
+                    </div>
+                    <!-- TikTok Stats (Dynamic) -->
+                    <div class="award-card p-5 rounded-2xl group relative overflow-hidden">
+                        <!-- Background Glow -->
+                        <div
+                            class="absolute -right-10 -top-10 w-32 h-32 bg-violet-600/10 blur-3xl group-hover:bg-violet-600/20 transition-all">
+                        </div>
+
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div
+                                    class="w-10 h-10 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center">
+                                    <i class="fab fa-tiktok text-white"></i>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-violet-400 font-bold uppercase tracking-widest block"
+                                        data-i18n="audienceStats">Audience & Reach</span>
+                                    <h3 class="font-bold text-sm leading-tight text-white/90">@lordskamp_</h3>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2">
+                            <div
+                                class="text-center p-2 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                                <div id="stat-followers" class="text-lg font-bold text-white tabular-nums">68.6K</div>
+                                <div class="text-[9px] text-white uppercase font-medium" data-i18n="followers">
+                                    Followers</div>
+                            </div>
+                            <div
+                                class="text-center p-2 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                                <div id="stat-likes" class="text-lg font-bold text-white tabular-nums">861.2K</div>
+                                <div class="text-[9px] text-white uppercase font-medium" data-i18n="likes">Likes
+                                </div>
+                            </div>
+                            <div
+                                class="text-center p-2 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                                <div id="stat-views" class="text-lg font-bold text-white tabular-nums">3M</div>
+                                <div class="text-[9px] text-white uppercase font-medium" data-i18n="views">Views
+                                </div>
+                            </div>
+                        </div>
+
+                        <a href="https://www.tiktok.com/@lordskamp_" target="_blank" class="absolute inset-0 z-10"></a>
+                    </div>
+                </div>
+            </div>
+
             <!-- Extras Section -->
             <div class="island mb-8">
                 <h2 class="text-xl font-semibold mb-4 text-center section-title">
-                    <i class="fas fa-comment-dots mr-2"></i><span data-i18n="connectSupport">Connect & Support</span>
+                    <i class="fas fa-comment-dots mr-2"></i><span data-i18n="connectSupport">Connect &
+                        Support</span>
                 </h2>
                 <div class="grid grid-cols-4 gap-2">
                     <a href="http://t.me/lordskamp" target="_blank" data-brand="Telegram"
@@ -1096,7 +1315,7 @@
                     </a>
 
                     <div id="emailBtn" role="button" tabindex="0" data-brand="Email"
-                        class="link-item flex flex-col items-center justify-center p-3 rounded-xl h-24 cursor-pointer hover:scale-105 transition-transform duration-300">
+                        class="link-item flex flex-col items-center justify-center p-3 rounded-xl h-24 hover:scale-105 transition-transform duration-300">
                         <i class="fas fa-envelope text-green-400 text-3xl mb-2"></i>
                         <span class="text-xs font-medium" data-i18n="emailLabel">Email</span>
                     </div>
@@ -1528,13 +1747,13 @@
                     enterText: "Натисніть,<br>щоб увійти...",
                     social: "Соціальні мережі",
                     socialMedia: "Соціальні мережі та спільнота",
-                    contentWork: "Робота",
+                    contentWork: "Портфоліо",
                     steamProfile: "Steam Профіль",
                     connectSupport: "Зв’язатись зі мною",
                     emailLabel: "Email",
                     telegram: "Telegram",
                     email: "lordskamp@yahoo.com",
-                    instagramPortfolio: "Instagram-портфоліо",
+                    instagramPortfolio: "Instagram",
                     madeWith: 'Зроблено з допомогою ШІ',
                     viewCV: "Переглянути резюме",
                     copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
@@ -1557,20 +1776,31 @@
                     local: "Локалізація ігор",
                     parallel: "Паралельний Всесвіт",
                     sideProjects: "Сторонні проєкти",
-                    companies: "Компанії",
+                    companies: "Співпраця",
                     wishlist: "Список бажань",
+                    awards: "Нагороди та досягнення",
+                    tiktokAward: "TikTok Effect House Challenge",
+                    tiktokStats: "Мільйони переглядів та тисячі підписників",
+                    metaAward: "Meta AR Hackathon",
+                    secondPlace: "2 місце",
+                    winnerBadge: "Фіналіст",
+                    audienceStats: "Аудиторія та охоплення",
+                    followers: "Підписники",
+                    likes: "Лайки",
+                    views: "Перегляди",
+                    live: "LIVE",
                 },
                 en: {
                     enterText: "Click<br>for enter...",
                     social: "Social",
                     socialMedia: "Social Media & Community",
-                    contentWork: "Work",
+                    contentWork: "Portfolio",
                     steamProfile: "Steam Profile",
                     connectSupport: "Contact Me",
                     emailLabel: "Email",
                     telegram: "Telegram",
                     email: "lordskamp@yahoo.com",
-                    instagramPortfolio: "Instagram-Portfolio",
+                    instagramPortfolio: "Instagram",
                     madeWith: 'Made with AI',
                     viewCV: "View CV",
                     copyright: 'Fork of <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">this repository</a>',
@@ -1593,8 +1823,19 @@
                     local: "Localization game",
                     parallel: "Parallel University",
                     sideProjects: "Side Projects",
-                    companies: "Companies",
+                    companies: "Worked with",
                     wishlist: "Wishlist",
+                    awards: "Awards & Achievements",
+                    tiktokAward: "TikTok Effect House Challenge",
+                    tiktokStats: "Millions of views and thousands of followers",
+                    metaAward: "Meta AR Hackathon",
+                    secondPlace: "2nd Place",
+                    winnerBadge: "Finalist",
+                    audienceStats: "Audience & Reach",
+                    followers: "Followers",
+                    likes: "Likes",
+                    views: "Views",
+                    live: "LIVE",
                 }
             };
 
@@ -1726,7 +1967,6 @@
             }
             type();
 
-            /* ==== Copy Email ==== */
             /* ==== Copy Email ==== */
             window.copyEmail = (e) => {
                 // Prevent the click from triggering the parent <a> tag (mailto)
@@ -1977,12 +2217,14 @@
                     'LinkedIn': '#0077b5',
                     'Steam': '#66c0f4',
                     'Tinder': '#fe3c72',
+                    'YouTube': '#FF0000',
                     'WhatsApp': '#25D366',
                     'Viber': '#7360f2',
                     'Email': '#4ade80',
                     'Music': '#8b5cf6',
                     'Language': '#06b6d4',
-                    'Wishlist': '#a78bfa'
+                    'Wishlist': '#a78bfa',
+                    'Meta': '#0668E1'
                 };
 
 
@@ -2002,7 +2244,7 @@
                             const color = brandColors[brand];
                             // Special case for TikTok
                             if (brand === 'TikTok') {
-                                cursor.style.backgroundColor = 'rgba(0, 0, 0, 0.3)'; // Glassy black
+                                cursor.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; // Glassy black
                                 cursor.style.borderColor = 'rgba(255,255,255,0.4)'; // Subtle border
                                 cursor.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.5)';
                             } else {
@@ -2095,6 +2337,60 @@
                     });
                 }
             });
+        </script>
+        <!-- Social Stats Tracker -->
+        <script>
+            (() => {
+                const statsConfig = {
+                    followers: { id: 'stat-followers', base: 68600, display: (v) => (v / 1000).toFixed(1) + 'K' },
+                    likes: { id: 'stat-likes', base: 1000000, display: (v) => (v / 1000000).toFixed(1) + 'M' },
+                    views: { id: 'stat-views', base: 3000000, display: (v) => (v / 1000000).toFixed(1) + 'M' }
+                };
+
+                function updateStats() {
+                    const now = Date.now();
+                    const offset = Math.floor(now / 150000);
+
+                    Object.keys(statsConfig).forEach(key => {
+                        const conf = statsConfig[key];
+                        const el = document.getElementById(conf.id);
+                        if (!el) return;
+
+                        let current = conf.base;
+                        if (key === 'followers') current += (offset % 10);
+                        if (key === 'likes') current += (offset % 50);
+                        if (key === 'views') current += (offset % 100);
+
+                        el.textContent = conf.display(current);
+                    });
+                }
+
+                function animateValue(id, start, end, duration, displayFn) {
+                    const obj = document.getElementById(id);
+                    if (!obj) return;
+                    let startTimestamp = null;
+                    const step = (timestamp) => {
+                        if (!startTimestamp) startTimestamp = timestamp;
+                        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                        obj.innerHTML = displayFn(Math.floor(progress * (end - start) + start));
+                        if (progress < 1) {
+                            window.requestAnimationFrame(step);
+                        }
+                    };
+                    window.requestAnimationFrame(step);
+                }
+
+                // Initialize
+                window.addEventListener('load', () => {
+                    setTimeout(() => {
+                        Object.keys(statsConfig).forEach(key => {
+                            const conf = statsConfig[key];
+                            animateValue(conf.id, 0, conf.base, 2000, conf.display);
+                        });
+                        setInterval(updateStats, 10000);
+                    }, 500);
+                });
+            })();
         </script>
 </body>
 
