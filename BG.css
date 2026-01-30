@@ -5,8 +5,8 @@
        }
 
        body {
-           overflow: hidden;
-           background-color: #050505;
+           overflow-x: hidden;
+           background-color: #000;
            color: white;
            min-height: 100dvh;
            display: flex;
@@ -70,10 +70,10 @@
 
        .gradient-background {
            position: fixed;
-           top: -100vmax;
-           left: -100vmax;
-           right: -100vmax;
-           bottom: -100vmax;
+           top: -20vh;
+           left: -20vw;
+           right: -20vw;
+           bottom: -20vh;
            width: auto;
            height: auto;
            display: flex;
@@ -82,15 +82,15 @@
            z-index: 1;
            overflow: visible;
            pointer-events: none;
-           background-color: #050505;
+           background-color: #000;
        }
 
        .gradient-viewport {
            position: relative;
            width: 100vw;
-           height: 120vh;
-           height: 120dvh;
-           margin-top: -10dvh;
+           height: 140vh;
+           height: 140dvh;
+           margin-top: -20dvh;
            overflow: visible;
        }
 
