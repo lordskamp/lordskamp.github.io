@@ -29,28 +29,33 @@
         }
 
         * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-            color: white;
         }
 
         html {
-            padding-top: env(safe-area-inset-top);
-        }
-
-        html,
-        body {
-            height: 100vh;
-            overflow-y: hidden;
-            background: linear-gradient(180deg, hsl(250, 15%, 30%), hsl(250, 15%, 10%));
+            height: 100%;
+            min-height: -webkit-fill-available;
+            background: var(--page-bg);
+            background-color: var(--bg);
+            overflow-x: hidden;
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background: var(--page-bg);
+            background-color: var(--bg);
+            color: #fff;
+            min-height: 100dvh;
+            min-height: -webkit-fill-available;
+            overflow-x: hidden;
+        }
+
+        @supports (min-height: 100svh) {
+            body {
+                min-height: 100svh;
+            }
         }
 
         /* iOS-safe fullscreen */
@@ -83,37 +88,17 @@
         }
 
         /* ---------- Background Gradients (BG.css styles) ---------- */
-        /* "Infinite Canvas" Strategy */
         .gradient-background {
             position: fixed;
-            /* Make the container MASSIVE to cover any rubber banding */
-            top: -100vmax;
-            left: -100vmax;
-            right: -100vmax;
-            bottom: -100vmax;
-            width: auto;
-            height: auto;
-            /* Center the viewport anchor */
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            top: 50%;
+            left: 50%;
+            width: 120vw;
+            height: 120dvh;
+            transform: translate(-50%, -50%) translateZ(0);
             z-index: 1;
-            /* Allow spheres to bleed out if needed (though canvas is huge) */
-            overflow: visible;
+            overflow: hidden;
             pointer-events: none;
-            /* Stable black background to prevent white flashes in extreme cases */
-            background-color: #0a0a0a;
-        }
-
-        /* The logical screen for sphere positioning */
-        .gradient-viewport {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            /* Ensure it matches mobile viewport logic */
-            height: 100dvh;
-            /* No overflow hidden, let spheres glow outwards */
-            overflow: visible;
+            will-change: transform;
         }
 
         .gradient-sphere {
@@ -205,13 +190,31 @@
             left: 0;
             width: 100%;
             height: 100%;
-            /* ...existing styles... */
             background-size: 50px 50px;
             background-image:
                 linear-gradient(to right, rgba(140, 61, 193, 0.12) 1px, transparent 1px),
                 linear-gradient(to bottom, rgba(140, 61, 193, 0.12) 1px, transparent 1px);
             z-index: 2;
             animation: gridPulse 4s ease-in-out infinite;
+        }
+
+        @keyframes gridPulse {
+
+            0%,
+            100% {
+                opacity: 0.6;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        /* Mobile grid */
+        @media (max-width: 768px) {
+            .grid-overlay {
+                background-size: 35px 35px;
+            }
         }
 
         .noise-overlay {
@@ -424,10 +427,6 @@
         .content-wrapper {
             position: relative;
             z-index: 10;
-            width: 100%;
-            height: 100%;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
         }
 
         /* ---------- Cinematic Entrance ---------- */
@@ -591,20 +590,11 @@
         /* Splash Screen Background */
         .splash-background {
             position: absolute;
-            top: -100vmax;
-            left: -100vmax;
-            right: -100vmax;
-            bottom: -100vmax;
-            width: auto;
-            height: auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            inset: 0;
             z-index: 1;
-            overflow: visible;
+            overflow: hidden;
             background: var(--page-bg);
             background-color: var(--bg);
-            pointer-events: none;
         }
 
         .island {
@@ -850,18 +840,14 @@
 
 <body class="text-white">
     <!-- Background Animation -->
-    <!-- Background Animation -->
     <div class="gradient-background">
+        <div class="gradient-sphere sphere-1"></div>
+        <div class="gradient-sphere sphere-2"></div>
+        <div class="gradient-sphere sphere-3"></div>
+        <div class="gradient-sphere sphere-4"></div>
+        <div class="glow"></div>
         <div class="grid-overlay"></div>
         <div class="noise-overlay"></div>
-        <!-- Inner anchor for spheres to keep them relative to screen -->
-        <div class="gradient-viewport">
-            <div class="gradient-sphere sphere-1"></div>
-            <div class="gradient-sphere sphere-2"></div>
-            <div class="gradient-sphere sphere-3"></div>
-            <div class="gradient-sphere sphere-4"></div>
-            <div class="glow"></div>
-        </div>
     </div>
     <!-- Particles (separate from gradient-background for correct cursor tracking) -->
     <div class="particles-container" id="particles-container"></div>
@@ -879,17 +865,14 @@
     <div id="splash-screen" class="fixed fullscreen flex items-center justify-center cursor-none"
         style="z-index: 10000;">
         <!-- Splash Background -->
-        <!-- Splash Background -->
         <div class="splash-background">
+            <div class="gradient-sphere sphere-1"></div>
+            <div class="gradient-sphere sphere-2"></div>
+            <div class="gradient-sphere sphere-3"></div>
+            <div class="gradient-sphere sphere-4"></div>
+            <div class="glow"></div>
             <div class="grid-overlay"></div>
             <div class="noise-overlay"></div>
-            <div class="gradient-viewport">
-                <div class="gradient-sphere sphere-1"></div>
-                <div class="gradient-sphere sphere-2"></div>
-                <div class="gradient-sphere sphere-3"></div>
-                <div class="gradient-sphere sphere-4"></div>
-                <div class="glow"></div>
-            </div>
         </div>
         <!-- Splash Content -->
         <div class="relative z-10 text-center">
