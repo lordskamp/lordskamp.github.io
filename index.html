@@ -28,6 +28,10 @@
             --blur: blur(12px);
             --page-bg: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
             --app-height: 100vh;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
         }
 
         @supports (height: 100dvh) {
@@ -95,9 +99,12 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            inset: 0;
+            top: calc(-1 * var(--safe-top));
+            right: calc(-1 * var(--safe-right));
+            bottom: calc(-1 * var(--safe-bottom));
+            left: calc(-1 * var(--safe-left));
             z-index: 1;
-            overflow: hidden;
+            overflow: visible;
             pointer-events: none;
             background-color: #000;
         }
@@ -404,12 +411,23 @@
 
         .particles-container {
             position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
+            top: calc(-1 * var(--safe-top));
+            right: calc(-1 * var(--safe-right));
+            bottom: calc(-1 * var(--safe-bottom));
+            left: calc(-1 * var(--safe-left));
             z-index: 5;
             pointer-events: none;
             contain: layout paint;
+        }
+
+        #tsparticles {
+            position: fixed;
+            top: calc(-1 * var(--safe-top));
+            right: calc(-1 * var(--safe-right));
+            bottom: calc(-1 * var(--safe-bottom));
+            left: calc(-1 * var(--safe-left));
+            z-index: 2;
+            pointer-events: none;
         }
 
         .particle {
@@ -567,9 +585,12 @@
         /* Splash Screen Background */
         .splash-background {
             position: absolute;
-            inset: 0;
+            top: calc(-1 * var(--safe-top));
+            right: calc(-1 * var(--safe-right));
+            bottom: calc(-1 * var(--safe-bottom));
+            left: calc(-1 * var(--safe-left));
             z-index: 1;
-            overflow: hidden;
+            overflow: visible;
             background-color: #000;
         }
 
@@ -970,6 +991,19 @@
 </head>
 
 <body class="text-white">
+    <script>
+        (() => {
+            const setAppHeight = () => {
+                const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                document.documentElement.style.setProperty('--app-height', `${height}px`);
+            };
+            setAppHeight();
+            window.addEventListener('resize', setAppHeight, { passive: true });
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', setAppHeight, { passive: true });
+            }
+        })();
+    </script>
     <!-- Background Animation -->
     <div class="gradient-background">
         <div class="gradient-sphere sphere-1"></div>
@@ -982,8 +1016,7 @@
     </div>
     <!-- Particles (separate from gradient-background for correct cursor tracking) -->
     <div class="particles-container" id="particles-container"></div>
-    <div id="tsparticles"
-        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;"></div>
+    <div id="tsparticles"></div>
 
 
 
