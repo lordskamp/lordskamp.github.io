@@ -28,15 +28,22 @@
             --blur: blur(12px);
             --page-bg: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
             --app-height: 100vh;
+            --bg-height: 100vh;
             --safe-top: env(safe-area-inset-top, 0px);
             --safe-right: env(safe-area-inset-right, 0px);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
             --safe-left: env(safe-area-inset-left, 0px);
         }
 
-        @supports (height: 100dvh) {
+        @supports (height: 100svh) {
             :root {
-                --app-height: 100dvh;
+                --app-height: 100svh;
+            }
+        }
+
+        @supports (height: 100lvh) {
+            :root {
+                --bg-height: 100lvh;
             }
         }
 
@@ -49,6 +56,7 @@
         html {
             height: -webkit-fill-available;
             min-height: var(--app-height);
+            background: var(--page-bg);
             background-color: #000;
         }
 
@@ -61,9 +69,15 @@
             min-height: -webkit-fill-available;
             min-height: var(--app-height);
             overflow-x: hidden;
+            background: var(--page-bg);
             background-color: #000;
             display: flex;
             flex-direction: column;
+        }
+
+        .content-wrapper {
+            padding-top: calc(1rem + var(--safe-top));
+            padding-bottom: calc(1rem + var(--safe-bottom));
         }
 
         /* iOS-safe fullscreen */
@@ -99,12 +113,12 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            top: calc(-1 * var(--safe-top));
-            right: calc(-1 * var(--safe-right));
-            bottom: calc(-1 * var(--safe-bottom));
-            left: calc(-1 * var(--safe-left));
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: var(--bg-height);
             z-index: 1;
-            overflow: visible;
+            overflow: hidden;
             pointer-events: none;
             background-color: #000;
         }
@@ -197,7 +211,7 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 100vh;
+            height: 100%;
             background-size: 50px 50px;
             background-image:
                 linear-gradient(to right, rgba(140, 61, 193, 0.12) 1px, transparent 1px),
@@ -411,10 +425,10 @@
 
         .particles-container {
             position: fixed;
-            top: calc(-1 * var(--safe-top));
-            right: calc(-1 * var(--safe-right));
-            bottom: calc(-1 * var(--safe-bottom));
-            left: calc(-1 * var(--safe-left));
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: var(--bg-height);
             z-index: 5;
             pointer-events: none;
             contain: layout paint;
@@ -422,10 +436,10 @@
 
         #tsparticles {
             position: fixed;
-            top: calc(-1 * var(--safe-top));
-            right: calc(-1 * var(--safe-right));
-            bottom: calc(-1 * var(--safe-bottom));
-            left: calc(-1 * var(--safe-left));
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: var(--bg-height);
             z-index: 2;
             pointer-events: none;
         }
@@ -585,12 +599,9 @@
         /* Splash Screen Background */
         .splash-background {
             position: absolute;
-            top: calc(-1 * var(--safe-top));
-            right: calc(-1 * var(--safe-right));
-            bottom: calc(-1 * var(--safe-bottom));
-            left: calc(-1 * var(--safe-left));
+            inset: 0;
             z-index: 1;
-            overflow: visible;
+            overflow: hidden;
             background-color: #000;
         }
 
@@ -993,6 +1004,7 @@
 <body class="text-white">
     <script>
         (() => {
+            if (window.CSS && CSS.supports && CSS.supports('height: 100svh')) return;
             const setAppHeight = () => {
                 const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                 document.documentElement.style.setProperty('--app-height', `${height}px`);
