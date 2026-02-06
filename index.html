@@ -117,6 +117,8 @@
             left: 0;
             width: 100vw;
             height: var(--bg-height);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
@@ -429,6 +431,8 @@
             left: 0;
             width: 100vw;
             height: var(--bg-height);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
             z-index: 5;
             pointer-events: none;
             contain: layout paint;
@@ -440,6 +444,8 @@
             left: 0;
             width: 100vw;
             height: var(--bg-height);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
             z-index: 2;
             pointer-events: none;
         }
@@ -1004,15 +1010,23 @@
 <body class="text-white">
     <script>
         (() => {
-            if (window.CSS && CSS.supports && CSS.supports('height: 100svh')) return;
-            const setAppHeight = () => {
-                const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-                document.documentElement.style.setProperty('--app-height', `${height}px`);
+            const supportsSVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100svh'));
+
+            const setHeights = () => {
+                const visualHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                const screenHeight = window.screen && window.screen.height ? window.screen.height : visualHeight;
+                const bgHeight = Math.max(visualHeight, screenHeight);
+
+                if (!supportsSVH) {
+                    document.documentElement.style.setProperty('--app-height', `${visualHeight}px`);
+                }
+                document.documentElement.style.setProperty('--bg-height', `${bgHeight}px`);
             };
-            setAppHeight();
-            window.addEventListener('resize', setAppHeight, { passive: true });
+
+            setHeights();
+            window.addEventListener('resize', setHeights, { passive: true });
             if (window.visualViewport) {
-                window.visualViewport.addEventListener('resize', setAppHeight, { passive: true });
+                window.visualViewport.addEventListener('resize', setHeights, { passive: true });
             }
         })();
     </script>
