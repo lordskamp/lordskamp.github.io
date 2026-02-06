@@ -27,6 +27,13 @@
             --glass: rgba(31, 41, 55, 0.35);
             --blur: blur(12px);
             --page-bg: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
+            --app-height: 100vh;
+        }
+
+        @supports (height: 100dvh) {
+            :root {
+                --app-height: 100dvh;
+            }
         }
 
         * {
@@ -37,6 +44,7 @@
 
         html {
             height: -webkit-fill-available;
+            min-height: var(--app-height);
             background-color: #000;
         }
 
@@ -47,6 +55,7 @@
             padding: 0;
             min-height: 100vh;
             min-height: -webkit-fill-available;
+            min-height: var(--app-height);
             overflow-x: hidden;
             background-color: #000;
             display: flex;
@@ -58,6 +67,7 @@
             width: 100%;
             min-height: 100vh;
             min-height: -webkit-fill-available;
+            min-height: var(--app-height);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -85,11 +95,7 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            width: 130vw;
-            height: 130vh;
-            transform: translate(-50%, -50%);
+            inset: 0;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
@@ -561,11 +567,7 @@
         /* Splash Screen Background */
         .splash-background {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 130vw;
-            height: 130vh;
-            transform: translate(-50%, -50%);
+            inset: 0;
             z-index: 1;
             overflow: hidden;
             background-color: #000;
@@ -1031,7 +1033,7 @@
             <div class="flex items-center group relative">
                 <div id="volumeControl"
                     class="flex items-center bg-black/30 backdrop-blur-md rounded-full px-0 group-hover:px-3 overflow-hidden transition-all duration-300 max-w-0 group-hover:max-w-[150px] mr-2 h-10 opacity-100 transition-opacity duration-300">
-                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.3"
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.005"
                         class="w-24 accent-violet-500 cursor-pointer h-1 bg-white/20 rounded-lg appearance-none outline-none">
                 </div>
                 <button id="musicBtn" data-brand="Music"
@@ -1586,8 +1588,8 @@
             const volumeControl = document.getElementById('volumeControl');
             let isMusicPlaying = false;
 
-            // Set default volume to 30%
-            bgMusic.volume = 0.3;
+            // Set default volume to 1%
+            bgMusic.volume = 0.005;
 
             // Handle volume slider changes
             if (volumeSlider) {
