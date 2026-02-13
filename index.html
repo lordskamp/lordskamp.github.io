@@ -9,14 +9,13 @@
     <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.9.3/tsparticles.bundle.min.js"></script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="theme-color" content="hsl(250, 15%, 30%)" />
+    <meta name="theme-color" content="#8c3dc1" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="apple-touch-icon" sizes="180x180" href="fav/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="fav/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="fav/favicon-16x16.png">
     <link rel="manifest" href="fav/site.webmanifest">
     <link rel="shortcut icon" href="fav/favicon.ico">
-    <meta name="theme-color" content="#8c3dc1">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -24,15 +23,65 @@
             --red: #8c3dc1;
             --red-dark: #54297e;
             --bg: #0a0a0a;
+            --text-color: #ffffff;
+            --text-muted: #9ca3af;
             --glass: rgba(31, 41, 55, 0.35);
+            --glass-border: rgba(140, 61, 193, 0.2);
             --blur: blur(12px);
             --page-bg: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
             --app-height: 100vh;
             --bg-height: 100vh;
+            --sphere-blend: screen;
+            --island-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+            --island-border: rgba(255, 255, 255, 0.04);
+            --island-shadow: 0 10px 30px rgba(3, 7, 18, 0.6);
             --safe-top: env(safe-area-inset-top, 0px);
             --safe-right: env(safe-area-inset-right, 0px);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
             --safe-left: env(safe-area-inset-left, 0px);
+
+            /* New variables for dynamic theming */
+            --glass-hover: rgba(55, 65, 81, 0.6);
+            --border-hover: rgba(140, 61, 193, 0.5);
+            --particle-color: white;
+
+            /* Hover Shadows Default (Dark) */
+            --island-shadow-hover: 0 18px 48px rgba(0, 0, 0, 0.65);
+            --award-shadow-hover: 0 15px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Light Theme Variables */
+        :root.light-theme {
+            /* Backgrounds */
+            --bg: #f2f4f7;
+            --page-bg: radial-gradient(circle at top, #ffffff 0%, #f2f4f7 60%, #e2e8f0 100%);
+
+            /* Text */
+            --text-color: #0f172a;
+            --text-muted: #64748b;
+
+            /* Glass Effect - Enhanced for "WOW" factor */
+            --glass: rgba(255, 255, 255, 0.25);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            --glass-hover: rgba(255, 255, 255, 0.5);
+            --border-hover: rgba(140, 61, 193, 0.6);
+
+            /* Sphere blending */
+            --sphere-blend: normal;
+
+            /* Island (Container) */
+            --island-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1));
+            --island-border: rgba(255, 255, 255, 0.9);
+            --island-shadow:
+                0 10px 40px -10px rgba(0, 0, 0, 0.1),
+                0 0 20px rgba(255, 255, 255, 0.5) inset;
+
+            /* Particles */
+            --particle-color: #8c3dc1;
+
+            /* Hover Shadows Light */
+            --island-shadow-hover: 0 18px 48px rgba(0, 0, 0, 0.08), 0 0 30px rgba(255, 255, 255, 0.6) inset;
+            --award-shadow-hover: 0 15px 30px rgba(0, 0, 0, 0.08), inset 0 0 20px rgba(255, 255, 255, 0.8);
         }
 
         @supports (height: 100svh) {
@@ -57,12 +106,12 @@
             height: -webkit-fill-available;
             min-height: var(--app-height);
             background: var(--page-bg);
-            background-color: #000;
+            background-color: var(--bg);
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            color: #fff;
+            color: var(--text-color);
             margin: 0;
             padding: 0;
             min-height: 100vh;
@@ -70,9 +119,10 @@
             min-height: var(--app-height);
             overflow-x: hidden;
             background: var(--page-bg);
-            background-color: #000;
+            background-color: var(--bg);
             display: flex;
             flex-direction: column;
+            transition: color 0.3s ease, background-color 0.3s ease;
         }
 
         .content-wrapper {
@@ -98,18 +148,6 @@
             top: calc(env(safe-area-inset-top) + 1rem) !important;
         }
 
-        #splash-screen {
-            position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-            overflow: hidden;
-        }
-
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
@@ -122,15 +160,19 @@
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
-            background-color: #000;
+            background-color: var(--bg);
+            contain: layout style;
+            content-visibility: auto;
         }
 
         .gradient-sphere {
             position: absolute;
             border-radius: 50%;
             filter: blur(80px);
-            mix-blend-mode: screen;
-            will-change: transform, opacity;
+            mix-blend-mode: var(--sphere-blend);
+            transition: mix-blend-mode 0.3s ease;
+            will-change: transform;
+            contain: strict;
         }
 
         .sphere-1 {
@@ -186,25 +228,25 @@
             .sphere-1 {
                 width: 70vw;
                 height: 70vw;
-                filter: blur(50px);
+                filter: blur(30px);
             }
 
             .sphere-2 {
                 width: 75vw;
                 height: 75vw;
-                filter: blur(50px);
+                filter: blur(30px);
             }
 
             .sphere-3 {
                 width: 55vw;
                 height: 55vw;
-                filter: blur(45px);
+                filter: blur(25px);
             }
 
             .sphere-4 {
                 width: 50vw;
                 height: 50vw;
-                filter: blur(45px);
+                filter: blur(25px);
             }
         }
 
@@ -219,19 +261,8 @@
                 linear-gradient(to right, rgba(140, 61, 193, 0.12) 1px, transparent 1px),
                 linear-gradient(to bottom, rgba(140, 61, 193, 0.12) 1px, transparent 1px);
             z-index: 2;
-            animation: gridPulse 4s ease-in-out infinite;
-        }
-
-        @keyframes gridPulse {
-
-            0%,
-            100% {
-                opacity: 0.6;
-            }
-
-            50% {
-                opacity: 1;
-            }
+            opacity: 0.8;
+            contain: strict;
         }
 
         /* Mobile grid */
@@ -242,14 +273,7 @@
         }
 
         .noise-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0.05;
-            z-index: 5;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            display: none;
         }
 
         @keyframes float-1 {
@@ -348,19 +372,6 @@
             }
         }
 
-        .grid-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-size: 40px 40px;
-            background-image:
-                linear-gradient(to right, rgba(255, 255, 255, 0.07) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
-            z-index: 1;
-        }
-
         .glow {
             position: absolute;
             width: 40vw;
@@ -371,7 +382,9 @@
             transform: translate(-50%, -50%);
             z-index: 2;
             animation: pulse 8s infinite alternate;
-            filter: blur(30px);
+            filter: blur(15px);
+            contain: strict;
+            will-change: opacity, transform;
         }
 
         @keyframes pulse {
@@ -454,12 +467,13 @@
             position: absolute;
             left: 0;
             top: 0;
-            background: white;
+            background: var(--particle-color);
             border-radius: 50%;
             opacity: 0;
             pointer-events: none;
             transform: translate3d(0, 0, 0);
-            will-change: transform, opacity;
+            will-change: transform;
+            contain: layout style;
         }
 
         /* ---------- Content overlay ---------- */
@@ -528,18 +542,18 @@
         .link-item {
             background: var(--glass);
             backdrop-filter: var(--blur);
-            border: 1px solid rgba(140, 61, 193, 0.2);
-            transition: background 0.3s, border 0.3s, transform 0.3s;
+            border: 1px solid var(--glass-border);
+            transition: background 0.3s, border 0.3s, transform 0.3s, box-shadow 0.3s;
             position: relative;
             overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
 
         .link-item:hover {
-            background: rgba(55, 65, 81, 0.6);
-            border-color: rgba(140, 61, 193, 0.5);
+            background: var(--glass-hover);
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
         }
-
-
 
         #profileImg {
             transform-style: preserve-3d;
@@ -573,58 +587,20 @@
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
         }
 
-        /* Splash Screen Animations */
-        @keyframes fadeOut {
-            from {
-                opacity: 1;
-                backdrop-filter: blur(12px);
-            }
-
-            to {
-                opacity: 0;
-                backdrop-filter: blur(0px);
-            }
-        }
-
-        @keyframes bounce {
-
-            0%,
-            100% {
-                transform: translateY(0);
-            }
-
-            50% {
-                transform: translateY(-10px);
-            }
-        }
-
-        .animate-bounce {
-            animation: bounce 2s infinite;
-        }
-
-        /* Splash Screen Background */
-        .splash-background {
-            position: absolute;
-            inset: 0;
-            z-index: 1;
-            overflow: hidden;
-            background-color: #000;
-        }
-
         .island {
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
-            border: 1px solid rgba(255, 255, 255, 0.04);
+            background: var(--island-bg);
+            border: 1px solid var(--island-border);
             border-radius: 16px;
             padding: 14px;
             margin: 18px 0;
-            box-shadow: 0 10px 30px rgba(3, 7, 18, 0.6);
-            transition: transform .25s ease, box-shadow .25s ease;
-            backdrop-filter: blur(8px) saturate(120%);
+            box-shadow: var(--island-shadow);
+            transition: transform .25s ease, box-shadow .25s ease, background-color 0.3s ease, border-color 0.3s ease;
+            backdrop-filter: blur(6px);
         }
 
         .island:hover {
             transform: translateY(-6px);
-            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65);
+            box-shadow: var(--island-shadow-hover);
         }
 
         .island .section-title {
@@ -640,7 +616,7 @@
             align-items: center;
             justify-content: center;
             font-size: 32px;
-            color: #fff;
+            color: var(--text-color);
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
                 filter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
                 color 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -754,15 +730,6 @@
             background: rgba(74, 222, 128, 0.15);
         }
 
-        .link-item[data-brand="Email"] {
-            border-color: rgba(74, 222, 128, 0.5);
-        }
-
-        .link-item[data-brand="Email"]:hover {
-            border-color: #4ade80;
-            background: rgba(74, 222, 128, 0.15);
-        }
-
         /* Behance Hover (Blue) */
         .link-item[data-brand="Behance"]:hover {
             border-color: #0057ff !important;
@@ -787,12 +754,7 @@
             color: #ff306c !important;
         }
 
-        /* System Icons (Music, Language) Styling */
-        #musicBtn[data-brand="Music"]:hover {
-            color: #8b5cf6;
-            box-shadow: 0 0 15px rgba(139, 92, 246, 0.6);
-            border: 1px solid rgba(139, 92, 246, 0.5);
-        }
+
 
         #langBtn[data-brand="Language"]:hover {
             color: #06b6d4;
@@ -821,14 +783,11 @@
             background: rgba(255, 255, 255, 0.6);
             pointer-events: none;
             z-index: 2147483647 !important;
-            /* mix-blend-mode: difference; REMOVED to fix color distortion */
             transform: translate(-50%, -50%);
             will-change: transform;
-            transition: width 0.2s ease, height 0.2s ease, background 0.2s ease, opacity 0.2s ease;
-            box-shadow:
-                0 0 10px rgba(255, 255, 255, 0.5),
-                0 0 20px rgba(140, 61, 193, 0.3);
-            backdrop-filter: blur(2px);
+            transition: width 0.15s ease, height 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            contain: layout style;
         }
 
         .custom-cursor.cursor-hover {
@@ -947,7 +906,7 @@
         .award-card:hover {
             transform: translateY(-5px) scale(1.02);
             border-color: rgba(255, 255, 255, 0.3);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+            box-shadow: var(--award-shadow-hover);
         }
 
         .award-gold {
@@ -1004,10 +963,144 @@
             z-index: -1;
             border-radius: inherit;
         }
+
+        /* Light Theme Adaptation */
+        :root.light-theme .text-white,
+        :root.light-theme [class*="text-white\/"],
+        :root.light-theme .text-zinc-400,
+        :root.light-theme .text-zinc-300,
+        :root.light-theme .text-slate-400,
+        :root.light-theme .text-slate-300 {
+            color: var(--text-color) !important;
+        }
+
+        :root.light-theme .text-gray-100,
+        :root.light-theme .text-gray-200,
+        :root.light-theme .text-gray-300 {
+            color: #4b5563 !important;
+        }
+
+        :root.light-theme .text-gray-400,
+        :root.light-theme .text-gray-500 {
+            color: #6b7280 !important;
+        }
+
+        /* Background utilities adaptation */
+        :root.light-theme .bg-white\/5 {
+            background-color: rgba(0, 0, 0, 0.05) !important;
+        }
+
+        :root.light-theme .bg-black\/30 {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+        }
+
+        :root.light-theme .hover\:bg-black\/50:hover {
+            background-color: rgba(255, 255, 255, 0.6) !important;
+        }
+
+        :root.light-theme .hover\:bg-white\/10:hover {
+            background-color: rgba(0, 0, 0, 0.08) !important;
+        }
+
+        :root.light-theme .border-white\/10 {
+            border-color: rgba(0, 0, 0, 0.1) !important;
+        }
+
+        :root.light-theme .border-white\/20 {
+            border-color: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        :root.light-theme .border-white\/5 {
+            border-color: rgba(0, 0, 0, 0.05) !important;
+        }
+
+        /* Logos slider adaptation */
+        :root.light-theme .logos-slide img {
+            filter: brightness(0) !important;
+            opacity: 0.7;
+        }
+
+        /* Awards cards adaptation */
+        :root.light-theme .award-card {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.2) 100%);
+            border-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            box-shadow:
+                0 4px 20px rgba(0, 0, 0, 0.05),
+                inset 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        :root.light-theme .award-gold {
+            background: linear-gradient(145deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 255, 255, 0.4) 100%);
+            border-color: rgba(255, 215, 0, 0.6);
+            box-shadow:
+                0 10px 30px -5px rgba(255, 215, 0, 0.15),
+                inset 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        :root.light-theme .award-silver {
+            background: linear-gradient(145deg, rgba(192, 192, 192, 0.15) 0%, rgba(255, 255, 255, 0.4) 100%);
+            border-color: rgba(192, 192, 192, 0.6);
+            box-shadow:
+                0 10px 30px -5px rgba(192, 192, 192, 0.15),
+                inset 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Particles adaptation */
+        :root.light-theme .particle {
+            background: #000000;
+        }
+
+        /* Custom cursor adaptation */
+        :root.light-theme .custom-cursor {
+            background: rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        :root.light-theme .custom-cursor.cursor-hover {
+            background: rgba(0, 0, 0, 0.1);
+            box-shadow:
+                0 0 15px rgba(0, 0, 0, 0.2),
+                0 0 30px rgba(0, 0, 0, 0.1),
+                0 0 45px rgba(0, 0, 0, 0.05);
+        }
+
+        :root.light-theme .custom-cursor.cursor-click {
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        /* Specific text colors */
+        :root.light-theme .text-violet-400,
+        :root.light-theme .text-violet-300 {
+            color: #7c3aed !important;
+        }
+
+        :root.light-theme .group:hover .group-hover\:text-yellow-500,
+        :root.light-theme .text-yellow-400,
+        :root.light-theme .text-yellow-500\/80 {
+            color: #d97706 !important;
+        }
+
+        :root.light-theme .text-blue-400,
+        :root.light-theme .text-blue-300 {
+            color: #2563eb !important;
+        }
+
+        /* Icon boxes in awards */
+        :root.light-theme .bg-zinc-900 {
+            background-color: #f3f4f6 !important;
+            border-color: #e5e7eb !important;
+        }
+
+        :root.light-theme .bg-blue-600\/10 {
+            background-color: rgba(37, 99, 235, 0.1) !important;
+        }
+
+        /* Social icons hover adjustments for light theme - REMOVED per user request to keep them white */
     </style>
 </head>
 
-<body class="text-white">
+<body class="">
     <script>
         (() => {
             const supportsSVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100svh'));
@@ -1044,36 +1137,6 @@
     <div class="particles-container" id="particles-container"></div>
     <div id="tsparticles"></div>
 
-
-
-    <!-- Background Music -->
-    <audio id="bgMusic" loop autoplay muted>
-        <source src="music.mp3" type="audio/mpeg">
-    </audio>
-
-    <!-- Splash Screen / Entry Screen -->
-    <div id="splash-screen" class="cursor-none">
-        <!-- Splash Background -->
-        <div class="splash-background">
-            <div class="gradient-sphere sphere-1"></div>
-            <div class="gradient-sphere sphere-2"></div>
-            <div class="gradient-sphere sphere-3"></div>
-            <div class="gradient-sphere sphere-4"></div>
-            <div class="glow"></div>
-            <div class="grid-overlay"></div>
-            <div class="noise-overlay"></div>
-        </div>
-        <!-- Splash Content -->
-        <div class="fullscreen relative z-10 text-center">
-            <div class="animate-blur-up">
-                <h1 class="text-5xl font-bold mb-8 shimmer-text" data-i18n="enterText">
-                    <span>Click</span><br><span>for enter...</span>
-                </h1>
-                <p class="text-gray-400 text-lg animate-bounce">↓</p>
-            </div>
-        </div>
-    </div>
-
     <!-- Content Wrapper -->
     <div class="content-wrapper">
         <!-- Left Controls (Language & Clock) -->
@@ -1086,21 +1149,13 @@
             </button>
         </div>
 
-        <!-- Music Control -->
+        <!-- Theme Control -->
         <div class="fixed top-4 safe-top right-4 z-50 flex items-center gap-3">
-            <!-- Music Control -->
-            <div class="flex items-center group relative">
-                <div id="volumeControl"
-                    class="flex items-center bg-black/30 backdrop-blur-md rounded-full px-0 group-hover:px-3 overflow-hidden transition-all duration-300 max-w-0 group-hover:max-w-[150px] mr-2 h-10 opacity-100 transition-opacity duration-300">
-                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.005"
-                        class="w-24 accent-violet-500 cursor-pointer h-1 bg-white/20 rounded-lg appearance-none outline-none">
-                </div>
-                <button id="musicBtn" data-brand="Music"
-                    class="p-2 bg-black/30 hover:bg-black/50 backdrop-blur-md rounded-full text-white shadow-lg transition w-10 h-10 flex items-center justify-center border border-transparent"
-                    title="Toggle Music">
-                    <i class="fas fa-volume-high"></i>
-                </button>
-            </div>
+            <button id="themeBtn" data-brand="Theme"
+                class="p-2 bg-black/30 hover:bg-black/50 backdrop-blur-md rounded-full text-white shadow-lg transition w-10 h-10 flex items-center justify-center border border-transparent"
+                title="Toggle Theme">
+                <i class="fas fa-sun"></i>
+            </button>
         </div>
 
         <!-- Main Container -->
@@ -1180,7 +1235,7 @@
                         </a>
                     </div>
 
-                    <div class="link-item flex p-0 rounded-lg overflow-hidden"
+                    <div class="link-item flex p-0 rounded-lg overflow-hidden" data-brand="Resume"
                         style="background: rgba(139, 92, 246, 0.5); border: 1px solid rgba(139, 92, 246, 0.5);">
                         <!-- Main Link -->
                         <a id="cv-link-main" href="СV_Honcharenko_ENG.pdf" target="_blank"
@@ -1280,13 +1335,13 @@
                                 <span class="text-[10px] text-yellow-500/80 font-bold uppercase tracking-widest">Global
                                     Challenge</span>
                             </div>
-                            <h3 class="font-bold text-lg leading-tight group-hover:text-yellow-500/80 transition-colors"
+                            <h3 class="font-bold text-lg leading-tight text-white group-hover:text-yellow-500 transition-colors"
                                 data-i18n="tiktokAward">TikTok Effect House Challenge</h3>
                             <p class="text-xs text-gray-400 mt-1">Niantic Peridot x TikTok</p>
                         </div>
                         <div
                             class="ml-2 opacity-30 group-hover:opacity-100 transition-all transform group-hover:translate-x-1">
-                            <i class="fas fa-external-link-alt text-sm"></i>
+                            <i class="fas fa-external-link-alt text-sm text-white transition-colors"></i>
                         </div>
                     </a>
                     <!-- Meta Hackathon -->
@@ -1460,10 +1515,10 @@
                 const particlesContainer = document.getElementById('particles-container');
                 if (!particlesContainer) return;
 
-                const AMBIENT_COUNT = 80;
-                const TRAIL_POOL_SIZE = 48;
-                const TRAIL_DURATION_MS = 2000;
-                const TRAIL_MAX_PER_SEC = 60; // matches refresh rate; prevents runaway DOM work
+                const AMBIENT_COUNT = 30;
+                const TRAIL_POOL_SIZE = 20;
+                const TRAIL_DURATION_MS = 1500;
+                const TRAIL_MAX_PER_SEC = 30; // throttle to save GPU cycles
 
                 const supportsWAAPI = typeof Element !== 'undefined' && typeof Element.prototype.animate === 'function';
                 const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
@@ -1549,6 +1604,16 @@
                     p.style.width = `${size}px`;
                     p.style.height = `${size}px`;
 
+                    // Update particle color based on cursor state
+                    const cursorColor = window.customCursorPos && window.customCursorPos.color;
+                    if (cursorColor) {
+                        p.style.backgroundColor = cursorColor;
+                        p.style.boxShadow = `0 0 10px ${cursorColor}`;
+                    } else {
+                        p.style.backgroundColor = '';
+                        p.style.boxShadow = '';
+                    }
+
                     // Use exact pixel positions for precise cursor tracking
                     const x = clientX;
                     const y = clientY;
@@ -1622,198 +1687,53 @@
             })();
         </script>
 
-        <!-- Splash Screen Handler -->
+        <!-- Theme Control Script -->
         <script>
-            const splashScreen = document.getElementById('splash-screen');
+            const themeBtn = document.getElementById('themeBtn');
+            const root = document.documentElement;
 
-            function closeSplashScreen() {
-                splashScreen.style.animation = 'fadeOut 0.6s ease forwards';
-                setTimeout(() => {
-                    splashScreen.style.display = 'none';
-                }, 600);
-            }
+            // Check local storage or system preference
+            const savedTheme = localStorage.getItem('theme');
+            const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 
-            // Close splash on any click or key press
-            document.addEventListener('click', closeSplashScreen, { once: true });
-            document.addEventListener('keydown', closeSplashScreen, { once: true });
-            document.addEventListener('touchstart', closeSplashScreen, { once: true });
-        </script>
+            let isLight = savedTheme === 'light';
 
-        <!-- Music Control Script -->
-        <script>
-            const bgMusic = document.getElementById('bgMusic');
-            const musicBtn = document.getElementById('musicBtn');
-            const volumeSlider = document.getElementById('volumeSlider');
-            const volumeControl = document.getElementById('volumeControl');
-            let isMusicPlaying = false;
-
-            // Set default volume to 1%
-            bgMusic.volume = 0.005;
-
-            // Handle volume slider changes
-            if (volumeSlider) {
-                volumeSlider.addEventListener('input', (e) => {
-                    const vol = parseFloat(e.target.value);
-                    bgMusic.volume = vol;
-                    updateMusicIcon(vol);
-                });
-            }
-
-            function updateMusicIcon(vol) {
-                if (bgMusic.paused) {
-                    musicBtn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
+            function updateThemeUI() {
+                if (isLight) {
+                    root.classList.add('light-theme');
+                    themeBtn.innerHTML = '<i class="fas fa-moon"></i>';
+                    // Update button style for light mode
+                    themeBtn.classList.remove('text-white', 'bg-black/30', 'hover:bg-black/50', 'border-transparent');
+                    themeBtn.classList.add('text-zinc-800', 'bg-white/40', 'hover:bg-white/60', 'border-zinc-200');
+                    themeBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                    document.body.classList.remove('text-white');
                 } else {
-                    if (vol === 0) musicBtn.innerHTML = '<i class="fas fa-volume-off"></i>';
-                    else if (vol < 0.5) musicBtn.innerHTML = '<i class="fas fa-volume-low"></i>';
-                    else musicBtn.innerHTML = '<i class="fas fa-volume-high"></i>';
+                    root.classList.remove('light-theme');
+                    themeBtn.innerHTML = '<i class="fas fa-sun"></i>';
+                    // Update button style for dark mode
+                    themeBtn.classList.add('text-white', 'bg-black/30', 'hover:bg-black/50', 'border-transparent');
+                    themeBtn.classList.remove('text-zinc-800', 'bg-white/40', 'hover:bg-white/60', 'border-zinc-200');
+                    themeBtn.style.boxShadow = '';
+                    document.body.classList.add('text-white');
                 }
             }
 
-            // Initialize music - it's muted by default due to autoplay policy
-            function initMusic() {
-                // Check if user previously disabled music
-                const wasDisabled = localStorage.getItem('musicDisabled') === 'true';
-                const volumeControl = document.getElementById('volumeControl');
+            // Initial call
+            updateThemeUI();
 
-                if (!wasDisabled) {
-                    // Unmute and start playing
-                    bgMusic.muted = false;
-                    isMusicPlaying = true;
-                    musicBtn.innerHTML = '<i class="fas fa-volume-high"></i>';
-                    localStorage.setItem('musicPlaying', 'true');
-                    // Show volume slider
-                    if (volumeControl) {
-                        volumeControl.style.opacity = '1';
-                        volumeControl.style.pointerEvents = 'auto';
-                    }
-                    // Ensure it's playing
-                    bgMusic.play().catch(() => {
-                        console.log('Music will start on user interaction');
-                    });
-                } else {
-                    // Pause and mute
-                    bgMusic.pause();
-                    bgMusic.muted = true;
-                    isMusicPlaying = false;
-                    musicBtn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
-                    // Hide volume slider
-                    if (volumeControl) {
-                        volumeControl.style.opacity = '0';
-                        volumeControl.style.pointerEvents = 'none';
-                    }
-                }
-            }
-
-            // On first user interaction, ensure music starts
-            function onUserInteraction() {
-                if (bgMusic.paused) {
-                    bgMusic.muted = false;
-                    bgMusic.play().catch(() => console.log('Cannot play'));
-                }
-                if (!isMusicPlaying && localStorage.getItem('musicDisabled') !== 'true') {
-                    bgMusic.muted = false;
-                    isMusicPlaying = true;
-                    musicBtn.innerHTML = '<i class="fas fa-volume-high"></i>';
-                    // Show volume slider
-                    const volumeControl = document.getElementById('volumeControl');
-                    if (volumeControl) {
-                        volumeControl.style.opacity = '1';
-                        volumeControl.style.pointerEvents = 'auto';
-                    }
-                }
-            }
-
-            // Initialize on page load
-            window.addEventListener('DOMContentLoaded', initMusic);
-            if (document.readyState === 'complete') {
-                initMusic();
-            }
-
-            // Start on first user interaction
-            document.addEventListener('click', onUserInteraction, { once: true });
-            document.addEventListener('touchstart', onUserInteraction, { once: true });
-
-            // Update UI when music plays or pauses
-            bgMusic.onplay = () => {
-                musicBtn.innerHTML = '<i class="fas fa-volume-high"></i>';
-                isMusicPlaying = true;
-                // Show volume slider when music plays
-                const volumeControl = document.getElementById('volumeControl');
-                if (volumeControl) {
-                    volumeControl.style.opacity = '1';
-                    volumeControl.style.pointerEvents = 'auto';
-                }
-            };
-
-            bgMusic.onpause = () => {
-                musicBtn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
-                isMusicPlaying = false;
-                // Hide volume slider when music pauses
-                const volumeControl = document.getElementById('volumeControl');
-                if (volumeControl) {
-                    volumeControl.style.opacity = '0';
-                    volumeControl.style.pointerEvents = 'none';
-                }
-            };
-
-            // Music button toggle
-            musicBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!bgMusic.paused) {
-                    // User wants to stop music
-                    localStorage.setItem('musicDisabled', 'true');
-                    bgMusic.pause();
-                } else {
-                    // User wants to start music
-                    localStorage.setItem('musicDisabled', 'false');
-                    bgMusic.muted = false;
-                    bgMusic.play().catch(() => console.log('Playback blocked by browser'));
-                }
+            themeBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // prevent ripple or loose focus
+                isLight = !isLight;
+                localStorage.setItem('theme', isLight ? 'light' : 'dark');
+                updateThemeUI();
             });
-
-            function startBGMusic() {
-                localStorage.setItem('musicDisabled', 'false');
-                bgMusic.muted = false;
-                bgMusic.play().catch(() => console.log('Playback blocked by browser'));
-            }
-
-            function stopBGMusic(permanently = false) {
-                if (permanently) localStorage.setItem('musicDisabled', 'true');
-                bgMusic.pause();
-            }
-
-            // Handle background music pause when other media plays (like Spotify)
-            // When user clicks the Spotify iframe, the window loses focus
-            window.addEventListener('blur', () => {
-                setTimeout(() => {
-                    if (document.activeElement && document.activeElement.tagName === 'IFRAME') {
-                        if (!bgMusic.paused) {
-                            bgMusic.pause();
-                            // Note: we don't set musicDisabled to true because it's a temporary pause
-                        }
-                    }
-                }, 200);
-            });
-
-            // Resume when window regains focus, but ONLY if it was playing before and user didn't disable it
-            window.addEventListener('focus', () => {
-                // We don't auto-resume immediately because they might still be listening to Spotify
-                // But we can check if they click back on the page
-            });
-
-            // Also pause if ANY other audio/video element starts playing
-            document.addEventListener('play', (e) => {
-                if (e.target !== bgMusic && isMusicPlaying) {
-                    stopBGMusic(false);
-                }
-            }, true);
         </script>
 
         <script>
             /* ==== i18n (Internationalization) ==== */
             const translations = {
                 uk: {
-                    enterText: "Натисніть,<br>щоб увійти...",
+
                     social: "Соціальні мережі",
                     socialMedia: "Соціальні мережі та спільнота",
                     contentWork: "Портфоліо",
@@ -1861,7 +1781,7 @@
                     live: "LIVE",
                 },
                 en: {
-                    enterText: "Click<br>for enter...",
+
                     social: "Social",
                     socialMedia: "Social Media & Community",
                     contentWork: "Portfolio",
@@ -1917,40 +1837,20 @@
                 return lang.startsWith('uk') ? 'uk' : 'en';
             }
 
-            function setLanguage(lang) {
-                currentLang = lang;
-                document.documentElement.lang = lang;
-                updatePageLanguage();
-            }
-
-            // Language Toggle Listener
-            document.addEventListener('DOMContentLoaded', () => {
-                const langBtn = document.getElementById('langBtn');
-                if (langBtn) {
-                    langBtn.addEventListener('click', () => {
-                        const newLang = currentLang === 'uk' ? 'en' : 'uk';
-                        setLanguage(newLang);
-                    });
-                }
-            });
-
             function t(key) {
                 return translations[currentLang][key] || translations['en'][key] || key;
             }
 
             function updatePageLanguage() {
-                // Update all elements with data-i18n attribute
                 document.querySelectorAll('[data-i18n]').forEach(el => {
                     const key = el.getAttribute('data-i18n');
-                    // Use innerHTML for certain keys to support HTML tags
-                    if (['enterText', 'madeWith', 'copyright'].includes(key)) {
+                    if (['madeWith', 'copyright'].includes(key)) {
                         el.innerHTML = t(key);
                     } else {
                         el.textContent = t(key);
                     }
                 });
 
-                // Update CV link href based on language
                 const cvLinkMain = document.getElementById('cv-link-main');
                 const cvLinkAlt = document.getElementById('cv-link-alt');
                 const altLangLabel = document.getElementById('alt-lang-label');
@@ -1968,9 +1868,22 @@
                 }
             }
 
-            // Initialize language on page load
-            window.addEventListener('DOMContentLoaded', () => {
+            function setLanguage(lang) {
+                currentLang = lang;
+                document.documentElement.lang = lang;
+                updatePageLanguage();
+            }
+
+            // Initialize: detect language and setup toggle
+            document.addEventListener('DOMContentLoaded', () => {
                 setLanguage(detectLanguage());
+                const langBtn = document.getElementById('langBtn');
+                if (langBtn) {
+                    langBtn.addEventListener('click', () => {
+                        const newLang = currentLang === 'uk' ? 'en' : 'uk';
+                        setLanguage(newLang);
+                    });
+                }
             });
 
             /* ==== Utilities ==== */
@@ -1983,23 +1896,11 @@
                 el.classList.add('animate-blur-up');
             });
 
-            /* ==== 3-D Tilt Cards ==== */
+            /* ==== 3-D Tilt Cards (glare disabled for perf) ==== */
             VanillaTilt.init($$('.link-item'), {
-                max: 7,          // max tilt in degrees
-                speed: 400,      // transition speed
-                glare: true,     // glare effect
-                'max-glare': .15
-            });
-
-            /* ==== Magnetic Hover ==== */
-            $$('.link-item').forEach((el) => {
-                el.addEventListener('mousemove', (e) => {
-                    const { left, top, width, height } = el.getBoundingClientRect();
-                    const x = (e.clientX - left - width / 2) / 15;
-                    const y = (e.clientY - top - height / 2) / 15;
-                    el.style.transform = `translate(${x}px, ${y}px)`;
-                });
-                el.addEventListener('mouseleave', () => { el.style.transform = ''; });
+                max: 5,
+                speed: 600,
+                glare: false
             });
 
             /* ==== Ripple Click ==== */
@@ -2038,76 +1939,30 @@
             }
             type();
 
-            /* ==== Copy Email ==== */
-            window.copyEmail = (e) => {
-                // Prevent the click from triggering the parent <a> tag (mailto)
-                if (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-
-                const email = 'lordskamp@yahoo.com';
-
-                // Helper to show the notification
-                const showNote = () => {
-                    const note = document.createElement('div');
-                    note.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-xl animate-blur-up z-[50000]'; // Ensure high z-index
-                    note.textContent = t('copied');
-                    document.body.appendChild(note);
-                    setTimeout(() => note.remove(), 2000);
-                };
-
-                // Try Clipboard API first
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(email)
-                        .then(showNote)
-                        .catch(err => fallbackCopy(email));
-                } else {
-                    fallbackCopy(email);
-                }
-
-                // Fallback method using textarea
-                function fallbackCopy(text) {
-                    const textArea = document.createElement("textarea");
-                    textArea.value = text;
-                    textArea.style.position = "fixed";  // Avoid scrolling to bottom
-                    textArea.style.opacity = "0";
-                    document.body.appendChild(textArea);
-                    textArea.focus();
-                    textArea.select();
-                    try {
-                        const successful = document.execCommand('copy');
-                        if (successful) showNote();
-                        else alert('Email: ' + email);
-                    } catch (err) {
-                        alert('Email: ' + email);
-                    }
-                    document.body.removeChild(textArea);
-                }
-            };
-
-            /* ==== Particle Network Background ==== */
+            /* ==== Particle Network Background (optimized) ==== */
             tsParticles.load("tsparticles", {
                 fpsLimit: 60,
                 particles: {
                     color: { value: "#ffffff" },
-                    links: { color: "#ffffff", distance: 150, enable: true, opacity: 0.3, width: 1 },
-                    move: { enable: true, speed: 1, direction: "none", outModes: "out" },
-                    number: { value: 60 },
-                    size: { value: { min: 1, max: 3 } }
+                    links: { color: "#ffffff", distance: 120, enable: true, opacity: 0.2, width: 1 },
+                    move: { enable: true, speed: 0.8, direction: "none", outModes: "out" },
+                    number: { value: 25, density: { enable: true, area: 900 } },
+                    size: { value: { min: 1, max: 2 } },
+                    opacity: { value: 0.4 }
                 },
                 interactivity: {
                     detectsOn: "canvas",
                     events: {
-                        onHover: { enable: true, mode: "grab" },
-                        onClick: { enable: true, mode: "push" }
+                        onHover: { enable: false },
+                        onClick: { enable: false }
                     }
-                }
+                },
+                detectRetina: false
             });
 
             /* ==== Respect Reduced Motion ==== */
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                $$('*').forEach((el) => el.style.animationDuration = '0.001ms');
+                document.documentElement.style.setProperty('--anim-duration', '0.001ms');
             }
         </script>
 
@@ -2196,36 +2051,36 @@
                 const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
 
                 // Export cursor position for particles to use
-                window.customCursorPos = { x: 0, y: 0 };
+                window.customCursorPos = { x: 0, y: 0, color: null };
 
-                // Update cursor position (instant, no smoothing)
-                function animateCursor() {
-                    if (!isHoveringIframe) {
-                        // Remove smoothing/lerp
-                        cursorX = mouseX;
-                        cursorY = mouseY;
-
-                        // Update global position for particles
-                        window.customCursorPos.x = cursorX;
-                        window.customCursorPos.y = cursorY;
-
-                        if (supportsTranslateProp) {
-                            cursor.style.translate = `${cursorX}px ${cursorY}px`;
-                        } else {
-                            // Preserve the CSS centering translate(-50%, -50%)
-                            cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`;
-                        }
+                // Update cursor position on demand (no idle rAF loop)
+                let cursorRafPending = false;
+                function updateCursorPosition() {
+                    cursorRafPending = false;
+                    if (isHoveringIframe) return;
+                    cursorX = mouseX;
+                    cursorY = mouseY;
+                    window.customCursorPos.x = cursorX;
+                    window.customCursorPos.y = cursorY;
+                    if (supportsTranslateProp) {
+                        cursor.style.translate = `${cursorX}px ${cursorY}px`;
+                    } else {
+                        cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`;
                     }
-                    requestAnimationFrame(animateCursor);
                 }
-                animateCursor();
+                function scheduleCursorUpdate() {
+                    if (!cursorRafPending) {
+                        cursorRafPending = true;
+                        requestAnimationFrame(updateCursorPosition);
+                    }
+                }
 
                 // Track mouse movement
                 document.addEventListener(moveEvent, (e) => {
                     if (e.pointerType && e.pointerType !== 'mouse') return;
                     mouseX = e.clientX;
                     mouseY = e.clientY;
-                    // Ensure cursor shows if we moved out of iframe technically but missed event
+                    scheduleCursorUpdate();
                     if (isHoveringIframe) {
                         cursor.style.opacity = '1';
                         isHoveringIframe = false;
@@ -2292,11 +2147,14 @@
                     'WhatsApp': '#25D366',
                     'Viber': '#7360f2',
                     'Email': '#4ade80',
-                    'Music': '#8b5cf6',
                     'Language': '#06b6d4',
                     'Wishlist': '#a78bfa',
                     'Meta': '#0668E1',
-                    'Threads': '#ffffff'
+                    'Theme': '#fbbf24',
+                    'Threads': '#ffffff',
+                    'Behance': '#0057ff',
+                    'Instagram-Portfolio': '#ff306c',
+                    'Resume': '#8b5cf6'
                 };
 
 
@@ -2314,6 +2172,9 @@
                     if (brandColors[brand]) {
                         el.addEventListener('mouseenter', () => {
                             const color = brandColors[brand];
+                            // Update global color for particles
+                            if (window.customCursorPos) window.customCursorPos.color = color;
+
                             // Special case for TikTok
                             if (brand === 'TikTok') {
                                 cursor.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; // Glassy black
@@ -2327,9 +2188,12 @@
                             }
                         });
                         el.addEventListener('mouseleave', () => {
-                            cursor.style.backgroundColor = 'rgba(255, 255, 255, 0.6)'; // Reset to default glass
-                            cursor.style.borderColor = 'transparent';
-                            cursor.style.boxShadow = '0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(140, 61, 193, 0.3)';
+                            // Reset global color
+                            if (window.customCursorPos) window.customCursorPos.color = null;
+
+                            cursor.style.backgroundColor = '';
+                            cursor.style.borderColor = '';
+                            cursor.style.boxShadow = '';
                         });
                     }
                 });
