@@ -579,8 +579,50 @@
             }
         }
 
+        @keyframes profileBlurEffectOscDark {
+            0% {
+                filter: grayscale(1) contrast(1.2) brightness(0.9) sepia(1) hue-rotate(58deg) saturate(2.15) blur(0);
+                opacity: 1;
+            }
+
+            50% {
+                filter: grayscale(1) contrast(1.2) brightness(1.2) sepia(1) hue-rotate(58deg) saturate(2.15) blur(20px);
+                opacity: 0.3;
+            }
+
+            100% {
+                filter: grayscale(1) contrast(1.2) brightness(0.9) sepia(1) hue-rotate(58deg) saturate(2.15) blur(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes profileBlurEffectOscLight {
+            0% {
+                filter: grayscale(1) contrast(1.08) brightness(1.03) sepia(0.82) hue-rotate(46deg) saturate(1.75) blur(0);
+                opacity: 1;
+            }
+
+            50% {
+                filter: grayscale(1) contrast(1.08) brightness(1.24) sepia(0.82) hue-rotate(46deg) saturate(1.75) blur(20px);
+                opacity: 0.3;
+            }
+
+            100% {
+                filter: grayscale(1) contrast(1.08) brightness(1.03) sepia(0.82) hue-rotate(46deg) saturate(1.75) blur(0);
+                opacity: 1;
+            }
+        }
+
         .profile-animating {
             animation: profileBlurEffect 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        :root.osc-theme #profileImg.profile-animating {
+            animation: profileBlurEffectOscDark 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        :root.osc-theme.light-theme #profileImg.profile-animating {
+            animation: profileBlurEffectOscLight 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         #profileImg.tilted {
@@ -1097,6 +1139,564 @@
         }
 
         /* Social icons hover adjustments for light theme - REMOVED per user request to keep them white */
+
+        /* ---------- Theme Button Secret Progress ---------- */
+        #themeBtn {
+            position: relative;
+            isolation: isolate;
+            overflow: hidden;
+            --secret-angle: 0deg;
+        }
+
+        #themeBtn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: conic-gradient(from -90deg,
+                    var(--scope-line, rgba(125, 255, 203, 0.95)) 0deg var(--secret-angle),
+                    rgba(255, 255, 255, 0.08) var(--secret-angle) 360deg);
+            opacity: 0;
+            transition: opacity 0.28s ease;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        #themeBtn[data-secret-active="true"]::before {
+            opacity: 0.8;
+        }
+
+        :root.osc-theme #themeBtn[data-secret-active="true"]::before {
+            opacity: 0.92;
+        }
+
+        #themeBtn .theme-icon {
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes secret-ready-pulse {
+            from {
+                transform: scale(1);
+            }
+
+            to {
+                transform: scale(1.06);
+            }
+        }
+
+        #themeBtn.secret-ready {
+            animation: secret-ready-pulse 0.55s ease-in-out infinite alternate;
+        }
+
+        #themeBtn.osc-mode {
+            border-color: var(--scope-line, rgba(61, 255, 95, 0.8)) !important;
+            box-shadow: none !important;
+        }
+
+        /* ---------- Oscilloscope Mode ---------- */
+        :root.osc-theme {
+            --bg: #030b1f;
+            --page-bg: #030b1f;
+            --text-color: #d8f8df;
+            --text-muted: #9cd9a7;
+            --glass: rgba(8, 22, 52, 0.85);
+            --glass-border: rgba(61, 255, 95, 0.35);
+            --glass-hover: rgba(9, 26, 62, 0.94);
+            --border-hover: rgba(69, 255, 118, 0.78);
+            --island-bg: rgba(7, 20, 49, 0.9);
+            --island-border: rgba(61, 255, 95, 0.32);
+            --island-shadow: none;
+            --island-shadow-hover: none;
+            --particle-color: #3dff5f;
+            --scope-line: #3dff5f;
+            --scope-line-glow: rgba(61, 255, 95, 0.32);
+            --scope-line-accent: rgba(61, 255, 95, 0.22);
+            --scope-grid-major: rgba(0, 0, 0, 0.52);
+            --scope-grid-minor: rgba(61, 255, 95, 0.14);
+            --scope-hud: rgba(141, 255, 164, 0.92);
+            --scope-sweep-soft: rgba(61, 255, 95, 0.1);
+            --scope-sweep-core: rgba(61, 255, 95, 0.28);
+        }
+
+        :root.osc-theme.light-theme {
+            --bg: #2a7348;
+            --page-bg: #2a7348;
+            --text-color: #ecffef;
+            --text-muted: #c8f9ce;
+            --glass: rgba(35, 104, 67, 0.82);
+            --glass-border: rgba(13, 45, 23, 0.46);
+            --glass-hover: rgba(42, 116, 74, 0.9);
+            --border-hover: rgba(206, 255, 188, 0.72);
+            --island-bg: rgba(37, 111, 69, 0.84);
+            --island-border: rgba(12, 37, 20, 0.5);
+            --island-shadow: none;
+            --island-shadow-hover: none;
+            --particle-color: #d2ffc6;
+            --scope-line: #eaffdd;
+            --scope-line-glow: rgba(234, 255, 221, 0.24);
+            --scope-line-accent: rgba(234, 255, 221, 0.34);
+            --scope-grid-major: rgba(8, 28, 14, 0.52);
+            --scope-grid-minor: rgba(8, 28, 14, 0.22);
+            --scope-hud: rgba(227, 255, 217, 0.95);
+            --scope-sweep-soft: rgba(234, 255, 221, 0.12);
+            --scope-sweep-core: rgba(234, 255, 221, 0.34);
+        }
+
+        :root.osc-theme .gradient-background {
+            background: var(--bg);
+        }
+
+        :root.osc-theme .gradient-sphere,
+        :root.osc-theme .glow,
+        :root.osc-theme .noise-overlay,
+        :root.osc-theme #tsparticles,
+        :root.osc-theme .particles-container {
+            display: none !important;
+        }
+
+        :root.osc-theme .grid-overlay {
+            background-size: 50px 50px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='50' viewBox='0 0 50 50'%3E%3Cpath d='M0 .5H50M.5 0V50' stroke='%23000000' stroke-opacity='.55' stroke-width='1'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            opacity: 0.9;
+            animation: scope-grid-flicker 3.2s steps(1, end) infinite;
+        }
+
+        :root.osc-theme.light-theme .grid-overlay {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='50' viewBox='0 0 50 50'%3E%3Cpath d='M0 .5H50M.5 0V50' stroke='%23040f08' stroke-opacity='.5' stroke-width='1'/%3E%3C/svg%3E");
+        }
+
+        :root.osc-theme .grid-overlay::before,
+        :root.osc-theme .grid-overlay::after {
+            display: none;
+        }
+
+        @keyframes scope-grid-flicker {
+
+            from {
+                opacity: 0.62;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+
+            to {
+                opacity: 0.62;
+            }
+        }
+
+        :root.osc-theme .island,
+        :root.osc-theme .link-item,
+        :root.osc-theme .award-card {
+            border-color: var(--island-border) !important;
+            box-shadow: none !important;
+            backdrop-filter: none;
+            background: var(--island-bg);
+            background-image: none !important;
+        }
+
+        :root.osc-theme * {
+            box-shadow: none !important;
+            text-shadow: none !important;
+        }
+
+        .oscilloscope-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 3;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.7s ease, transform 0.7s ease;
+            transform: scale(1);
+        }
+
+        :root.osc-theme .oscilloscope-layer {
+            opacity: 1;
+            mix-blend-mode: normal;
+            border-radius: clamp(12px, 2.8vw, 28px);
+            overflow: hidden;
+            transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986);
+            transform-origin: center center;
+            animation: scope-jitter 9s steps(1, end) infinite;
+        }
+
+        :root.osc-theme.light-theme .oscilloscope-layer {
+            opacity: 1;
+            mix-blend-mode: normal;
+        }
+
+        .oscilloscope-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            filter: none;
+        }
+
+        .scope-scanlines {
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='4' viewBox='0 0 2 4'%3E%3Crect width='2' height='1' fill='%23000000' fill-opacity='.3'/%3E%3Crect y='1' width='2' height='1' fill='%23000000' fill-opacity='.08'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 2px 4px;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            mix-blend-mode: normal;
+        }
+
+        :root.osc-theme .scope-scanlines {
+            opacity: 0.62;
+        }
+
+        :root.osc-theme.light-theme .scope-scanlines {
+            opacity: 0.44;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='4' viewBox='0 0 2 4'%3E%3Crect width='2' height='1' fill='%23000000' fill-opacity='.22'/%3E%3Crect y='1' width='2' height='1' fill='%23000000' fill-opacity='.06'/%3E%3C/svg%3E");
+        }
+
+        .scope-curvature {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.45s ease;
+        }
+
+        .scope-curvature {
+            border: 1px solid var(--scope-grid-major);
+            border-radius: clamp(12px, 2.8vw, 28px);
+            transform: scale(1.016, 0.988);
+            transform-origin: center center;
+        }
+
+        :root.osc-theme .scope-curvature {
+            opacity: 1;
+        }
+
+        @keyframes scope-jitter {
+            0% {
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(0, 0, 0);
+            }
+
+            3% {
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(-0.6px, 0.2px, 0);
+            }
+
+            4% {
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(0.5px, -0.2px, 0);
+            }
+
+            100% {
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(0, 0, 0);
+            }
+        }
+
+        .scope-readout {
+            position: fixed;
+            left: 50%;
+            top: calc(var(--safe-top) + 0.75rem);
+            transform: translate(-50%, -10px);
+            opacity: 0;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            z-index: 4;
+            font-family: "JetBrains Mono", "Consolas", "Fira Code", monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            padding: 0.45rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--scope-grid-major);
+            backdrop-filter: none;
+            text-shadow: none;
+            white-space: nowrap;
+            background: rgba(0, 0, 0, 0.28);
+        }
+
+        @keyframes scope-readout-flicker {
+
+            0%,
+            78%,
+            100% {
+                opacity: 0.95;
+            }
+
+            79%,
+            81% {
+                opacity: 0.55;
+            }
+        }
+
+        :root.osc-theme .scope-readout {
+            opacity: 1;
+            transform: translate(-50%, 0);
+            animation: scope-readout-flicker 4.8s steps(1, end) infinite;
+        }
+
+        :root.osc-theme.light-theme .scope-readout {
+            background: rgba(6, 35, 16, 0.28);
+        }
+
+        :root.osc-theme .text-white,
+        :root.osc-theme [class*="text-white\/"],
+        :root.osc-theme .text-zinc-400,
+        :root.osc-theme .text-zinc-300,
+        :root.osc-theme .text-slate-400,
+        :root.osc-theme .text-slate-300,
+        :root.osc-theme .text-gray-100,
+        :root.osc-theme .text-gray-200,
+        :root.osc-theme .text-gray-300 {
+            color: var(--text-color) !important;
+        }
+
+        :root.osc-theme .text-gray-400,
+        :root.osc-theme .text-gray-500 {
+            color: var(--text-muted) !important;
+        }
+
+        :root.osc-theme .text-violet-300,
+        :root.osc-theme .text-violet-400,
+        :root.osc-theme .text-violet-500,
+        :root.osc-theme .text-yellow-400,
+        :root.osc-theme .text-yellow-500,
+        :root.osc-theme .text-yellow-500\/80,
+        :root.osc-theme .text-blue-300,
+        :root.osc-theme .text-blue-400,
+        :root.osc-theme .text-blue-500,
+        :root.osc-theme .text-green-400,
+        :root.osc-theme .text-green-500,
+        :root.osc-theme .text-purple-500 {
+            color: var(--scope-line) !important;
+        }
+
+        :root.osc-theme .group:hover .group-hover\:text-violet-300,
+        :root.osc-theme .group:hover .group-hover\:text-yellow-500,
+        :root.osc-theme .group:hover .group-hover\:text-blue-300 {
+            color: var(--scope-line) !important;
+        }
+
+        :root.osc-theme .border-violet-500 {
+            border-color: var(--scope-line) !important;
+        }
+
+        :root.osc-theme .border-blue-500\/30 {
+            border-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .border-blue-500 {
+            border-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .bg-violet-600\/10 {
+            background-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .bg-blue-600\/10 {
+            background-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .bg-violet-600\/20,
+        :root.osc-theme .bg-blue-600\/20 {
+            background-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .group:hover .group-hover\:bg-violet-600\/20 {
+            background-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .group:hover .group-hover\:bg-blue-600\/20 {
+            background-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .award-card,
+        :root.osc-theme .award-gold,
+        :root.osc-theme .award-silver {
+            background: var(--island-bg) !important;
+            border-color: var(--island-border) !important;
+            box-shadow: var(--island-shadow) !important;
+        }
+
+        :root.osc-theme .award-card::before {
+            display: none;
+            background: none;
+        }
+
+        :root.osc-theme .award-card:hover {
+            border-color: var(--scope-line-accent) !important;
+            box-shadow: none !important;
+        }
+
+        :root.osc-theme .award-icon-box,
+        :root.osc-theme .bg-zinc-900 {
+            background-color: rgba(0, 0, 0, 0.25) !important;
+            border-color: var(--scope-line-accent) !important;
+            box-shadow: none !important;
+        }
+
+        :root.osc-theme .award-icon-box i {
+            color: var(--scope-line) !important;
+        }
+
+        :root.osc-theme .badge-gold,
+        :root.osc-theme .badge-silver {
+            color: var(--scope-line) !important;
+            border: 1px solid var(--scope-line-accent);
+            background: rgba(0, 0, 0, 0.18);
+            background-image: none !important;
+        }
+
+        :root.osc-theme .link-item[data-brand="Resume"] {
+            background: var(--scope-line-accent) !important;
+            border: 1px solid var(--scope-line) !important;
+        }
+
+        :root.osc-theme .link-item[data-brand="Resume"] i,
+        :root.osc-theme .link-item[data-brand="Resume"] span {
+            color: var(--scope-line) !important;
+        }
+
+        :root.osc-theme .link-item[data-brand="Resume"] #cv-link-alt {
+            border-left-color: var(--scope-line-accent) !important;
+        }
+
+        :root.osc-theme .link-item[data-brand="Resume"] #cv-link-main:hover,
+        :root.osc-theme .link-item[data-brand="Resume"] #cv-link-alt:hover {
+            background: transparent !important;
+        }
+
+        :root.osc-theme .link-item:hover:not([data-brand="Resume"]) {
+            background: var(--glass-hover) !important;
+            border-color: var(--scope-line) !important;
+            box-shadow: none !important;
+        }
+
+        :root.osc-theme .link-item:hover:not([data-brand="Resume"]) i,
+        :root.osc-theme .link-item:hover:not([data-brand="Resume"]) span {
+            color: var(--scope-hud) !important;
+        }
+
+        :root.osc-theme .audience-glow {
+            display: none !important;
+        }
+
+        :root.osc-theme a[title="Instagram"]:hover,
+        :root.osc-theme a[title="TikTok"]:hover,
+        :root.osc-theme a[title="Facebook"]:hover,
+        :root.osc-theme a[title="Telegram"]:hover,
+        :root.osc-theme a[title="LinkedIn"]:hover,
+        :root.osc-theme a[title="Steam"]:hover,
+        :root.osc-theme a[title="Tinder"]:hover,
+        :root.osc-theme a[title="YouTube"]:hover,
+        :root.osc-theme a[title="Threads"]:hover {
+            color: var(--scope-line) !important;
+            text-shadow: none !important;
+        }
+
+        :root.osc-theme .glow-effect {
+            box-shadow: none;
+        }
+
+        :root.osc-theme .glow-effect:hover {
+            box-shadow: none;
+        }
+
+        :root.osc-theme #profileImg {
+            border-color: var(--scope-line) !important;
+            filter: grayscale(1) contrast(1.2) brightness(0.9) sepia(1) hue-rotate(58deg) saturate(2.15);
+        }
+
+        :root.osc-theme.light-theme #profileImg {
+            filter: grayscale(1) contrast(1.08) brightness(1.03) sepia(0.82) hue-rotate(46deg) saturate(1.75);
+        }
+
+        :root.osc-theme a[data-brand="Wishlist"]:hover {
+            color: var(--scope-hud);
+            border-color: var(--scope-line) !important;
+            background: var(--glass-hover) !important;
+            box-shadow: none;
+        }
+
+        :root.osc-theme .social-icon {
+            text-shadow: none;
+        }
+
+        :root.osc-theme .logos-slide img {
+            filter: brightness(0) saturate(100%) invert(88%) sepia(20%) saturate(654%) hue-rotate(51deg) brightness(107%) contrast(104%) !important;
+            opacity: 0.9;
+        }
+
+        :root.osc-theme.light-theme .logos-slide img {
+            filter: brightness(0) saturate(100%) invert(95%) sepia(26%) saturate(486%) hue-rotate(39deg) brightness(105%) contrast(103%) !important;
+            opacity: 0.95;
+        }
+
+        :root.osc-theme .section-title,
+        :root.osc-theme h1 {
+            text-shadow: none;
+        }
+
+        :root.osc-theme #langBtn,
+        :root.osc-theme #themeBtn {
+            background: rgba(8, 20, 48, 0.88) !important;
+            border-color: rgba(61, 255, 95, 0.45) !important;
+            color: var(--scope-line) !important;
+            box-shadow: none !important;
+        }
+
+        :root.osc-theme.light-theme #langBtn,
+        :root.osc-theme.light-theme #themeBtn {
+            background: rgba(36, 102, 63, 0.8) !important;
+            border-color: rgba(12, 37, 20, 0.52) !important;
+            color: var(--scope-line) !important;
+            box-shadow: none !important;
+        }
+
+        .scope-mode-flash {
+            position: fixed;
+            inset: 0;
+            z-index: 12;
+            pointer-events: none;
+            opacity: 0;
+            background: var(--scope-sweep-core);
+        }
+
+        @keyframes scope-mode-flash {
+            0% {
+                opacity: 0;
+            }
+
+            24% {
+                opacity: 0.68;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        :root.scope-switching .scope-mode-flash {
+            animation: scope-mode-flash 0.72s ease-out;
+        }
+
+        @media (max-width: 768px) {
+            :root.osc-theme .grid-overlay {
+                background-size: 36px 36px;
+            }
+
+            :root.osc-theme .oscilloscope-layer {
+                border-radius: 12px;
+                transform: perspective(900px) rotateX(0.95deg) scale(1.01, 0.99);
+            }
+
+            :root.osc-theme .scope-curvature {
+                border-radius: 12px;
+            }
+
+            .scope-readout {
+                top: calc(var(--safe-top) + 0.6rem);
+                font-size: 0.62rem;
+                letter-spacing: 0.14em;
+            }
+        }
     </style>
 </head>
 
@@ -1136,6 +1736,13 @@
     <!-- Particles (separate from gradient-background for correct cursor tracking) -->
     <div class="particles-container" id="particles-container"></div>
     <div id="tsparticles"></div>
+    <div class="oscilloscope-layer" aria-hidden="true">
+        <canvas id="oscilloscopeCanvas" class="oscilloscope-canvas"></canvas>
+        <div id="scopeReadout" class="scope-readout">VISITS ...</div>
+        <div class="scope-scanlines"></div>
+        <div class="scope-curvature"></div>
+    </div>
+    <div class="scope-mode-flash" aria-hidden="true"></div>
 
     <!-- Content Wrapper -->
     <div class="content-wrapper">
@@ -1370,7 +1977,7 @@
                     <div class="award-card p-5 rounded-2xl group relative overflow-hidden">
                         <!-- Background Glow -->
                         <div
-                            class="absolute -right-10 -top-10 w-32 h-32 bg-violet-600/10 blur-3xl group-hover:bg-violet-600/20 transition-all">
+                            class="audience-glow absolute -right-10 -top-10 w-32 h-32 bg-violet-600/10 blur-3xl group-hover:bg-violet-600/20 transition-all">
                         </div>
 
                         <div class="flex items-center justify-between mb-4">
@@ -1687,45 +2294,359 @@
             })();
         </script>
 
+        <script>
+            (() => {
+                const canvas = document.getElementById('oscilloscopeCanvas');
+                const readout = document.getElementById('scopeReadout');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d', { alpha: true });
+                if (!ctx) return;
+
+                let width = 0;
+                let height = 0;
+                let dpr = 1;
+                let rafId = 0;
+                let active = false;
+                let readoutLabel = 'VISITS ...';
+                const COUNTER_NAMESPACE = 'lordskamp-github-io';
+                const COUNTER_KEY = 'home-page-visits';
+                const VISITOR_COUNTED_KEY = 'scopeReadoutVisitorCountedV1';
+                const LOCAL_FALLBACK_COUNT_KEY = 'scopeReadoutVisitsLocal';
+                const LOCAL_FALLBACK_VISITOR_KEY = 'scopeReadoutVisitorCountedLocalV1';
+
+                function formatVisits(value) {
+                    return new Intl.NumberFormat('en-US').format(value);
+                }
+
+                function setReadoutLabel(nextLabel) {
+                    readoutLabel = nextLabel;
+                    if (readout) readout.textContent = nextLabel;
+                }
+
+                function hasVisitorBeenCounted() {
+                    try {
+                        return localStorage.getItem(VISITOR_COUNTED_KEY) === '1';
+                    } catch {
+                        return false;
+                    }
+                }
+
+                function markVisitorAsCounted() {
+                    try {
+                        localStorage.setItem(VISITOR_COUNTED_KEY, '1');
+                    } catch {
+                        // Ignore write errors; counter still works in read-only mode.
+                    }
+                }
+
+                async function getGlobalVisits() {
+                    const response = await fetch(`https://api.countapi.xyz/get/${COUNTER_NAMESPACE}/${COUNTER_KEY}`, {
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    if (!data || typeof data.value !== 'number') throw new Error('Invalid counter payload');
+                    return data.value;
+                }
+
+                async function hitGlobalVisits() {
+                    const response = await fetch(`https://api.countapi.xyz/hit/${COUNTER_NAMESPACE}/${COUNTER_KEY}`, {
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    if (!data || typeof data.value !== 'number') throw new Error('Invalid counter payload');
+                    return data.value;
+                }
+
+                function getLocalFallbackVisits() {
+                    try {
+                        const current = parseInt(localStorage.getItem(LOCAL_FALLBACK_COUNT_KEY) || '0', 10);
+                        if (Number.isFinite(current) && current > 0) return current;
+                        return 1;
+                    } catch {
+                        return 1;
+                    }
+                }
+
+                function incrementLocalVisitsUnique() {
+                    try {
+                        const current = parseInt(localStorage.getItem(LOCAL_FALLBACK_COUNT_KEY) || '0', 10);
+                        let next = Number.isFinite(current) ? current : 0;
+                        if (localStorage.getItem(LOCAL_FALLBACK_VISITOR_KEY) !== '1') {
+                            next += 1;
+                            localStorage.setItem(LOCAL_FALLBACK_COUNT_KEY, String(next));
+                            localStorage.setItem(LOCAL_FALLBACK_VISITOR_KEY, '1');
+                        }
+                        return next || 1;
+                    } catch {
+                        return 1;
+                    }
+                }
+
+                async function initReadoutVisits() {
+                    try {
+                        if (hasVisitorBeenCounted()) {
+                            const value = await getGlobalVisits();
+                            setReadoutLabel(`VISITS ${formatVisits(value)}`);
+                            return;
+                        }
+                        const value = await hitGlobalVisits();
+                        markVisitorAsCounted();
+                        setReadoutLabel(`VISITS ${formatVisits(value)}`);
+                    } catch {
+                        const localVisits = hasVisitorBeenCounted() ? getLocalFallbackVisits() : incrementLocalVisitsUnique();
+                        markVisitorAsCounted();
+                        setReadoutLabel(`VISITS ${formatVisits(localVisits)}`);
+                    }
+                }
+
+                initReadoutVisits();
+
+                function cssVar(name, fallback) {
+                    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+                    return value || fallback;
+                }
+
+                function resize() {
+                    const rect = canvas.getBoundingClientRect();
+                    width = Math.max(1, Math.floor(rect.width));
+                    height = Math.max(1, Math.floor(rect.height));
+                    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+                    canvas.width = Math.max(1, Math.floor(width * dpr));
+                    canvas.height = Math.max(1, Math.floor(height * dpr));
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                }
+
+                function drawTrace(time, amplitudeScale, freqOffset, phaseOffset, lineWidth, alpha) {
+                    const middle = height * 0.5;
+                    const amplitude = height * amplitudeScale;
+                    const step = Math.max(3, width / 220);
+
+                    ctx.beginPath();
+                    for (let x = 0; x <= width; x += step) {
+                        const ratio = x / width;
+                        const y = middle
+                            + Math.sin((ratio * (13 + freqOffset)) - (time * (3.2 + freqOffset * 0.03)) + phaseOffset) * amplitude
+                            + Math.sin((ratio * 31) + (time * 2.3) - phaseOffset * 0.4) * amplitude * 0.24
+                            + Math.sin((ratio * 73) - (time * 6.1)) * amplitude * 0.1;
+
+                        if (x === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.lineWidth = lineWidth;
+                    ctx.globalAlpha = alpha;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                }
+
+                function render(frameTime) {
+                    if (!active) return;
+                    if (!width || !height) resize();
+
+                    const time = frameTime * 0.001;
+                    const line = cssVar('--scope-line', '#8fffd2');
+                    const accent = cssVar('--scope-line-accent', 'rgba(143, 255, 210, 0.2)');
+                    const hud = cssVar('--scope-hud', 'rgba(154, 255, 217, 0.86)');
+                    const sweepSoft = cssVar('--scope-sweep-soft', 'rgba(154, 255, 217, 0.12)');
+                    const sweepCore = cssVar('--scope-sweep-core', 'rgba(154, 255, 217, 0.32)');
+
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.shadowBlur = 0;
+
+                    ctx.strokeStyle = line;
+                    drawTrace(time, 0.22, 0, 0, 2, 0.95);
+
+                    ctx.strokeStyle = accent;
+                    drawTrace(time, 0.18, 9, 1.1, 1.2, 0.8);
+
+                    const sweepX = ((time * 180) % (width + 220)) - 110;
+                    ctx.fillStyle = sweepSoft;
+                    ctx.fillRect(sweepX - 12, 0, 24, height);
+                    ctx.fillStyle = sweepCore;
+                    ctx.fillRect(sweepX - 1, 0, 2, height);
+
+                    if (readout) {
+                        readout.textContent = readoutLabel;
+                        readout.style.color = hud;
+                        readout.style.borderColor = cssVar('--scope-line-accent', 'rgba(143, 255, 210, 0.22)');
+                    }
+
+                    rafId = requestAnimationFrame(render);
+                }
+
+                function start() {
+                    if (active) return;
+                    active = true;
+                    resize();
+                    cancelAnimationFrame(rafId);
+                    rafId = requestAnimationFrame(render);
+                }
+
+                function stop() {
+                    if (!active) return;
+                    active = false;
+                    cancelAnimationFrame(rafId);
+                    rafId = 0;
+                    ctx.clearRect(0, 0, width, height);
+                }
+
+                window.oscilloscopeFx = {
+                    setActive(next) {
+                        if (next) start();
+                        else stop();
+                    },
+                    refresh() {
+                        resize();
+                    }
+                };
+
+                window.addEventListener('resize', resize, { passive: true });
+                if (window.visualViewport) {
+                    window.visualViewport.addEventListener('resize', resize, { passive: true });
+                }
+
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        cancelAnimationFrame(rafId);
+                        rafId = 0;
+                        return;
+                    }
+                    if (active) {
+                        rafId = requestAnimationFrame(render);
+                    }
+                });
+            })();
+        </script>
+
         <!-- Theme Control Script -->
         <script>
             const themeBtn = document.getElementById('themeBtn');
             const root = document.documentElement;
 
-            // Check local storage or system preference
+            const themeColorMeta = document.querySelector('meta[name="theme-color"]');
             const savedTheme = localStorage.getItem('theme');
             const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+            const SECRET_TAPS_REQUIRED = 10;
+            const SECRET_RESET_MS = 12000;
 
-            let isLight = savedTheme === 'light';
+            let isLight = (savedTheme || systemTheme) === 'light';
+            let isOscMode = localStorage.getItem('oscilloscopeMode') === 'on';
+            let secretTapCount = 0;
+            let secretResetTimer = 0;
+            let flashTimer = 0;
+
+            function updateThemeColorMeta() {
+                if (!themeColorMeta) return;
+                if (isOscMode && isLight) {
+                    themeColorMeta.setAttribute('content', '#2a7348');
+                } else if (isOscMode && !isLight) {
+                    themeColorMeta.setAttribute('content', '#030b1f');
+                } else if (isLight) {
+                    themeColorMeta.setAttribute('content', '#f2f4f7');
+                } else {
+                    themeColorMeta.setAttribute('content', '#8c3dc1');
+                }
+            }
+
+            function updateSecretProgress() {
+                const progress = Math.min(secretTapCount / SECRET_TAPS_REQUIRED, 1);
+                themeBtn.style.setProperty('--secret-angle', `${progress * 360}deg`);
+
+                if (secretTapCount > 0) {
+                    themeBtn.setAttribute('data-secret-active', 'true');
+                } else {
+                    themeBtn.removeAttribute('data-secret-active');
+                }
+
+                themeBtn.classList.toggle('secret-ready', secretTapCount >= SECRET_TAPS_REQUIRED - 2 && secretTapCount < SECRET_TAPS_REQUIRED);
+            }
+
+            function triggerScopeFlash() {
+                root.classList.remove('scope-switching');
+                void root.offsetWidth;
+                root.classList.add('scope-switching');
+
+                clearTimeout(flashTimer);
+                flashTimer = setTimeout(() => {
+                    root.classList.remove('scope-switching');
+                }, 760);
+            }
 
             function updateThemeUI() {
+                root.classList.toggle('light-theme', isLight);
+                root.classList.toggle('osc-theme', isOscMode);
+
+                const iconClass = isLight ? 'fa-moon' : 'fa-sun';
+                themeBtn.innerHTML = `<span class="theme-icon"><i class="fas ${iconClass}"></i></span>`;
+                themeBtn.classList.toggle('osc-mode', isOscMode);
+
                 if (isLight) {
-                    root.classList.add('light-theme');
-                    themeBtn.innerHTML = '<i class="fas fa-moon"></i>';
-                    // Update button style for light mode
                     themeBtn.classList.remove('text-white', 'bg-black/30', 'hover:bg-black/50', 'border-transparent');
                     themeBtn.classList.add('text-zinc-800', 'bg-white/40', 'hover:bg-white/60', 'border-zinc-200');
                     themeBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
                     document.body.classList.remove('text-white');
                 } else {
-                    root.classList.remove('light-theme');
-                    themeBtn.innerHTML = '<i class="fas fa-sun"></i>';
-                    // Update button style for dark mode
                     themeBtn.classList.add('text-white', 'bg-black/30', 'hover:bg-black/50', 'border-transparent');
                     themeBtn.classList.remove('text-zinc-800', 'bg-white/40', 'hover:bg-white/60', 'border-zinc-200');
                     themeBtn.style.boxShadow = '';
                     document.body.classList.add('text-white');
                 }
+
+                themeBtn.title = isOscMode ? 'Toggle Theme (Oscilloscope mode)' : 'Toggle Theme';
+                updateThemeColorMeta();
+
+                if (window.oscilloscopeFx) {
+                    window.oscilloscopeFx.setActive(isOscMode);
+                    window.oscilloscopeFx.refresh();
+                }
             }
 
-            // Initial call
+            function toggleOscMode() {
+                isOscMode = !isOscMode;
+                localStorage.setItem('oscilloscopeMode', isOscMode ? 'on' : 'off');
+                triggerScopeFlash();
+                updateThemeUI();
+            }
+
+            function handleSecretTap() {
+                secretTapCount += 1;
+                updateSecretProgress();
+
+                if (secretTapCount >= SECRET_TAPS_REQUIRED) {
+                    clearTimeout(secretResetTimer);
+                    secretTapCount = 0;
+                    updateSecretProgress();
+                    toggleOscMode();
+                    return true;
+                }
+
+                clearTimeout(secretResetTimer);
+                secretResetTimer = setTimeout(() => {
+                    secretTapCount = 0;
+                    updateSecretProgress();
+                }, SECRET_RESET_MS);
+
+                return false;
+            }
+
             updateThemeUI();
+            updateSecretProgress();
 
             themeBtn.addEventListener('click', (e) => {
-                e.stopPropagation(); // prevent ripple or loose focus
+                e.stopPropagation();
                 isLight = !isLight;
                 localStorage.setItem('theme', isLight ? 'light' : 'dark');
-                updateThemeUI();
+
+                const secretTriggered = handleSecretTap();
+                if (!secretTriggered) {
+                    updateThemeUI();
+                }
             });
         </script>
 
@@ -2166,17 +3087,22 @@
                     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                 }
 
+                function getOscScopeColor() {
+                    return getComputedStyle(document.documentElement).getPropertyValue('--scope-line').trim() || '#3dff5f';
+                }
+
                 const brandElements = document.querySelectorAll('.social-icon, [data-brand]');
                 brandElements.forEach(el => {
                     const brand = el.getAttribute('data-brand') || el.getAttribute('title');
                     if (brandColors[brand]) {
                         el.addEventListener('mouseenter', () => {
-                            const color = brandColors[brand];
+                            const inOscMode = document.documentElement.classList.contains('osc-theme');
+                            const color = inOscMode ? getOscScopeColor() : brandColors[brand];
                             // Update global color for particles
                             if (window.customCursorPos) window.customCursorPos.color = color;
 
                             // Special case for TikTok
-                            if (brand === 'TikTok') {
+                            if (brand === 'TikTok' && !inOscMode) {
                                 cursor.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; // Glassy black
                                 cursor.style.borderColor = 'rgba(255,255,255,0.4)'; // Subtle border
                                 cursor.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.5)';
