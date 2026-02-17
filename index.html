@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Lordskamp</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
@@ -651,23 +654,17 @@
             --social-grid-shift-y: 0px;
             --social-icon-font-size: calc(var(--grid-size) * 0.64);
             --social-icon-inner-size: calc(var(--social-icon-font-size) * 1.25);
-            transform: translate3d(var(--social-grid-shift-x), var(--social-grid-shift-y), 0);
-            opacity: 0;
-            pointer-events: none;
+            margin-top: max(0px, calc(1.5rem + var(--social-grid-shift-y)));
+            transform: translate3d(var(--social-grid-shift-x), 0, 0);
         }
 
         #wishlist-pill-row {
-            --wishlist-grid-shift-y: 0px;
-            transform: translate3d(0, var(--wishlist-grid-shift-y), 0);
-            margin-bottom: var(--wishlist-grid-shift-y);
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        #social-icons.grid-snapped,
-        #wishlist-pill-row.grid-snapped {
-            opacity: 1;
-            pointer-events: auto;
+            margin-left: auto;
+            margin-right: auto;
+            --wishlist-grid-shift-x: 0px;
+            --wishlist-grid-gap: var(--grid-size);
+            transform: translate3d(var(--wishlist-grid-shift-x), 0, 0);
+            margin-top: var(--wishlist-grid-gap);
         }
 
         .social-icon {
@@ -1188,6 +1185,37 @@
 <body class="">
     <script>
         (() => {
+            if ('scrollRestoration' in history) {
+                history.scrollRestoration = 'manual';
+            }
+
+            const scrollToTop = () => {
+                window.scrollTo(0, 0);
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
+            };
+
+            scrollToTop();
+            window.addEventListener('DOMContentLoaded', scrollToTop, { once: true });
+            window.addEventListener('load', scrollToTop, { once: true });
+            window.addEventListener('pageshow', scrollToTop);
+            window.addEventListener('beforeunload', scrollToTop);
+
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations()
+                    .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+                    .catch(() => { });
+            }
+
+            if ('caches' in window) {
+                caches.keys()
+                    .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+                    .catch(() => { });
+            }
+        })();
+    </script>
+    <script>
+        (() => {
             const supportsSVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100svh'));
             let rafId = 0;
 
@@ -1292,7 +1320,7 @@
                 </div>
                 <div id="wishlist-pill-row" class="flex justify-center">
                     <a id="wishlist-pill" href="https://rewish.io/YMQAAA/wishes" target="_blank"
-                        class="inline-flex items-center gap-2 px-4 py-1.5 mt-6 text-xs font-medium rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all duration-300 group"
+                        class="inline-flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all duration-300 group"
                         data-brand="Wishlist">
                         <i class="fas fa-gift text-violet-400 group-hover:text-violet-300 transition-colors"></i>
                         <span data-i18n="wishlist">Wishlist</span>
@@ -1834,7 +1862,6 @@
             themeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 isLight = !isLight;
-                localStorage.setItem('theme', isLight ? 'light' : 'dark');
                 updateThemeUI();
             });
         </script>
@@ -2172,68 +2199,143 @@
             (() => {
                 // Target profile image and all island blocks
                 const elements = document.querySelectorAll('#profileImg, .island:not(.no-parallax)');
+                if (!elements.length) return;
 
-                elements.forEach(el => {
-                    // We prioritize interaction: No pointer-events hack.
-                    // Instead, we handle the transition smoothly when tracking is lost.
+                const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
+                const LEAVE_TOLERANCE_PX = 14;
+                let activeTiltReset = null;
 
+                function isInsideRect(rect, x, y, tolerance = 0) {
+                    if (!rect) return false;
+                    return (
+                        x >= rect.left - tolerance &&
+                        x <= rect.right + tolerance &&
+                        y >= rect.top - tolerance &&
+                        y <= rect.bottom + tolerance
+                    );
+                }
+
+                elements.forEach((el) => {
                     let raf = 0;
                     let lastX = 0;
                     let lastY = 0;
                     let hovering = false;
+                    let baseRect = null;
+                    let trackingDocumentMove = false;
 
                     function update() {
                         raf = 0;
+                        if (!hovering || !baseRect) return;
+                        if (activeTiltReset !== resetTilt) return;
+
+                        const cx = baseRect.left + (baseRect.width / 2);
+                        const cy = baseRect.top + (baseRect.height / 2);
+                        const halfW = Math.max(baseRect.width / 2, 1);
+                        const halfH = Math.max(baseRect.height / 2, 1);
+
+                        // Calculate distance from center using non-transformed bounds.
+                        let dx = (lastX - cx) / halfW; // -1..1
+                        let dy = (lastY - cy) / halfH;
+
+                        // Clamp values to prevent extreme rotation.
+                        dx = Math.max(-1, Math.min(1, dx));
+                        dy = Math.max(-1, Math.min(1, dy));
+
+                        const rx = -dy * 9;
+                        const ry = dx * 9;
+                        el.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.02) translateY(-4px)`;
+                    }
+
+                    function stopTrackingDocumentMove() {
+                        if (!trackingDocumentMove) return;
+                        trackingDocumentMove = false;
+                        document.removeEventListener(moveEvent, onDocumentMove);
+                    }
+
+                    function resetTilt(options = {}) {
+                        const fast = !!options.fast;
+                        hovering = false;
+                        baseRect = null;
+                        stopTrackingDocumentMove();
+
+                        if (raf) {
+                            cancelAnimationFrame(raf);
+                            raf = 0;
+                        }
+
+                        // Smooth landing back to default state.
+                        el.style.transition = fast
+                            ? 'transform 0.18s ease-out'
+                            : 'transform 0.6s cubic-bezier(0.23, 1, 0.32, 1)';
+                        el.style.transform = '';
+                        el.style.zIndex = '';
+                        el.classList.remove('tilted');
+                        el.style.willChange = '';
+                        if (activeTiltReset === resetTilt) activeTiltReset = null;
+                    }
+
+                    function onDocumentMove(e) {
                         if (!hovering) return;
+                        if (activeTiltReset !== resetTilt) return;
+                        if (e.pointerType && e.pointerType !== 'mouse') return;
 
-                        const rect = el.getBoundingClientRect();
-                        const cx = rect.left + rect.width / 2;
-                        const cy = rect.top + rect.height / 2;
+                        lastX = e.clientX;
+                        lastY = e.clientY;
 
-                        // Calculate distance from center
-                        let dx = (lastX - cx) / (rect.width / 2); // -1..1
-                        let dy = (lastY - cy) / (rect.height / 2);
+                        // Exit only after cursor leaves a tolerance area around original bounds.
+                        if (!isInsideRect(baseRect, lastX, lastY, LEAVE_TOLERANCE_PX)) {
+                            resetTilt();
+                            return;
+                        }
 
-                        // Clamp values to prevent extreme rotation
-                        dx = Math.max(-1.05, Math.min(1.05, dx));
-                        dy = Math.max(-1.05, Math.min(1.05, dy));
-
-                        const rx = -dy * 12; // rotateX
-                        const ry = dx * 12; // rotateY
-
-                        el.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.03) translateY(-5px)`;
+                        if (!raf) raf = requestAnimationFrame(update);
                     }
 
                     el.addEventListener('pointerenter', (e) => {
                         if (e.pointerType && e.pointerType !== 'mouse') return;
+                        if (activeTiltReset && activeTiltReset !== resetTilt) {
+                            activeTiltReset({ fast: true });
+                        }
+                        activeTiltReset = resetTilt;
+
                         hovering = true;
-                        // Add a small transition delay to smooth out the initial "jump" 
-                        // and fast movements. 
-                        // 0.2s is enough to kill the jitter but keep it responsive.
-                        el.style.transition = 'transform 0.2s ease-out';
+                        baseRect = el.getBoundingClientRect();
+                        lastX = e.clientX;
+                        lastY = e.clientY;
+
+                        // Keep response smooth but stable.
+                        el.style.transition = 'transform 0.14s ease-out';
                         el.style.zIndex = '20';
                         el.classList.add('tilted');
                         el.style.willChange = 'transform';
+
+                        if (!trackingDocumentMove) {
+                            trackingDocumentMove = true;
+                            document.addEventListener(moveEvent, onDocumentMove, { passive: true });
+                        }
+
+                        if (!raf) raf = requestAnimationFrame(update);
                     }, { passive: true });
 
                     el.addEventListener('pointermove', (e) => {
                         if (!hovering) return;
+                        if (activeTiltReset !== resetTilt) return;
+                        if (e.pointerType && e.pointerType !== 'mouse') return;
+
                         lastX = e.clientX;
                         lastY = e.clientY;
                         if (!raf) raf = requestAnimationFrame(update);
                     }, { passive: true });
 
-                    // This triggers when leaving the element OR entering an iframe inside it
-                    el.addEventListener('pointerleave', () => {
-                        hovering = false;
-                        if (raf) { cancelAnimationFrame(raf); raf = 0; }
-                        // Add transition back for a smooth "landing"
-                        el.style.transition = 'transform 0.6s cubic-bezier(0.23, 1, 0.32, 1)';
-                        el.style.transform = '';
-                        el.style.zIndex = '';
-                        el.classList.remove('tilted');
-                        el.style.willChange = '';
+                    // Ignore false leaves caused by transformed hit-testing at sharp corners.
+                    el.addEventListener('pointerleave', (e) => {
+                        const exitX = typeof e.clientX === 'number' ? e.clientX : lastX;
+                        const exitY = typeof e.clientY === 'number' ? e.clientY : lastY;
+                        if (isInsideRect(baseRect, exitX, exitY, LEAVE_TOLERANCE_PX)) return;
+                        resetTilt();
                     }, { passive: true });
+
+                    el.addEventListener('pointercancel', resetTilt, { passive: true });
                 });
             })();
         </script>
@@ -2481,99 +2583,57 @@
                 const socialIcons = document.getElementById('social-icons');
                 const wishlistPillRow = document.getElementById('wishlist-pill-row');
                 const wishlistPill = document.getElementById('wishlist-pill');
-                if (!socialIcons && !wishlistPillRow) return;
+                if (!socialIcons) return;
 
-                let rafId = 0;
-                let lastVvWidth = window.visualViewport ? window.visualViewport.width : 0;
-                let lastVvHeight = window.visualViewport ? window.visualViewport.height : 0;
-                let initialSnapDone = false;
-
-                function getGridSize() {
-                    const raw = getComputedStyle(document.documentElement).getPropertyValue('--grid-size').trim();
-                    const parsed = parseFloat(raw);
-                    return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
-                }
-
-                function getShiftVar(element, varName) {
-                    if (!element) return 0;
-                    const parsed = parseFloat(getComputedStyle(element).getPropertyValue(varName));
-                    return Number.isFinite(parsed) ? parsed : 0;
-                }
-
-                function getRootNumber(varName, fallbackValue) {
+                function readRootNumber(varName, fallbackValue) {
                     const parsed = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(varName));
                     return Number.isFinite(parsed) ? parsed : fallbackValue;
                 }
 
-                function snapElementsToGrid() {
-                    rafId = 0;
+                function getGridSize() {
+                    return readRootNumber('--grid-size', 50);
+                }
 
+                function snapSocialIconsToGrid() {
                     const gridSize = getGridSize();
-                    // Grid overlay is inside a fixed container shifted by -bg-overscan.
-                    // Horizontal grid lines are drawn at 50% of each grid tile, so
-                    // row centers are at (gridSize - bgOverscan) + n * gridSize in viewport space.
-                    const bgOverscan = getRootNumber('--bg-overscan', 0);
+                    const bgOverscan = readRootNumber('--bg-overscan', 0);
+
+                    // Measure from the neutral state so offsets do not accumulate.
+                    socialIcons.style.setProperty('--social-grid-shift-x', '0px');
+                    socialIcons.style.setProperty('--social-grid-shift-y', '0px');
+
+                    const rect = socialIcons.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) return;
+
+                    const currentFirstCellCenterX = rect.left + (gridSize / 2);
+                    const currentRowCenterY = rect.top + (rect.height / 2);
+
+                    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+                    const xPhase = (viewportWidth / 2) + (gridSize / 2);
                     const yPhase = gridSize - bgOverscan;
-                    let targetSocialCenterY = null;
 
-                    if (socialIcons) {
-                        const rect = socialIcons.getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0) {
-                            const currentFirstCellCenterX = rect.left + (gridSize / 2);
-                            const currentRowCenterY = rect.top + (rect.height / 2);
+                    const targetFirstCellCenterX = xPhase + (Math.round((currentFirstCellCenterX - xPhase) / gridSize) * gridSize);
+                    const targetRowCenterY = yPhase + (Math.round((currentRowCenterY - yPhase) / gridSize) * gridSize);
 
-                            // On desktop, innerWidth includes scrollbar width and can shift the visual center.
-                            const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-                            const viewportCenterX = viewportWidth / 2;
-                            const xPhase = viewportCenterX + (gridSize / 2);
-                            const targetFirstCellCenterX = xPhase + (Math.round((currentFirstCellCenterX - xPhase) / gridSize) * gridSize);
-                            const targetRowCenterY = yPhase + (Math.round((currentRowCenterY - yPhase) / gridSize) * gridSize);
+                    const shiftX = targetFirstCellCenterX - currentFirstCellCenterX;
+                    const shiftY = targetRowCenterY - currentRowCenterY;
 
-                            const deltaX = targetFirstCellCenterX - currentFirstCellCenterX;
-                            const deltaY = targetRowCenterY - currentRowCenterY;
+                    socialIcons.style.setProperty('--social-grid-shift-x', `${shiftX.toFixed(2)}px`);
+                    socialIcons.style.setProperty('--social-grid-shift-y', `${shiftY.toFixed(2)}px`);
 
-                            const nextShiftX = getShiftVar(socialIcons, '--social-grid-shift-x') + deltaX;
-                            const nextShiftY = getShiftVar(socialIcons, '--social-grid-shift-y') + deltaY;
-
-                            socialIcons.style.setProperty('--social-grid-shift-x', `${nextShiftX.toFixed(2)}px`);
-                            socialIcons.style.setProperty('--social-grid-shift-y', `${nextShiftY.toFixed(2)}px`);
-                            targetSocialCenterY = targetRowCenterY;
+                    if (wishlistPillRow && wishlistPill) {
+                        wishlistPillRow.style.setProperty('--wishlist-grid-shift-x', `${shiftX.toFixed(2)}px`);
+                        const socialHeight = rect.height;
+                        const wishlistHeight = wishlistPill.getBoundingClientRect().height;
+                        if (wishlistHeight > 0) {
+                            const centerGap = gridSize - ((socialHeight + wishlistHeight) / 2);
+                            wishlistPillRow.style.setProperty('--wishlist-grid-gap', `${centerGap.toFixed(2)}px`);
                         }
-                    }
-
-                    if (wishlistPill && wishlistPillRow) {
-                        const wishlistRect = wishlistPill.getBoundingClientRect();
-                        if (wishlistRect.width > 0 && wishlistRect.height > 0) {
-                            let socialCenterYForSpacing = targetSocialCenterY;
-                            if (!Number.isFinite(socialCenterYForSpacing) && socialIcons) {
-                                const socialRectFallback = socialIcons.getBoundingClientRect();
-                                if (socialRectFallback.width > 0 && socialRectFallback.height > 0) {
-                                    socialCenterYForSpacing = socialRectFallback.top + (socialRectFallback.height / 2);
-                                }
-                            }
-
-                            if (Number.isFinite(socialCenterYForSpacing)) {
-                                const currentWishlistCenterY = wishlistRect.top + (wishlistRect.height / 2);
-                                const targetWishlistCenterY = socialCenterYForSpacing + gridSize;
-                                const deltaWishlistY = targetWishlistCenterY - currentWishlistCenterY;
-                                if (Math.abs(deltaWishlistY) > 0.01) {
-                                    const nextWishlistShiftY = getShiftVar(wishlistPillRow, '--wishlist-grid-shift-y') + deltaWishlistY;
-                                    wishlistPillRow.style.setProperty('--wishlist-grid-shift-y', `${nextWishlistShiftY.toFixed(2)}px`);
-                                }
-                            }
-                        }
-                    }
-
-                    if (!initialSnapDone) {
-                        if (socialIcons) socialIcons.classList.add('grid-snapped');
-                        if (wishlistPillRow) wishlistPillRow.classList.add('grid-snapped');
-                        initialSnapDone = true;
                     }
                 }
 
                 function scheduleSnap() {
-                    if (rafId) return;
-                    rafId = requestAnimationFrame(snapElementsToGrid);
+                    requestAnimationFrame(() => requestAnimationFrame(snapSocialIconsToGrid));
                 }
 
                 if (document.fonts && document.fonts.ready) {
@@ -2581,33 +2641,7 @@
                 }
 
                 window.addEventListener('load', scheduleSnap, { passive: true });
-                window.addEventListener('resize', scheduleSnap, { passive: true });
                 window.addEventListener('orientationchange', scheduleSnap, { passive: true });
-
-                if (window.visualViewport) {
-                    window.visualViewport.addEventListener('resize', () => {
-                        const vv = window.visualViewport;
-                        if (!vv) return;
-
-                        const dw = Math.abs(vv.width - lastVvWidth);
-                        const dh = Math.abs(vv.height - lastVvHeight);
-                        lastVvWidth = vv.width;
-                        lastVvHeight = vv.height;
-
-                        // Ignore tiny height-only viewport changes from mobile browser UI animations.
-                        if (dw < 1 && dh > 0 && dh < getGridSize()) return;
-                        scheduleSnap();
-                    }, { passive: true });
-                }
-
-                if (window.ResizeObserver) {
-                    const observer = new ResizeObserver(scheduleSnap);
-                    if (socialIcons) observer.observe(socialIcons);
-                    if (wishlistPillRow) observer.observe(wishlistPillRow);
-                    if (wishlistPill) observer.observe(wishlistPill);
-                    const profileSection = (socialIcons || wishlistPillRow)?.closest('.text-center');
-                    if (profileSection) observer.observe(profileSection);
-                }
 
                 const langBtn = document.getElementById('langBtn');
                 if (langBtn) {
@@ -2616,12 +2650,7 @@
                     });
                 }
 
-                scheduleSnap();
-                setTimeout(() => {
-                    if (initialSnapDone) return;
-                    if (socialIcons) socialIcons.classList.add('grid-snapped');
-                    if (wishlistPillRow) wishlistPillRow.classList.add('grid-snapped');
-                }, 1200);
+                setTimeout(scheduleSnap, 350);
             })();
         </script>
         <!-- Social Stats Tracker -->
