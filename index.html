@@ -662,7 +662,7 @@
             margin-left: auto;
             margin-right: auto;
             --wishlist-grid-shift-x: 0px;
-            --wishlist-grid-gap: var(--grid-size);
+            --wishlist-grid-gap: max(0px, calc((var(--grid-size) - 1.875rem) / 2));
             transform: translate3d(var(--wishlist-grid-shift-x), 0, 0);
             margin-top: var(--wishlist-grid-gap);
         }
@@ -2033,15 +2033,12 @@
                 el.classList.add('animate-blur-up');
             });
 
-            /* ==== 3-D Tilt Cards (desktop only, no tap tilt on mobile) ==== */
-            const canUsePointerTilt = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-            if (canUsePointerTilt) {
-                VanillaTilt.init($$('.link-item'), {
-                    max: 5,
-                    speed: 600,
-                    glare: false
-                });
-            }
+            /* ==== 3-D Tilt Cards (glare disabled for perf) ==== */
+            VanillaTilt.init($$('.link-item'), {
+                max: 5,
+                speed: 600,
+                glare: false
+            });
 
             /* ==== Ripple Click ==== */
             $$('.link-item').forEach((btn) => {
@@ -2340,200 +2337,6 @@
 
                     el.addEventListener('pointercancel', resetTilt, { passive: true });
                 });
-            })();
-        </script>
-        <script>
-            (() => {
-                const isMobilePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-                const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                const orientationApi = window.DeviceOrientationEvent;
-
-                if (!isMobilePointer || prefersReducedMotion || !orientationApi) return;
-
-                const tiltElements = [...document.querySelectorAll('#profileImg, .island:not(.no-parallax)')];
-                const spheres = [...document.querySelectorAll('.gradient-background .gradient-sphere')];
-
-                if (!tiltElements.length && !spheres.length) return;
-
-                const supportsTranslateProp = !!(window.CSS && CSS.supports && CSS.supports('translate: 1px 1px'));
-                const sphereDepth = [1.15, -1.05, 0.75, -0.6];
-                const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-                function angleDelta(value, base) {
-                    let delta = value - base;
-                    while (delta > 180) delta -= 360;
-                    while (delta < -180) delta += 360;
-                    return delta;
-                }
-
-                const motion = {
-                    x: 0,
-                    y: 0,
-                    vx: 0,
-                    vy: 0,
-                    targetX: 0,
-                    targetY: 0,
-                    raf: 0
-                };
-
-                let baseGamma = null;
-                let baseBeta = null;
-                let gyroscopeEnabled = false;
-
-                function applyMotion(x, y) {
-                    const bgX = x * 18;
-                    const bgY = y * 14;
-                    const blockBaseRX = -y * 8;
-                    const blockBaseRY = x * 8;
-                    const motionAmount = Math.min(1, Math.hypot(x, y));
-
-                    tiltElements.forEach((el) => {
-                        const isProfile = el.id === 'profileImg';
-                        const depth = isProfile ? 1.2 : 1;
-                        const rx = (blockBaseRX * depth).toFixed(2);
-                        const ry = (blockBaseRY * depth).toFixed(2);
-                        const scaleValue = 1 + (isProfile ? 0.02 : 0.012) * motionAmount;
-                        const liftValue = (isProfile ? -3 : -2) * motionAmount;
-
-                        el.style.transition = 'transform 120ms linear';
-                        el.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${scaleValue.toFixed(4)}) translateY(${liftValue.toFixed(2)}px)`;
-                        el.style.willChange = 'transform';
-                        if (isProfile && motionAmount > 0.01) el.classList.add('tilted');
-                        if (isProfile && motionAmount <= 0.01) el.classList.remove('tilted');
-                    });
-
-                    if (supportsTranslateProp) {
-                        spheres.forEach((sphere, index) => {
-                            const depth = sphereDepth[index] ?? (index % 2 === 0 ? 0.7 : -0.7);
-                            const sx = (bgX * depth * 0.95).toFixed(2);
-                            const sy = (bgY * depth * 0.95).toFixed(2);
-                            sphere.style.translate = `${sx}px ${sy}px`;
-                        });
-                    }
-                }
-
-                function clearMotionStyles() {
-                    tiltElements.forEach((el) => {
-                        el.style.transform = '';
-                        el.style.transition = '';
-                        el.style.willChange = '';
-                        if (el.id === 'profileImg') el.classList.remove('tilted');
-                    });
-                    if (supportsTranslateProp) {
-                        spheres.forEach((sphere) => {
-                            sphere.style.translate = '';
-                        });
-                    }
-                }
-
-                function tick() {
-                    motion.raf = 0;
-                    const stiffness = 0.09;
-                    const damping = 0.82;
-
-                    motion.vx = (motion.vx + (motion.targetX - motion.x) * stiffness) * damping;
-                    motion.vy = (motion.vy + (motion.targetY - motion.y) * stiffness) * damping;
-                    motion.x += motion.vx;
-                    motion.y += motion.vy;
-
-                    applyMotion(motion.x, motion.y);
-
-                    const stillMoving =
-                        Math.abs(motion.targetX - motion.x) > 0.001 ||
-                        Math.abs(motion.targetY - motion.y) > 0.001 ||
-                        Math.abs(motion.vx) > 0.001 ||
-                        Math.abs(motion.vy) > 0.001;
-
-                    if (stillMoving) motion.raf = requestAnimationFrame(tick);
-                }
-
-                function scheduleTick() {
-                    if (!motion.raf) motion.raf = requestAnimationFrame(tick);
-                }
-
-                function resetMotion(immediate = false) {
-                    motion.targetX = 0;
-                    motion.targetY = 0;
-                    baseGamma = null;
-                    baseBeta = null;
-
-                    if (immediate) {
-                        if (motion.raf) {
-                            cancelAnimationFrame(motion.raf);
-                            motion.raf = 0;
-                        }
-                        motion.x = 0;
-                        motion.y = 0;
-                        motion.vx = 0;
-                        motion.vy = 0;
-                        applyMotion(0, 0);
-                        return;
-                    }
-
-                    scheduleTick();
-                }
-
-                function onOrientation(event) {
-                    if (typeof event.gamma !== 'number' || typeof event.beta !== 'number') return;
-                    if (!gyroscopeEnabled) return;
-
-                    if (baseGamma === null || baseBeta === null) {
-                        baseGamma = event.gamma;
-                        baseBeta = event.beta;
-                    }
-
-                    const gammaDiff = angleDelta(event.gamma, baseGamma);
-                    const betaDiff = angleDelta(event.beta, baseBeta);
-
-                    motion.targetX = clamp(gammaDiff / 22, -1, 1);
-                    motion.targetY = clamp(betaDiff / 26, -1, 1);
-                    scheduleTick();
-                }
-
-                function startGyroscopeTracking() {
-                    if (gyroscopeEnabled) return;
-                    gyroscopeEnabled = true;
-                    window.addEventListener('deviceorientation', onOrientation, { passive: true });
-                    window.addEventListener('orientationchange', () => resetMotion(true), { passive: true });
-                }
-
-                function stopGyroscopeTracking() {
-                    gyroscopeEnabled = false;
-                    window.removeEventListener('deviceorientation', onOrientation);
-                    resetMotion(true);
-                    clearMotionStyles();
-                }
-
-                document.addEventListener('visibilitychange', () => {
-                    if (document.hidden) resetMotion(true);
-                });
-
-                if (typeof orientationApi.requestPermission !== 'function') {
-                    startGyroscopeTracking();
-                    return;
-                }
-
-                let permissionRequested = false;
-                async function requestGyroscopePermission() {
-                    if (permissionRequested) return;
-                    permissionRequested = true;
-
-                    document.removeEventListener('pointerup', requestGyroscopePermission);
-                    document.removeEventListener('touchend', requestGyroscopePermission);
-                    document.removeEventListener('click', requestGyroscopePermission);
-
-                    try {
-                        const status = await orientationApi.requestPermission();
-                        if (status === 'granted') startGyroscopeTracking();
-                        else stopGyroscopeTracking();
-                    } catch (_) {
-                        stopGyroscopeTracking();
-                    }
-                }
-
-                document.addEventListener('pointerup', requestGyroscopePermission, { passive: true });
-                document.addEventListener('touchend', requestGyroscopePermission, { passive: true });
-                document.addEventListener('click', requestGyroscopePermission, { passive: true });
             })();
         </script>
 
@@ -2847,6 +2650,7 @@
                     });
                 }
 
+                snapSocialIconsToGrid();
                 setTimeout(scheduleSnap, 350);
             })();
         </script>
