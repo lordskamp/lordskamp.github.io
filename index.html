@@ -94,21 +94,6 @@
             }
         }
 
-        @supports (-webkit-touch-callout: none) {
-            :root.osc-theme .oscilloscope-layer {
-                /* iOS Safari clips fixed+transformed layers during toolbar animation on scroll */
-                animation: none !important;
-                transform: none !important;
-                inset: calc(-1 * var(--bg-overscan)) 0 calc(-1 * var(--bg-overscan)) 0 !important;
-                border-radius: 0 !important;
-                overflow: visible !important;
-            }
-
-            :root.osc-theme .scope-curvature {
-                display: none !important;
-            }
-        }
-
         @supports (height: 100svh) {
             :root {
                 --app-height: 100svh;
@@ -1386,22 +1371,23 @@
 
         .oscilloscope-layer {
             position: fixed;
-            inset: 0;
+            top: calc(-1 * var(--bg-overscan));
+            left: 0;
+            width: 100vw;
+            height: calc(var(--bg-height) + (var(--bg-overscan) * 2));
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
             z-index: 3;
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.7s ease, transform 0.7s ease;
-            transform: scale(1);
+            transition: opacity 0.7s ease;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
 
         :root.osc-theme .oscilloscope-layer {
             opacity: 1;
             mix-blend-mode: normal;
-            border-radius: clamp(12px, 2.8vw, 28px);
-            overflow: hidden;
-            transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004);
-            transform-origin: center center;
-            animation: scope-jitter 9s steps(1, end) infinite;
         }
 
         :root.osc-theme.light-theme .oscilloscope-layer {
@@ -1446,31 +1432,12 @@
 
         .scope-curvature {
             border: 1px solid var(--scope-grid-major);
-            border-radius: clamp(12px, 2.8vw, 28px);
-            transform: scale(1.016, 1.002);
-            transform-origin: center center;
+            border-radius: 0;
+            transform: none;
         }
 
         :root.osc-theme .scope-curvature {
             opacity: 1;
-        }
-
-        @keyframes scope-jitter {
-            0% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(0, 0, 0);
-            }
-
-            3% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(-0.6px, 0.2px, 0);
-            }
-
-            4% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(0.5px, -0.2px, 0);
-            }
-
-            100% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(0, 0, 0);
-            }
         }
 
         .scope-readout {
@@ -1761,16 +1728,6 @@
 
         @media (max-width: 768px) {
             /* :root.osc-theme .grid-overlay handled by --grid-size */
-
-
-            :root.osc-theme .oscilloscope-layer {
-                border-radius: 12px;
-                transform: perspective(900px) rotateX(0.95deg) scale(1.01, 1.003);
-            }
-
-            :root.osc-theme .scope-curvature {
-                border-radius: 12px;
-            }
 
             .scope-readout {
                 top: calc(var(--safe-top) + 0.6rem);
