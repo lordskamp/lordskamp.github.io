@@ -41,6 +41,7 @@
             --safe-left: env(safe-area-inset-left, 0px);
 
             --grid-size: 50px;
+            --bg-bleed-bottom: 18px;
 
             /* New variables for dynamic theming */
             --glass-hover: rgba(55, 65, 81, 0.6);
@@ -162,15 +163,19 @@
         .gradient-background {
             position: fixed;
             top: 0;
+            right: 0;
+            bottom: calc(-1 * var(--bg-bleed-bottom));
             left: 0;
-            width: 100%;
-            height: calc(var(--bg-height) + 2px);
+            width: auto;
+            height: auto;
             min-height: 100vh;
             min-height: -webkit-fill-available;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
             background-color: var(--bg);
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
 
         .gradient-sphere {
@@ -453,26 +458,34 @@
         .particles-container {
             position: fixed;
             top: 0;
+            right: 0;
+            bottom: calc(-1 * var(--bg-bleed-bottom));
             left: 0;
-            width: 100vw;
-            height: calc(var(--bg-height) + 2px);
+            width: auto;
+            height: auto;
             min-height: 100vh;
             min-height: -webkit-fill-available;
             z-index: 5;
             pointer-events: none;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
 
         #tsparticles {
             position: fixed;
             top: 0;
+            right: 0;
+            bottom: calc(-1 * var(--bg-bleed-bottom));
             left: 0;
-            width: 100vw;
-            height: calc(var(--bg-height) + 2px);
+            width: auto;
+            height: auto;
             min-height: 100vh;
             min-height: -webkit-fill-available;
             z-index: 2;
             pointer-events: none;
             mix-blend-mode: overlay;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
 
         .particle {
@@ -1755,22 +1768,15 @@
 <body class="">
     <script>
         (() => {
-            const supportsDVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100dvh'));
-            if (supportsDVH) return;
+            const supportsSVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100svh'));
             let rafId = 0;
 
             const setHeights = () => {
                 rafId = 0;
-                const vv = window.visualViewport || null;
-                const visualHeight = vv ? vv.height : window.innerHeight;
-                const viewportOffsetTop = vv ? vv.offsetTop : 0;
-                const innerHeight = window.innerHeight || visualHeight;
-                // iOS Safari can shift the visual viewport while scrolling (URL bar collapse/expand).
-                // Include offsetTop to avoid bottom clipping on fixed full-screen layers.
-                const bgHeight = Math.ceil(Math.max(innerHeight, visualHeight + viewportOffsetTop)) + 2;
-
-                document.documentElement.style.setProperty('--bg-height', `${bgHeight}px`);
-                document.documentElement.style.setProperty('--app-height', `${Math.ceil(visualHeight)}px`);
+                const visualHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                if (!supportsSVH) {
+                    document.documentElement.style.setProperty('--app-height', `${Math.ceil(visualHeight)}px`);
+                }
             };
 
             const scheduleHeights = () => {
@@ -1780,10 +1786,8 @@
 
             setHeights();
             window.addEventListener('resize', scheduleHeights, { passive: true });
-            window.addEventListener('scroll', scheduleHeights, { passive: true });
             if (window.visualViewport) {
                 window.visualViewport.addEventListener('resize', scheduleHeights, { passive: true });
-                window.visualViewport.addEventListener('scroll', scheduleHeights, { passive: true });
             }
             window.addEventListener('orientationchange', scheduleHeights, { passive: true });
         })();
