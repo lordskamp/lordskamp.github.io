@@ -2351,13 +2351,9 @@
                 if (!isMobilePointer || prefersReducedMotion || !orientationApi) return;
 
                 const tiltElements = [...document.querySelectorAll('#profileImg, .island:not(.no-parallax)')];
-                const bgLayers = [
-                    document.querySelector('.gradient-background'),
-                    document.querySelector('#splash-screen .splash-background') || document.querySelector('.splash-background')
-                ].filter(Boolean);
                 const spheres = [...document.querySelectorAll('.gradient-background .gradient-sphere')];
 
-                if (!tiltElements.length && !bgLayers.length && !spheres.length) return;
+                if (!tiltElements.length && !spheres.length) return;
 
                 const supportsTranslateProp = !!(window.CSS && CSS.supports && CSS.supports('translate: 1px 1px'));
                 const sphereDepth = [1.15, -1.05, 0.75, -0.6];
@@ -2406,10 +2402,6 @@
                         if (isProfile && motionAmount <= 0.01) el.classList.remove('tilted');
                     });
 
-                    bgLayers.forEach((layer) => {
-                        layer.style.transform = `translate3d(${bgX.toFixed(2)}px, ${bgY.toFixed(2)}px, 0)`;
-                    });
-
                     if (supportsTranslateProp) {
                         spheres.forEach((sphere, index) => {
                             const depth = sphereDepth[index] ?? (index % 2 === 0 ? 0.7 : -0.7);
@@ -2426,9 +2418,6 @@
                         el.style.transition = '';
                         el.style.willChange = '';
                         if (el.id === 'profileImg') el.classList.remove('tilted');
-                    });
-                    bgLayers.forEach((layer) => {
-                        layer.style.transform = '';
                     });
                     if (supportsTranslateProp) {
                         spheres.forEach((sphere) => {
