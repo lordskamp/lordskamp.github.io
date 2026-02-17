@@ -41,7 +41,7 @@
             --safe-left: env(safe-area-inset-left, 0px);
 
             --grid-size: 50px;
-            --bg-bleed-bottom: 18px;
+            --bg-overscan: 64px;
 
             /* New variables for dynamic theming */
             --glass-hover: rgba(55, 65, 81, 0.6);
@@ -85,6 +85,13 @@
             /* Hover Shadows Light */
             --island-shadow-hover: 0 18px 48px rgba(0, 0, 0, 0.08), 0 0 30px rgba(255, 255, 255, 0.6) inset;
             --award-shadow-hover: 0 15px 30px rgba(0, 0, 0, 0.08), inset 0 0 20px rgba(255, 255, 255, 0.8);
+        }
+
+        /* iOS Safari: keep larger fixed-layer overscan to avoid bottom clipping while toolbars animate */
+        @supports (-webkit-touch-callout: none) {
+            :root {
+                --bg-overscan: 120px;
+            }
         }
 
         @supports (height: 100svh) {
@@ -162,12 +169,10 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            top: 0;
-            right: 0;
-            bottom: calc(-1 * var(--bg-bleed-bottom));
+            top: calc(-1 * var(--bg-overscan));
             left: 0;
-            width: auto;
-            height: auto;
+            width: 100vw;
+            height: calc(var(--bg-height) + (var(--bg-overscan) * 2));
             min-height: 100vh;
             min-height: -webkit-fill-available;
             z-index: 1;
@@ -457,12 +462,10 @@
 
         .particles-container {
             position: fixed;
-            top: 0;
-            right: 0;
-            bottom: calc(-1 * var(--bg-bleed-bottom));
+            top: calc(-1 * var(--bg-overscan));
             left: 0;
-            width: auto;
-            height: auto;
+            width: 100vw;
+            height: calc(var(--bg-height) + (var(--bg-overscan) * 2));
             min-height: 100vh;
             min-height: -webkit-fill-available;
             z-index: 5;
@@ -473,12 +476,10 @@
 
         #tsparticles {
             position: fixed;
-            top: 0;
-            right: 0;
-            bottom: calc(-1 * var(--bg-bleed-bottom));
+            top: calc(-1 * var(--bg-overscan));
             left: 0;
-            width: auto;
-            height: auto;
+            width: 100vw;
+            height: calc(var(--bg-height) + (var(--bg-overscan) * 2));
             min-height: 100vh;
             min-height: -webkit-fill-available;
             z-index: 2;
