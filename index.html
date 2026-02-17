@@ -98,6 +98,13 @@
             }
         }
 
+        @supports (height: 100dvh) {
+            :root {
+                --app-height: 100dvh;
+                --bg-height: 100dvh;
+            }
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -109,6 +116,7 @@
             min-height: var(--app-height);
             background: var(--page-bg);
             background-color: var(--bg);
+            overscroll-behavior-y: none;
         }
 
         body {
@@ -125,6 +133,7 @@
             display: flex;
             flex-direction: column;
             transition: color 0.3s ease, background-color 0.3s ease;
+            overscroll-behavior-y: none;
         }
 
         .content-wrapper {
@@ -153,18 +162,14 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: var(--bg-height);
-            min-height: 100vh;
-            min-height: -webkit-fill-available;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
             background-color: var(--bg);
             contain: layout style;
-            content-visibility: auto;
         }
 
         .gradient-sphere {
@@ -446,12 +451,9 @@
 
         .particles-container {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: var(--bg-height);
-            min-height: 100vh;
-            min-height: -webkit-fill-available;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             z-index: 5;
             pointer-events: none;
             contain: layout paint;
@@ -459,12 +461,9 @@
 
         #tsparticles {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: var(--bg-height);
-            min-height: 100vh;
-            min-height: -webkit-fill-available;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             z-index: 2;
             pointer-events: none;
             mix-blend-mode: overlay;
@@ -1750,17 +1749,14 @@
 <body class="">
     <script>
         (() => {
-            const supportsSVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100svh'));
+            const supportsDVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100dvh'));
 
             const setHeights = () => {
                 const visualHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-                const screenHeight = window.screen && window.screen.height ? window.screen.height : visualHeight;
-                const bgHeight = Math.max(visualHeight, screenHeight);
-
-                if (!supportsSVH) {
+                if (!supportsDVH) {
                     document.documentElement.style.setProperty('--app-height', `${visualHeight}px`);
+                    document.documentElement.style.setProperty('--bg-height', `${visualHeight}px`);
                 }
-                document.documentElement.style.setProperty('--bg-height', `${bgHeight}px`);
             };
 
             setHeights();
@@ -1768,6 +1764,7 @@
             if (window.visualViewport) {
                 window.visualViewport.addEventListener('resize', setHeights, { passive: true });
             }
+            window.addEventListener('orientationchange', setHeights, { passive: true });
         })();
     </script>
     <!-- Background Animation -->
@@ -3390,7 +3387,9 @@
                     const currentFirstCellCenterX = rect.left + pageX + (gridSize / 2);
                     const currentRowCenterY = rect.top + pageY + (rect.height / 2);
 
-                    const viewportCenterX = pageX + (window.innerWidth / 2);
+                    // On desktop, innerWidth includes scrollbar width and can shift the visual center.
+                    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+                    const viewportCenterX = pageX + (viewportWidth / 2);
                     const xPhase = viewportCenterX + (gridSize / 2);
                     const targetFirstCellCenterX = xPhase + (Math.round((currentFirstCellCenterX - xPhase) / gridSize) * gridSize);
 
