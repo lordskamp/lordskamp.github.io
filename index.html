@@ -649,7 +649,25 @@
             margin-right: auto;
             --social-grid-shift-x: 0px;
             --social-grid-shift-y: 0px;
+            --social-icon-font-size: calc(var(--grid-size) * 0.64);
+            --social-icon-inner-size: calc(var(--social-icon-font-size) * 1.25);
             transform: translate3d(var(--social-grid-shift-x), var(--social-grid-shift-y), 0);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #wishlist-pill-row {
+            --wishlist-grid-shift-y: 0px;
+            transform: translate3d(0, var(--wishlist-grid-shift-y), 0);
+            margin-bottom: var(--wishlist-grid-shift-y);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #social-icons.grid-snapped,
+        #wishlist-pill-row.grid-snapped {
+            opacity: 1;
+            pointer-events: auto;
         }
 
         .social-icon {
@@ -658,7 +676,7 @@
             justify-content: center;
             width: var(--grid-size);
             height: var(--grid-size);
-            font-size: calc(var(--grid-size) * 0.64);
+            font-size: var(--social-icon-font-size);
             line-height: 1;
             color: var(--text-color);
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -676,8 +694,8 @@
             justify-content: center;
             line-height: 1;
             margin: 0;
-            width: 1.25em;
-            height: 1.25em;
+            width: var(--social-icon-inner-size);
+            height: var(--social-icon-inner-size);
         }
 
         .social-icon i {
@@ -756,7 +774,7 @@
             color: #d8b4fe;
             border-color: rgba(167, 139, 250, 0.4) !important;
             box-shadow: 0 0 20px rgba(167, 139, 250, 0.3);
-            transform: translateY(-2px) scale(1.05);
+            transform: scale(1.05);
         }
 
 
@@ -1272,9 +1290,9 @@
                         <i class="fa-solid fa-fire"></i>
                     </a>
                 </div>
-                <div class="flex justify-center">
-                    <a href="https://rewish.io/YMQAAA/wishes" target="_blank"
-                        class="inline-flex items-center gap-2 px-4 py-1.5 mt-4 text-xs font-medium rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all duration-300 group"
+                <div id="wishlist-pill-row" class="flex justify-center">
+                    <a id="wishlist-pill" href="https://rewish.io/YMQAAA/wishes" target="_blank"
+                        class="inline-flex items-center gap-2 px-4 py-1.5 mt-6 text-xs font-medium rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all duration-300 group"
                         data-brand="Wishlist">
                         <i class="fas fa-gift text-violet-400 group-hover:text-violet-300 transition-colors"></i>
                         <span data-i18n="wishlist">Wishlist</span>
@@ -2461,9 +2479,14 @@
         <script>
             (() => {
                 const socialIcons = document.getElementById('social-icons');
-                if (!socialIcons) return;
+                const wishlistPillRow = document.getElementById('wishlist-pill-row');
+                const wishlistPill = document.getElementById('wishlist-pill');
+                if (!socialIcons && !wishlistPillRow) return;
 
                 let rafId = 0;
+                let lastVvWidth = window.visualViewport ? window.visualViewport.width : 0;
+                let lastVvHeight = window.visualViewport ? window.visualViewport.height : 0;
+                let initialSnapDone = false;
 
                 function getGridSize() {
                     const raw = getComputedStyle(document.documentElement).getPropertyValue('--grid-size').trim();
@@ -2471,46 +2494,86 @@
                     return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
                 }
 
-                function getShiftVar(varName) {
-                    const parsed = parseFloat(getComputedStyle(socialIcons).getPropertyValue(varName));
+                function getShiftVar(element, varName) {
+                    if (!element) return 0;
+                    const parsed = parseFloat(getComputedStyle(element).getPropertyValue(varName));
                     return Number.isFinite(parsed) ? parsed : 0;
                 }
 
-                function snapSocialIconsToGrid() {
+                function getRootNumber(varName, fallbackValue) {
+                    const parsed = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(varName));
+                    return Number.isFinite(parsed) ? parsed : fallbackValue;
+                }
+
+                function snapElementsToGrid() {
                     rafId = 0;
 
                     const gridSize = getGridSize();
-                    const rect = socialIcons.getBoundingClientRect();
-                    if (rect.width <= 0 || rect.height <= 0) return;
+                    // Grid overlay is inside a fixed container shifted by -bg-overscan.
+                    // Horizontal grid lines are drawn at 50% of each grid tile, so
+                    // row centers are at (gridSize - bgOverscan) + n * gridSize in viewport space.
+                    const bgOverscan = getRootNumber('--bg-overscan', 0);
+                    const yPhase = gridSize - bgOverscan;
+                    let targetSocialCenterY = null;
 
-                    const pageX = window.scrollX || window.pageXOffset || 0;
-                    const pageY = window.scrollY || window.pageYOffset || 0;
+                    if (socialIcons) {
+                        const rect = socialIcons.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            const currentFirstCellCenterX = rect.left + (gridSize / 2);
+                            const currentRowCenterY = rect.top + (rect.height / 2);
 
-                    const currentFirstCellCenterX = rect.left + pageX + (gridSize / 2);
-                    const currentRowCenterY = rect.top + pageY + (rect.height / 2);
+                            // On desktop, innerWidth includes scrollbar width and can shift the visual center.
+                            const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+                            const viewportCenterX = viewportWidth / 2;
+                            const xPhase = viewportCenterX + (gridSize / 2);
+                            const targetFirstCellCenterX = xPhase + (Math.round((currentFirstCellCenterX - xPhase) / gridSize) * gridSize);
+                            const targetRowCenterY = yPhase + (Math.round((currentRowCenterY - yPhase) / gridSize) * gridSize);
 
-                    // On desktop, innerWidth includes scrollbar width and can shift the visual center.
-                    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-                    const viewportCenterX = pageX + (viewportWidth / 2);
-                    const xPhase = viewportCenterX + (gridSize / 2);
-                    const targetFirstCellCenterX = xPhase + (Math.round((currentFirstCellCenterX - xPhase) / gridSize) * gridSize);
+                            const deltaX = targetFirstCellCenterX - currentFirstCellCenterX;
+                            const deltaY = targetRowCenterY - currentRowCenterY;
 
-                    const yPhase = 0;
-                    const targetRowCenterY = yPhase + (Math.round((currentRowCenterY - yPhase) / gridSize) * gridSize);
+                            const nextShiftX = getShiftVar(socialIcons, '--social-grid-shift-x') + deltaX;
+                            const nextShiftY = getShiftVar(socialIcons, '--social-grid-shift-y') + deltaY;
 
-                    const deltaX = targetFirstCellCenterX - currentFirstCellCenterX;
-                    const deltaY = targetRowCenterY - currentRowCenterY;
+                            socialIcons.style.setProperty('--social-grid-shift-x', `${nextShiftX.toFixed(2)}px`);
+                            socialIcons.style.setProperty('--social-grid-shift-y', `${nextShiftY.toFixed(2)}px`);
+                            targetSocialCenterY = targetRowCenterY;
+                        }
+                    }
 
-                    const nextShiftX = getShiftVar('--social-grid-shift-x') + deltaX;
-                    const nextShiftY = getShiftVar('--social-grid-shift-y') + deltaY;
+                    if (wishlistPill && wishlistPillRow) {
+                        const wishlistRect = wishlistPill.getBoundingClientRect();
+                        if (wishlistRect.width > 0 && wishlistRect.height > 0) {
+                            let socialCenterYForSpacing = targetSocialCenterY;
+                            if (!Number.isFinite(socialCenterYForSpacing) && socialIcons) {
+                                const socialRectFallback = socialIcons.getBoundingClientRect();
+                                if (socialRectFallback.width > 0 && socialRectFallback.height > 0) {
+                                    socialCenterYForSpacing = socialRectFallback.top + (socialRectFallback.height / 2);
+                                }
+                            }
 
-                    socialIcons.style.setProperty('--social-grid-shift-x', `${nextShiftX.toFixed(2)}px`);
-                    socialIcons.style.setProperty('--social-grid-shift-y', `${nextShiftY.toFixed(2)}px`);
+                            if (Number.isFinite(socialCenterYForSpacing)) {
+                                const currentWishlistCenterY = wishlistRect.top + (wishlistRect.height / 2);
+                                const targetWishlistCenterY = socialCenterYForSpacing + gridSize;
+                                const deltaWishlistY = targetWishlistCenterY - currentWishlistCenterY;
+                                if (Math.abs(deltaWishlistY) > 0.01) {
+                                    const nextWishlistShiftY = getShiftVar(wishlistPillRow, '--wishlist-grid-shift-y') + deltaWishlistY;
+                                    wishlistPillRow.style.setProperty('--wishlist-grid-shift-y', `${nextWishlistShiftY.toFixed(2)}px`);
+                                }
+                            }
+                        }
+                    }
+
+                    if (!initialSnapDone) {
+                        if (socialIcons) socialIcons.classList.add('grid-snapped');
+                        if (wishlistPillRow) wishlistPillRow.classList.add('grid-snapped');
+                        initialSnapDone = true;
+                    }
                 }
 
                 function scheduleSnap() {
                     if (rafId) return;
-                    rafId = requestAnimationFrame(snapSocialIconsToGrid);
+                    rafId = requestAnimationFrame(snapElementsToGrid);
                 }
 
                 if (document.fonts && document.fonts.ready) {
@@ -2522,13 +2585,27 @@
                 window.addEventListener('orientationchange', scheduleSnap, { passive: true });
 
                 if (window.visualViewport) {
-                    window.visualViewport.addEventListener('resize', scheduleSnap, { passive: true });
+                    window.visualViewport.addEventListener('resize', () => {
+                        const vv = window.visualViewport;
+                        if (!vv) return;
+
+                        const dw = Math.abs(vv.width - lastVvWidth);
+                        const dh = Math.abs(vv.height - lastVvHeight);
+                        lastVvWidth = vv.width;
+                        lastVvHeight = vv.height;
+
+                        // Ignore tiny height-only viewport changes from mobile browser UI animations.
+                        if (dw < 1 && dh > 0 && dh < getGridSize()) return;
+                        scheduleSnap();
+                    }, { passive: true });
                 }
 
                 if (window.ResizeObserver) {
                     const observer = new ResizeObserver(scheduleSnap);
-                    observer.observe(socialIcons);
-                    const profileSection = socialIcons.closest('.text-center');
+                    if (socialIcons) observer.observe(socialIcons);
+                    if (wishlistPillRow) observer.observe(wishlistPillRow);
+                    if (wishlistPill) observer.observe(wishlistPill);
+                    const profileSection = (socialIcons || wishlistPillRow)?.closest('.text-center');
                     if (profileSection) observer.observe(profileSection);
                 }
 
@@ -2540,6 +2617,11 @@
                 }
 
                 scheduleSnap();
+                setTimeout(() => {
+                    if (initialSnapDone) return;
+                    if (socialIcons) socialIcons.classList.add('grid-snapped');
+                    if (wishlistPillRow) wishlistPillRow.classList.add('grid-snapped');
+                }, 1200);
             })();
         </script>
         <!-- Social Stats Tracker -->
