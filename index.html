@@ -162,9 +162,12 @@
         /* ---------- Background Gradients (BG.css styles) ---------- */
         .gradient-background {
             position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: var(--bg-height);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
             z-index: 1;
             overflow: hidden;
             pointer-events: none;
@@ -451,9 +454,12 @@
 
         .particles-container {
             position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: var(--bg-height);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
             z-index: 5;
             pointer-events: none;
             contain: layout paint;
@@ -461,9 +467,12 @@
 
         #tsparticles {
             position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: var(--bg-height);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
             z-index: 2;
             pointer-events: none;
             mix-blend-mode: overlay;
@@ -1750,21 +1759,33 @@
     <script>
         (() => {
             const supportsDVH = !!(window.CSS && CSS.supports && CSS.supports('height: 100dvh'));
+            let rafId = 0;
 
             const setHeights = () => {
+                rafId = 0;
                 const visualHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                const innerHeight = window.innerHeight || visualHeight;
+                const bgHeight = Math.ceil(Math.max(visualHeight, innerHeight)) + 1;
+
+                document.documentElement.style.setProperty('--bg-height', `${bgHeight}px`);
                 if (!supportsDVH) {
-                    document.documentElement.style.setProperty('--app-height', `${visualHeight}px`);
-                    document.documentElement.style.setProperty('--bg-height', `${visualHeight}px`);
+                    document.documentElement.style.setProperty('--app-height', `${Math.ceil(visualHeight)}px`);
                 }
             };
 
+            const scheduleHeights = () => {
+                if (rafId) return;
+                rafId = requestAnimationFrame(setHeights);
+            };
+
             setHeights();
-            window.addEventListener('resize', setHeights, { passive: true });
+            window.addEventListener('resize', scheduleHeights, { passive: true });
+            window.addEventListener('scroll', scheduleHeights, { passive: true });
             if (window.visualViewport) {
-                window.visualViewport.addEventListener('resize', setHeights, { passive: true });
+                window.visualViewport.addEventListener('resize', scheduleHeights, { passive: true });
+                window.visualViewport.addEventListener('scroll', scheduleHeights, { passive: true });
             }
-            window.addEventListener('orientationchange', setHeights, { passive: true });
+            window.addEventListener('orientationchange', scheduleHeights, { passive: true });
         })();
     </script>
     <!-- Background Animation -->
