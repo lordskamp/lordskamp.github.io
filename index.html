@@ -94,6 +94,14 @@
             }
         }
 
+        @supports (-webkit-touch-callout: none) {
+            :root.osc-theme .oscilloscope-layer {
+                /* iOS Safari can clip fixed+transformed layers during toolbar animation on scroll */
+                animation: none;
+                transform: perspective(1200px) rotateX(1deg) scale(1.01, 1.004);
+            }
+        }
+
         @supports (height: 100svh) {
             :root {
                 --app-height: 100svh;
@@ -1384,7 +1392,7 @@
             mix-blend-mode: normal;
             border-radius: clamp(12px, 2.8vw, 28px);
             overflow: hidden;
-            transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986);
+            transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004);
             transform-origin: center center;
             animation: scope-jitter 9s steps(1, end) infinite;
         }
@@ -1432,7 +1440,7 @@
         .scope-curvature {
             border: 1px solid var(--scope-grid-major);
             border-radius: clamp(12px, 2.8vw, 28px);
-            transform: scale(1.016, 0.988);
+            transform: scale(1.016, 1.002);
             transform-origin: center center;
         }
 
@@ -1442,19 +1450,19 @@
 
         @keyframes scope-jitter {
             0% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(0, 0, 0);
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(0, 0, 0);
             }
 
             3% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(-0.6px, 0.2px, 0);
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(-0.6px, 0.2px, 0);
             }
 
             4% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(0.5px, -0.2px, 0);
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(0.5px, -0.2px, 0);
             }
 
             100% {
-                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 0.986) translate3d(0, 0, 0);
+                transform: perspective(1400px) rotateX(1.4deg) scale(1.018, 1.004) translate3d(0, 0, 0);
             }
         }
 
@@ -1750,7 +1758,7 @@
 
             :root.osc-theme .oscilloscope-layer {
                 border-radius: 12px;
-                transform: perspective(900px) rotateX(0.95deg) scale(1.01, 0.99);
+                transform: perspective(900px) rotateX(0.95deg) scale(1.01, 1.003);
             }
 
             :root.osc-theme .scope-curvature {
