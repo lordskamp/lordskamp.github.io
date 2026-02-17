@@ -712,6 +712,14 @@
             filter: drop-shadow(0 0 10px currentColor);
         }
 
+        @media (hover: none),
+        (pointer: coarse) {
+            .social-icon:hover {
+                transform: none !important;
+                filter: none;
+            }
+        }
+
         /* Brand Colors for Icons */
         a[title="Instagram"]:hover {
             color: #E1306C;
@@ -3376,10 +3384,13 @@
                     const rect = socialIcons.getBoundingClientRect();
                     if (rect.width <= 0 || rect.height <= 0) return;
 
-                    const currentFirstCellCenterX = rect.left + (gridSize / 2);
-                    const currentRowCenterY = rect.top + (rect.height / 2);
+                    const pageX = window.scrollX || window.pageXOffset || 0;
+                    const pageY = window.scrollY || window.pageYOffset || 0;
 
-                    const viewportCenterX = window.innerWidth / 2;
+                    const currentFirstCellCenterX = rect.left + pageX + (gridSize / 2);
+                    const currentRowCenterY = rect.top + pageY + (rect.height / 2);
+
+                    const viewportCenterX = pageX + (window.innerWidth / 2);
                     const xPhase = viewportCenterX + (gridSize / 2);
                     const targetFirstCellCenterX = xPhase + (Math.round((currentFirstCellCenterX - xPhase) / gridSize) * gridSize);
 
