@@ -96,9 +96,16 @@
 
         @supports (-webkit-touch-callout: none) {
             :root.osc-theme .oscilloscope-layer {
-                /* iOS Safari can clip fixed+transformed layers during toolbar animation on scroll */
-                animation: none;
-                transform: perspective(1200px) rotateX(1deg) scale(1.01, 1.004);
+                /* iOS Safari clips fixed+transformed layers during toolbar animation on scroll */
+                animation: none !important;
+                transform: none !important;
+                inset: calc(-1 * var(--bg-overscan)) 0 calc(-1 * var(--bg-overscan)) 0 !important;
+                border-radius: 0 !important;
+                overflow: visible !important;
+            }
+
+            :root.osc-theme .scope-curvature {
+                display: none !important;
             }
         }
 
