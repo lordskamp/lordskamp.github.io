@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Portfolio — Lordskamp</title>
+    <meta name="theme-color" content="#8c3dc1">
+    <title>Lordskamp | Portfolio</title>
     <meta name="description" content="Portfolio of Yurii Honcharenko — Graphic & Motion Designer. Festival branding, logos, motion graphics, and more.">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.9.3/tsparticles.bundle.min.js"></script>
@@ -449,6 +450,7 @@
 
         /* ── Lottie Container ── */
         .lottie-item {
+            position:relative;
             border-radius:10px;overflow:hidden;
             background:var(--island-bg);
             border:1px solid var(--island-border);
@@ -458,6 +460,20 @@
             transition:transform .25s ease,box-shadow .25s ease,border-color .3s ease;
         }
         .lottie-item:hover{transform:translateY(-4px);box-shadow:var(--island-shadow-hover);border-color:var(--border-hover);}
+        .lottie-item.is-lottie-loading::before {
+            content:"";
+            width:28px;height:28px;border-radius:50%;
+            border:2px solid rgba(255,255,255,.18);
+            border-top-color:var(--red);
+            animation:lottie-spin .8s linear infinite;
+        }
+        .lottie-item.is-lottie-ready::before { display:none; }
+        .lottie-item.is-lottie-error::before {
+            content:"";
+            width:32px;height:32px;border-radius:50%;
+            background:radial-gradient(circle, rgba(140,61,193,.5), transparent 68%);
+        }
+        @keyframes lottie-spin { to { transform:rotate(360deg); } }
         .stickers-grid .lottie-item {
             background:transparent;
             border:none;
@@ -736,6 +752,8 @@
             color:var(--text-muted);
         }
     </style>
+    <link rel="stylesheet" href="site-ui.css">
+    <script src="site-ui.js"></script>
 </head>
 <body>
     <!-- Background Animation (exact match from index.html) -->
@@ -753,17 +771,7 @@
     <div id="tsparticles"></div>
 
     <div class="content-wrapper">
-        <!-- Top Bar -->
-        <div class="top-bar">
-            <a href="index.html" class="back-btn" id="backBtn">
-                <i class="fas fa-arrow-left"></i>
-                <span data-i18n="back">Back</span>
-            </a>
-            <div class="top-controls">
-                <button class="ctrl-btn" id="langBtn" title="Language"><i class="fas fa-globe"></i></button>
-                <button class="ctrl-btn" id="themeBtn" title="Theme"><i class="fas fa-sun"></i></button>
-            </div>
-        </div>
+        <div id="siteHeaderMount" data-site-page="portfolio"></div>
 
         <!-- Hero -->
         <section class="hero fade-up">

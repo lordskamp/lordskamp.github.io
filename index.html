@@ -7,7 +7,7 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Lordskamp</title>
+    <title>Lordskamp | Links</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.9.3/tsparticles.bundle.min.js"></script>
@@ -1189,6 +1189,8 @@
 
         /* Social icons hover adjustments for light theme - REMOVED per user request to keep them white */
     </style>
+    <link rel="stylesheet" href="site-ui.css">
+    <script src="site-ui.js"></script>
 </head>
 
 <body class="">
@@ -1265,24 +1267,7 @@
 
     <!-- Content Wrapper -->
     <div class="content-wrapper">
-        <!-- Left Controls (Language & Clock) -->
-        <div id="left-controls" class="fixed top-4 safe-top left-4 z-50 flex items-center gap-3">
-            <!-- Language Toggle -->
-            <button id="langBtn" data-brand="Language"
-                class="p-2 bg-black/30 hover:bg-black/50 backdrop-blur-md rounded-full text-white shadow-lg transition w-10 h-10 flex items-center justify-center border border-transparent"
-                title="Switch Language">
-                <i class="fas fa-globe"></i>
-            </button>
-        </div>
-
-        <!-- Theme Control -->
-        <div class="fixed top-4 safe-top right-4 z-50 flex items-center gap-3">
-            <button id="themeBtn" data-brand="Theme"
-                class="p-2 bg-black/30 hover:bg-black/50 backdrop-blur-md rounded-full text-white shadow-lg transition w-10 h-10 flex items-center justify-center border border-transparent"
-                title="Toggle Theme">
-                <i class="fas fa-sun"></i>
-            </button>
-        </div>
+        <div id="siteHeaderMount" data-site-page="home"></div>
 
         <!-- Main Container -->
         <div class="relative z-10 container mx-auto px-4 py-8 max-w-2xl">
@@ -1836,55 +1821,6 @@
             })();
         </script>
         <script>
-            const themeBtn = document.getElementById('themeBtn');
-            const root = document.documentElement;
-            const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
-            let isLight = !prefersDark.matches;
-
-            function updateThemeColorMeta() {
-                if (!themeColorMeta) return;
-                themeColorMeta.setAttribute('content', isLight ? '#f2f4f7' : '#8c3dc1');
-            }
-
-            function updateThemeUI() {
-                root.classList.toggle('light-theme', isLight);
-
-                const iconClass = isLight ? 'fa-moon' : 'fa-sun';
-                themeBtn.innerHTML = `<span class="theme-icon"><i class="fas ${iconClass}"></i></span>`;
-
-                if (isLight) {
-                    themeBtn.classList.remove('text-white', 'bg-black/30', 'hover:bg-black/50', 'border-transparent');
-                    themeBtn.classList.add('text-zinc-800', 'bg-white/40', 'hover:bg-white/60', 'border-zinc-200');
-                    themeBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                    document.body.classList.remove('text-white');
-                } else {
-                    themeBtn.classList.add('text-white', 'bg-black/30', 'hover:bg-black/50', 'border-transparent');
-                    themeBtn.classList.remove('text-zinc-800', 'bg-white/40', 'hover:bg-white/60', 'border-zinc-200');
-                    themeBtn.style.boxShadow = '';
-                    document.body.classList.add('text-white');
-                }
-
-                themeBtn.title = 'Toggle Theme';
-                updateThemeColorMeta();
-            }
-
-            prefersDark.addEventListener('change', (e) => {
-                isLight = !e.matches;
-                updateThemeUI();
-            });
-
-            updateThemeUI();
-
-            themeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                isLight = !isLight;
-                updateThemeUI();
-            });
-        </script>
-
-        <script>
             /* ==== i18n (Internationalization) ==== */
             const translations = {
                 uk: {
@@ -1990,6 +1926,7 @@
             let currentLang = 'en';
 
             function detectLanguage() {
+                if (window.LordskampUI) return window.LordskampUI.getLanguage();
                 const lang = navigator.language || navigator.userLanguage;
                 return lang.startsWith('uk') ? 'uk' : 'en';
             }
@@ -2031,9 +1968,16 @@
                 updatePageLanguage();
             }
 
-            // Initialize: detect language and setup toggle
+            // Initialize: use shared language state when available.
             document.addEventListener('DOMContentLoaded', () => {
                 setLanguage(detectLanguage());
+                if (window.LordskampUI) {
+                    window.addEventListener('lordskamp:languagechange', (event) => {
+                        const nextLang = event.detail && event.detail.language;
+                        if (nextLang) setLanguage(nextLang);
+                    });
+                    return;
+                }
                 const langBtn = document.getElementById('langBtn');
                 if (langBtn) {
                     langBtn.addEventListener('click', () => {
@@ -2363,209 +2307,6 @@
         <!-- Custom Cursor -->
         <div class="custom-cursor" id="customCursor"></div>
         <script>
-            (() => {
-                const cursor = document.getElementById('customCursor');
-                if (!cursor) return;
-
-                let mouseX = 0, mouseY = 0;
-                let cursorX = 0, cursorY = 0;
-                const speed = 0.15; // Smooth following speed
-                let isHoveringIframe = false;
-                const supportsTranslateProp = !!(window.CSS && CSS.supports && CSS.supports('translate: 1px 1px'));
-                const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
-
-                // Export cursor position for particles to use
-                window.customCursorPos = { x: 0, y: 0, color: null };
-
-                // Update cursor position on demand (no idle rAF loop)
-                let cursorRafPending = false;
-                function updateCursorPosition() {
-                    cursorRafPending = false;
-                    if (isHoveringIframe) return;
-                    cursorX = mouseX;
-                    cursorY = mouseY;
-                    window.customCursorPos.x = cursorX;
-                    window.customCursorPos.y = cursorY;
-                    if (supportsTranslateProp) {
-                        cursor.style.translate = `${cursorX}px ${cursorY}px`;
-                    } else {
-                        cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`;
-                    }
-                }
-                function scheduleCursorUpdate() {
-                    if (!cursorRafPending) {
-                        cursorRafPending = true;
-                        requestAnimationFrame(updateCursorPosition);
-                    }
-                }
-
-                // Track mouse movement
-                document.addEventListener(moveEvent, (e) => {
-                    if (e.pointerType && e.pointerType !== 'mouse') return;
-                    mouseX = e.clientX;
-                    mouseY = e.clientY;
-                    scheduleCursorUpdate();
-                    if (isHoveringIframe) {
-                        cursor.style.opacity = '1';
-                        isHoveringIframe = false;
-                        document.body.classList.remove('iframe-hover');
-                    }
-                }, { passive: true });
-
-                // Hover effect on interactive elements
-                const hoverSelector = 'a, button, input, textarea, select, .link-item, .social-icon, .island, [role="button"]';
-                document.addEventListener('mouseover', (e) => {
-                    if (e.target.closest && e.target.closest(hoverSelector)) cursor.classList.add('cursor-hover');
-                }, { passive: true });
-                document.addEventListener('mouseout', (e) => {
-                    if (!e.target.closest) return;
-                    const from = e.target.closest(hoverSelector);
-                    if (!from) return;
-                    const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest(hoverSelector) : null;
-                    if (to) return; // moved between interactive elements
-                    cursor.classList.remove('cursor-hover');
-                }, { passive: true });
-
-                // Handle Iframes (Spotify etc) - Hide custom cursor, show default
-                const iframeWrappers = document.querySelectorAll('.island');
-                iframeWrappers.forEach(wrapper => {
-                    if (wrapper.querySelector('iframe')) {
-                        wrapper.addEventListener('mouseenter', () => {
-                            isHoveringIframe = true;
-                            document.body.classList.add('iframe-hover');
-                        });
-                        wrapper.addEventListener('mouseleave', () => {
-                            isHoveringIframe = false;
-                            document.body.classList.remove('iframe-hover');
-                        });
-                    }
-                });
-
-                // Click effect
-                document.addEventListener('mousedown', () => cursor.classList.add('cursor-click'));
-                document.addEventListener('mouseup', () => cursor.classList.remove('cursor-click'));
-
-                // Hide cursor when leaving window
-                document.addEventListener('mouseleave', () => cursor.style.opacity = '0');
-                document.addEventListener('mouseenter', () => cursor.style.opacity = '1');
-
-                // Initial hide until mouse moves
-                cursor.style.opacity = '0';
-                document.body.appendChild(cursor); // Move to end of body to ensure it's on top of everything
-                document.addEventListener(moveEvent, (e) => {
-                    if (e.pointerType && e.pointerType !== 'mouse') return;
-                    document.body.classList.add('custom-cursor-active');
-                    if (!isHoveringIframe) cursor.style.opacity = '1';
-                }, { once: true, passive: true });
-
-                // Brand color cursor effect
-                const brandColors = {
-                    'Instagram': '#E1306C',
-                    'TikTok': '#ffffff',
-                    'Facebook': '#1877F2',
-                    'Telegram': '#24A1DE',
-                    'LinkedIn': '#0077b5',
-                    'Steam': '#66c0f4',
-                    'Tinder': '#fe3c72',
-                    'YouTube': '#FF0000',
-                    'WhatsApp': '#25D366',
-                    'Viber': '#7360f2',
-                    'Email': '#4ade80',
-                    'Language': '#06b6d4',
-                    'Wishlist': '#a78bfa',
-                    'Meta': '#0668E1',
-                    'Theme': '#fbbf24',
-                    'Threads': '#ffffff',
-                    'Behance': '#0057ff',
-                    'Instagram-Portfolio': '#ff306c',
-                    'Resume': '#8b5cf6',
-                    'Portfolio': '#8c3dc1'
-                };
-
-
-                // Helper to convert hex to rgba for glass effect
-                function hexToRgba(hex, alpha) {
-                    const r = parseInt(hex.slice(1, 3), 16);
-                    const g = parseInt(hex.slice(3, 5), 16);
-                    const b = parseInt(hex.slice(5, 7), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                }
-
-                const brandElements = document.querySelectorAll('.social-icon, [data-brand]');
-                brandElements.forEach(el => {
-                    const brand = el.getAttribute('data-brand') || el.getAttribute('title');
-                    if (brandColors[brand]) {
-                        el.addEventListener('mouseenter', () => {
-                            const color = brandColors[brand];
-                            // Update global color for particles
-                            if (window.customCursorPos) window.customCursorPos.color = color;
-
-                            // Special case for TikTok
-                            if (brand === 'TikTok') {
-                                cursor.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; // Glassy black
-                                cursor.style.borderColor = 'rgba(255,255,255,0.4)'; // Subtle border
-                                cursor.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.5)';
-                            } else {
-                                // Use semi-transparent background for glass effect
-                                cursor.style.backgroundColor = hexToRgba(color, 0.3);
-                                // Keep the glow (box-shadow) stronger but maybe slightly less opaque than solid
-                                cursor.style.boxShadow = `0 0 20px ${hexToRgba(color, 0.6)}, 0 0 40px ${hexToRgba(color, 0.3)}`;
-                            }
-                        });
-                        el.addEventListener('mouseleave', () => {
-                            // Reset global color
-                            if (window.customCursorPos) window.customCursorPos.color = null;
-
-                            cursor.style.backgroundColor = '';
-                            cursor.style.borderColor = '';
-                            cursor.style.boxShadow = '';
-                        });
-                    }
-                });
-            })();
-        </script>
-        <!-- ⌨️ Tab Title Animation -->
-        <script>
-            (() => {
-                const target = "Lordskamp";
-                let i = 0;
-                let isReverse = false;
-
-                function typeWriter() {
-                    const speed = isReverse ? 150 : 300; // Type slower, delete faster
-
-                    if (!isReverse) {
-                        // Typing
-                        if (i < target.length) {
-                            document.title = target.substring(0, i + 1);
-                            i++;
-                            setTimeout(typeWriter, speed);
-                        } else {
-                            // Finished typing, wait before deleting
-                            isReverse = true;
-                            setTimeout(typeWriter, 3000); // 3s pause
-                        }
-                    } else {
-                        // Deleting
-                        if (i > 1) { // Stop when 1 char is left
-                            document.title = target.substring(0, i - 1);
-                            i--;
-                            setTimeout(typeWriter, speed);
-                        } else {
-                            // Finished deleting loop, switch back to typing
-                            isReverse = false;
-                            setTimeout(typeWriter, 500);
-                        }
-                    }
-                }
-
-                // Initialize
-                document.title = " ";
-                setTimeout(typeWriter, 100);
-            })();
-        </script>
-
-        <script>
             /* ==== Profile Image Switcher ==== */
             document.addEventListener('DOMContentLoaded', () => {
                 const profileImg = document.getElementById('profileImg');
@@ -2670,6 +2411,9 @@
                         setTimeout(scheduleSnap, 0);
                     });
                 }
+                window.addEventListener('lordskamp:languagechange', () => {
+                    setTimeout(scheduleSnap, 0);
+                });
 
                 snapSocialIconsToGrid();
                 setTimeout(scheduleSnap, 350);

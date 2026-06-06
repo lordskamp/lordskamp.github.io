@@ -28,10 +28,13 @@
             igStories: "Instagram Stories", volunteer: "Volunteer Fundraisers",
         }
     };
-    let lang = (navigator.language || '').startsWith('uk') ? 'uk' : 'en';
+    let lang = window.LordskampUI
+        ? window.LordskampUI.getLanguage()
+        : ((navigator.language || '').startsWith('uk') ? 'uk' : 'en');
     const t = k => (i18n[lang] && i18n[lang][k]) || (i18n.en[k]) || k;
 
     function applyI18n() {
+        document.documentElement.lang = lang;
         document.querySelectorAll('[data-i18n]').forEach(el => {
             el.textContent = t(el.dataset.i18n);
         });
@@ -39,9 +42,12 @@
 
     /* ── Theme ── */
     const root = document.documentElement;
-    let isLight = window.matchMedia('(prefers-color-scheme: dark)').matches ? false : true;
+    let isLight = window.LordskampUI
+        ? window.LordskampUI.getTheme() === 'light'
+        : !window.matchMedia('(prefers-color-scheme: dark)').matches;
 
     function updateTheme() {
+        if (window.LordskampUI) return;
         root.classList.toggle('light-theme', isLight);
         const btn = document.getElementById('themeBtn');
         if (btn) btn.innerHTML = `<i class="fas ${isLight ? 'fa-moon' : 'fa-sun'}"></i>`;
@@ -200,10 +206,13 @@
         return e;
     }
 
-    function makeSectionBlock(title, icon) {
+    function makeSectionBlock(title, icon, i18nKey) {
         const island = el('section', 'island fade-up');
         const heading = el('h2', 'section-title');
-        heading.innerHTML = `<i class="fas ${icon}"></i><span>${title}</span>`;
+        heading.appendChild(el('i', `fas ${icon}`));
+        const titleEl = el('span', '', title);
+        if (i18nKey) titleEl.dataset.i18n = i18nKey;
+        heading.appendChild(titleEl);
         const shell = el('div', 'section-content-shell');
         island.appendChild(heading);
         island.appendChild(shell);
@@ -214,6 +223,7 @@
         const w = el('div', 'img-wrap ' + (extraClass || ''));
         if (badge) {
             const b = el('span', badge.cls, badge.text);
+            if (badge.key) b.dataset.i18n = badge.key;
             w.appendChild(b);
         }
         const img = document.createElement('img');
@@ -297,12 +307,80 @@
     function makeProjectZoom(src, extraClass = '') {
         const w = el('div', `img-wrap project-media${extraClass ? ` ${extraClass}` : ''}`);
         const badge = el('span', 'source-badge', t('projectLabel'));
+        badge.dataset.i18n = 'projectLabel';
         badge.style.background = 'rgba(72,0,255,.85)';
         w.appendChild(badge);
         const img = document.createElement('img');
         img.src = src; img.alt = ''; img.loading = 'lazy';
         w.appendChild(img);
         return w;
+    }
+
+    function makeLazyVideo(src, options = {}) {
+        if (window.LordskampUI && window.LordskampUI.createLazyVideoCard) {
+            return window.LordskampUI.createLazyVideoCard(src, options);
+        }
+
+        const vi = el('div', `${options.className || 'video-item'} lazy-video-card`);
+        vi.dataset.videoSrc = src;
+        vi.tabIndex = 0;
+        if (options.aspectRatio) vi.style.aspectRatio = options.aspectRatio;
+        if (options.style) vi.style.cssText += options.style;
+        const preview = el('div', 'lazy-video-preview');
+        const poster = document.createElement('img');
+        poster.className = 'lazy-video-poster';
+        poster.src = options.previewSrc || getVideoPreviewSrc(src);
+        poster.alt = '';
+        poster.loading = 'lazy';
+        poster.decoding = 'async';
+        if (options.autoRatio) {
+            poster.addEventListener('load', () => {
+                if (poster.naturalWidth && poster.naturalHeight) {
+                    vi.style.aspectRatio = `${poster.naturalWidth}/${poster.naturalHeight}`;
+                }
+            }, { once: true });
+        }
+        preview.appendChild(poster);
+        preview.appendChild(el('span', 'lazy-video-play', '<i class="fas fa-play"></i>'));
+        vi.appendChild(preview);
+        let video = null;
+        const play = () => {
+            if (!video) {
+                video = document.createElement('video');
+                video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'none';
+                video.src = src;
+                video.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+                if (options.autoRatio) {
+                    video.addEventListener('loadedmetadata', () => {
+                        const w = video.videoWidth, h = video.videoHeight;
+                        if (w && h) vi.style.aspectRatio = `${w}/${h}`;
+                    });
+                }
+                vi.appendChild(video);
+            }
+            vi.classList.add('is-playing');
+            video.play().catch(() => vi.classList.remove('is-playing'));
+        };
+        const stop = () => {
+            if (!video) return;
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.remove();
+            video = null;
+            vi.classList.remove('is-playing');
+        };
+        vi.addEventListener('pointerenter', play, { passive: true });
+        vi.addEventListener('pointerleave', stop, { passive: true });
+        vi.addEventListener('mouseenter', play, { passive: true });
+        vi.addEventListener('mouseleave', stop, { passive: true });
+        vi.addEventListener('focusin', play, { passive: true });
+        vi.addEventListener('focusout', stop, { passive: true });
+        return vi;
+    }
+
+    function getVideoPreviewSrc(src) {
+        return String(src || '').replace(/\.(mp4|mov)$/i, '.jpg');
     }
 
     /* ── Build CASES Section ── */
@@ -320,7 +398,7 @@
                 ? c.sources.find(s => s.label === '2021')
                 : null;
             const caseTitle = c.titleKey ? t(c.titleKey) : c.name;
-            const caseSection = makeSectionBlock(caseTitle, c.icon || 'fa-briefcase');
+            const caseSection = makeSectionBlock(caseTitle, c.icon || 'fa-briefcase', c.titleKey);
             if (c.id === 'igcarousels') {
                 caseSection.island.classList.add('case-span-2');
             }
@@ -330,7 +408,7 @@
 
             // Source image(s)
             if (c.source) {
-                body.appendChild(makeImgWrap(`${c.path}/${c.source}`, '', { cls: 'source-badge', text: t('sourceLabel') }));
+                body.appendChild(makeImgWrap(`${c.path}/${c.source}`, '', { cls: 'source-badge', text: t('sourceLabel'), key: 'sourceLabel' }));
             }
 
             if (zaxidSource2020) {
@@ -421,6 +499,7 @@
             if (c.stickers) {
                 const container = el('div', 'img-wrap');
                 const badge = el('span', 'source-badge', t('stickers'));
+                badge.dataset.i18n = 'stickers';
                 container.appendChild(badge);
 
                 const sg = el('div', 'stickers-grid');
@@ -439,8 +518,10 @@
             // Lottie stickers
             if (c.lottieStickers) {
                 const container = el('div', 'img-wrap');
-                const badgeText = isZaxidMergedLayout ? t('stickers') : t('animStickers');
+                const badgeKey = isZaxidMergedLayout ? 'stickers' : 'animStickers';
+                const badgeText = t(badgeKey);
                 const badge = el('span', 'source-badge', badgeText);
+                badge.dataset.i18n = badgeKey;
                 container.appendChild(badge);
 
                 const lg = el('div', 'stickers-grid');
@@ -497,17 +578,9 @@
                 const vg = el('div', 'ig-grid hide-scroll');
                 vg.style.cssText = 'aspect-ratio: 1; overflow-y: auto; grid-auto-rows: calc((100% - (var(--inner-gap) * 2)) / 3);';
                 c.igAnimPosts.videos.forEach(f => {
-                    const vi = el('div', 'ig-grid-item');
-                    vi.style.cursor = 'pointer';
-                    const video = document.createElement('video');
-                    video.src = `${c.path}/${c.igAnimPosts.dir}/${f}`;
-                    video.muted = true; video.loop = true; video.playsInline = true;
-                    video.preload = 'metadata';
-                    video.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-                    vi.addEventListener('mouseenter', () => video.play().catch(() => { }));
-                    vi.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-                    vi.addEventListener('click', () => openLightbox(video.src, 'video'));
-                    vi.appendChild(video);
+                    const src = `${c.path}/${c.igAnimPosts.dir}/${f}`;
+                    const vi = makeLazyVideo(src, { className: 'ig-grid-item', aspectRatio: '1' });
+                    vi.addEventListener('click', () => openLightbox(src, 'video'));
                     vg.appendChild(vi);
                 });
                 body.appendChild(vg);
@@ -520,17 +593,9 @@
 
                 if (c.igAnimPosts) {
                     c.igAnimPosts.videos.forEach(f => {
-                        const vi = el('div', 'ig-grid-item');
-                        vi.style.cursor = 'pointer';
-                        const video = document.createElement('video');
-                        video.src = `${c.path}/${c.igAnimPosts.dir}/${f}`;
-                        video.muted = true; video.loop = true; video.playsInline = true;
-                        video.preload = 'metadata';
-                        video.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-                        vi.addEventListener('mouseenter', () => video.play().catch(() => { }));
-                        vi.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-                        vi.addEventListener('click', () => openLightbox(video.src, 'video'));
-                        vi.appendChild(video);
+                        const src = `${c.path}/${c.igAnimPosts.dir}/${f}`;
+                        const vi = makeLazyVideo(src, { className: 'ig-grid-item', aspectRatio: '1' });
+                        vi.addEventListener('click', () => openLightbox(src, 'video'));
                         igPostsMixed.appendChild(vi);
                     });
                 }
@@ -554,17 +619,13 @@
                 asg.style.cssText = 'display: flex; gap: var(--inner-gap); overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;';
                 setupHorizontalStoriesScroller(asg);
                 c.igAnimStories.videos.forEach(f => {
-                    const vi = el('div', '');
-                    vi.style.cssText = 'flex: 0 0 calc((100% - (var(--inner-gap) * 2)) / 3); aspect-ratio: 9/16; border-radius: 10px; overflow: hidden; scroll-snap-align: start; cursor: pointer; position: relative;';
-                    const video = document.createElement('video');
-                    video.src = `${c.path}/${c.igAnimStories.dir}/${f}`;
-                    video.muted = true; video.loop = true; video.playsInline = true;
-                    video.preload = 'metadata';
-                    video.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
-                    vi.addEventListener('mouseenter', () => video.play().catch(() => { }));
-                    vi.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-                    vi.addEventListener('click', () => openLightbox(video.src, 'video'));
-                    vi.appendChild(video);
+                    const src = `${c.path}/${c.igAnimStories.dir}/${f}`;
+                    const vi = makeLazyVideo(src, {
+                        className: '',
+                        aspectRatio: '9/16',
+                        style: 'flex: 0 0 calc((100% - (var(--inner-gap) * 2)) / 3); border-radius: 10px; overflow: hidden; scroll-snap-align: start; cursor: pointer; position: relative;'
+                    });
+                    vi.addEventListener('click', () => openLightbox(src, 'video'));
                     asg.appendChild(vi);
                 });
                 body.appendChild(asg);
@@ -575,22 +636,13 @@
                 const vg = el('div', '');
                 vg.style.cssText = 'display:grid;gap:var(--inner-gap);grid-template-columns:repeat(3,1fr);';
                 c.arVideos.forEach(f => {
-                    const vi = el('div', 'video-item');
-                    vi.style.cssText = 'cursor:pointer;';
-                    const video = document.createElement('video');
-                    video.src = `${c.path}/${f}`;
-                    video.muted = true; video.loop = true; video.playsInline = true;
-                    video.preload = 'metadata';
-                    video.style.cssText = 'width:100%;display:block;';
-                    // Auto-detect aspect ratio from video metadata
-                    video.addEventListener('loadedmetadata', () => {
-                        const w = video.videoWidth, h = video.videoHeight;
-                        if (w && h) vi.style.aspectRatio = `${w}/${h}`;
+                    const src = `${c.path}/${f}`;
+                    const vi = makeLazyVideo(src, {
+                        className: 'video-item',
+                        style: 'cursor:pointer;',
+                        autoRatio: true
                     });
-                    vi.addEventListener('mouseenter', () => video.play().catch(() => { }));
-                    vi.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-                    vi.addEventListener('click', () => openLightbox(video.src, 'video'));
-                    vi.appendChild(video);
+                    vi.addEventListener('click', () => openLightbox(src, 'video'));
                     vg.appendChild(vi);
                 });
                 body.appendChild(vg);
@@ -607,7 +659,12 @@
                     vCard.appendChild(img);
 
                     if (folder.files.length > 1) {
-                        const hint = el('div', 'volunteer-tap-hint', `<i class="fas fa-random"></i> ${t('clickToShuffle')}`);
+                        const hint = el('div', 'volunteer-tap-hint');
+                        hint.appendChild(el('i', 'fas fa-random'));
+                        hint.appendChild(document.createTextNode(' '));
+                        const hintText = el('span', '', t('clickToShuffle'));
+                        hintText.dataset.i18n = 'clickToShuffle';
+                        hint.appendChild(hintText);
                         vCard.appendChild(hint);
                         let currentIdx = 0;
                         let remainingIdx = [];
@@ -776,7 +833,7 @@
     function buildLogos() {
         const sec = document.getElementById('sec-logos');
         sec.innerHTML = '';
-        const section = makeSectionBlock(t('secLogos'), 'fa-signature');
+        const section = makeSectionBlock(t('secLogos'), 'fa-signature', 'secLogos');
         const grid = el('div', 'logos-bento');
         // Dynamic column count to ensure 3 rows on desktop (N/3)
         grid.style.setProperty('--logo-cols', Math.ceil(LOGOS.length / 3));
@@ -797,7 +854,7 @@
     function buildPosters() {
         const sec = document.getElementById('sec-posters');
         sec.innerHTML = '';
-        const section = makeSectionBlock(t('secPosters'), 'fa-images');
+        const section = makeSectionBlock(t('secPosters'), 'fa-images', 'secPosters');
 
         const grid = el('div', 'posters-grid');
         POSTERS.forEach(p => {
@@ -815,7 +872,7 @@
     function buildMotion() {
         const sec = document.getElementById('sec-motion');
         sec.innerHTML = '';
-        const section = makeSectionBlock(t('secMotion'), 'fa-film');
+        const section = makeSectionBlock(t('secMotion'), 'fa-film', 'secMotion');
 
         const grid = el('div', 'motion-grid');
 
@@ -829,35 +886,25 @@
 
         // Logo video
         if (MOTION.logoVideo) {
-            const vi = el('div', 'video-item fade-up');
-            vi.style.cssText = 'aspect-ratio:1;cursor:pointer;';
-            const video = document.createElement('video');
-            video.src = `${MOTION.path}/${MOTION.logoVideo}`;
-            video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'metadata';
-            video.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-            vi.addEventListener('mouseenter', () => video.play().catch(() => { }));
-            vi.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-            vi.addEventListener('click', () => openLightbox(video.src, 'video'));
-            vi.appendChild(video);
+            const src = `${MOTION.path}/${MOTION.logoVideo}`;
+            const vi = makeLazyVideo(src, {
+                className: 'video-item fade-up',
+                aspectRatio: '1',
+                style: 'cursor:pointer;'
+            });
+            vi.addEventListener('click', () => openLightbox(src, 'video'));
             grid.appendChild(vi);
         }
 
         // Motion videos — auto aspect ratio detection
         MOTION.videos.forEach(f => {
-            const vi = el('div', 'video-item fade-up');
-            vi.style.cssText = 'cursor:pointer;';
-            const video = document.createElement('video');
-            video.src = `${MOTION.path}/${f}`;
-            video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'metadata';
-            video.style.cssText = 'width:100%;display:block;';
-            video.addEventListener('loadedmetadata', () => {
-                const w = video.videoWidth, h = video.videoHeight;
-                if (w && h) vi.style.aspectRatio = `${w}/${h}`;
+            const src = `${MOTION.path}/${f}`;
+            const vi = makeLazyVideo(src, {
+                className: 'video-item fade-up',
+                style: 'cursor:pointer;',
+                autoRatio: true
             });
-            vi.addEventListener('mouseenter', () => video.play().catch(() => { }));
-            vi.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-            vi.addEventListener('click', () => openLightbox(video.src, 'video'));
-            vi.appendChild(video);
+            vi.addEventListener('click', () => openLightbox(src, 'video'));
             grid.appendChild(vi);
         });
 
@@ -867,27 +914,54 @@
 
     /* ── Init Lottie animations (IntersectionObserver lazy-load) ── */
     function initLottie() {
-        if (typeof lottie === 'undefined') return;
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const el = entry.target;
-                    const src = el.dataset.lottieSrc;
-                    if (!src || el.dataset.lottieLoaded) return;
-                    el.dataset.lottieLoaded = 'true';
-                    lottie.loadAnimation({
-                        container: el,
-                        renderer: 'svg',
-                        loop: true,
-                        autoplay: true,
-                        path: src
-                    });
-                    observer.unobserve(el);
+        const items = document.querySelectorAll('[data-lottie-src]');
+        if (typeof lottie === 'undefined') {
+            items.forEach(el => el.classList.add('is-lottie-error'));
+            return;
+        }
+
+        const loadItem = el => {
+            const src = el.dataset.lottieSrc;
+            if (!src || el.dataset.lottieLoaded) return;
+
+            el.dataset.lottieLoaded = 'true';
+            el.classList.add('is-lottie-loading');
+            const animation = lottie.loadAnimation({
+                container: el,
+                renderer: 'svg',
+                loop: true,
+                autoplay: true,
+                path: encodeURI(src),
+                rendererSettings: {
+                    progressiveLoad: true,
+                    preserveAspectRatio: 'xMidYMid meet'
                 }
             });
-        }, { rootMargin: '200px' });
 
-        document.querySelectorAll('[data-lottie-src]').forEach(el => observer.observe(el));
+            animation.addEventListener('DOMLoaded', () => {
+                el.classList.remove('is-lottie-loading', 'is-lottie-error');
+                el.classList.add('is-lottie-ready');
+            });
+            animation.addEventListener('data_failed', () => {
+                el.classList.remove('is-lottie-loading');
+                el.classList.add('is-lottie-error');
+            });
+        };
+
+        if (!('IntersectionObserver' in window)) {
+            items.forEach(loadItem);
+            return;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                loadItem(entry.target);
+                observer.unobserve(entry.target);
+            });
+        }, { rootMargin: '300px' });
+
+        items.forEach(el => observer.observe(el));
     }
 
     /* ── Scroll-triggered fade-up ── */
@@ -935,96 +1009,24 @@
         });
     }
 
-    /* ── Custom Cursor (full implementation from index.html) ── */
-    function initCursor() {
-        const cursor = document.getElementById('customCursor');
-        if (!cursor || window.matchMedia('(hover:none) and (pointer:coarse)').matches) return;
-
-        // Expose position for particle trail
-        window.customCursorPos = { x: 0, y: 0, color: null };
-
-        // Smooth following with lerp
-        let mouseX = 0, mouseY = 0, cursorX = 0, cursorY = 0;
-        const LERP = 0.15;
-        let rafId = null;
-
-        function updateCursor() {
-            cursorX += (mouseX - cursorX) * LERP;
-            cursorY += (mouseY - cursorY) * LERP;
-            cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`;
-            window.customCursorPos.x = cursorX;
-            window.customCursorPos.y = cursorY;
-            rafId = requestAnimationFrame(updateCursor);
-        }
-        rafId = requestAnimationFrame(updateCursor);
-
-        const brandColors = {
-            'Behance': '#0057ff', 'Instagram-Portfolio': '#ff306c',
-            'Resume': '#8b5cf6', 'Portfolio': '#8c3dc1'
-        };
-
-        document.addEventListener('pointermove', e => {
-            if (e.pointerType && e.pointerType !== 'mouse') return;
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        }, { passive: true });
-
-        // Hover / click
-        const sel = 'a,button,.island,.case-card,.logo-cell,.poster-item,.volunteer-card,.img-wrap,.ig-grid-item,.sticker-item,.lottie-item,.ctrl-btn,.cat-tab,.back-btn,video';
-
-        document.addEventListener('mouseover', e => {
-            if (!e.target.closest) return;
-            const match = e.target.closest(sel);
-            if (match) {
-                cursor.classList.add('cursor-hover');
-                // Brand color
-                const brand = match.dataset?.brand || match.closest('[data-brand]')?.dataset?.brand;
-                if (brand && brandColors[brand]) {
-                    const c = brandColors[brand];
-                    cursor.style.background = c;
-                    cursor.style.boxShadow = `0 0 15px ${c}, 0 0 30px ${c}, 0 0 45px ${c}80`;
-                    window.customCursorPos.color = c;
-                }
-            }
-        }, { passive: true });
-
-        document.addEventListener('mouseout', e => {
-            if (!e.target.closest) return;
-            const from = e.target.closest(sel);
-            if (!from) return;
-            const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest(sel) : null;
-            if (!to) {
-                cursor.classList.remove('cursor-hover');
-                cursor.style.background = '';
-                cursor.style.boxShadow = '';
-                window.customCursorPos.color = null;
-            }
-        }, { passive: true });
-
-        document.addEventListener('mousedown', () => cursor.classList.add('cursor-click'));
-        document.addEventListener('mouseup', () => cursor.classList.remove('cursor-click'));
-        document.addEventListener('mouseleave', () => { cursor.style.opacity = '0'; });
-        document.addEventListener('mouseenter', () => { cursor.style.opacity = '1'; });
-
-        cursor.style.opacity = '0';
-        document.addEventListener('pointermove', () => {
-            document.body.classList.add('custom-cursor-active');
-            cursor.style.opacity = '1';
-        }, { once: true, passive: true });
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => { if (rafId) cancelAnimationFrame(rafId); });
-    }
-
     /* ── Theme & Lang Buttons ── */
     function initControls() {
+        if (window.LordskampUI) {
+            lang = window.LordskampUI.getLanguage();
+            window.addEventListener('lordskamp:languagechange', event => {
+                const nextLang = event.detail && event.detail.language;
+                if (!nextLang || nextLang === lang) return;
+                lang = nextLang;
+                applyI18n();
+            });
+            return;
+        }
+
         updateTheme();
         document.getElementById('themeBtn')?.addEventListener('click', () => { isLight = !isLight; updateTheme(); });
         document.getElementById('langBtn')?.addEventListener('click', () => {
             lang = lang === 'uk' ? 'en' : 'uk';
             applyI18n();
-            buildCases(); buildLogos(); buildPosters(); buildMotion();
-            requestAnimationFrame(() => { initLottie(); initScrollAnimations(); });
         });
     }
 
@@ -1036,7 +1038,6 @@
         buildPosters();
         buildMotion();
         initFilters();
-        initCursor();
         initControls();
         requestAnimationFrame(() => {
             initLottie();
