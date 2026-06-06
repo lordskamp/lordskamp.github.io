@@ -8,7 +8,7 @@
     /* ── i18n ── */
     const i18n = {
         uk: {
-            back: "Назад", heroTitle: "Моє портфоліо",
+            back: "Назад", heroTitle: "ПОРТФОЛІО",
             heroSub: "Добірка проєктів з брендингу, моушн-дизайну та креативних робіт.",
             tabAll: "Усе", tabCases: "Кейси", tabLogos: "Лого", tabPosters: "Постери", tabMotion: "Моушн",
             sourceLabel: "ВИХІДНИЙ ФАЙЛ", projectLabel: "ДИЗАЙН-ПРОЄКТ", realLabel: "РЕАЛЬНЕ ФОТО",
@@ -16,9 +16,10 @@
             secCases: "Кейси", secLogos: "Логотипи", secPosters: "Постери", secMotion: "Моушн-графіка",
             stickers: "Наліпки", animStickers: "Анімовані наліпки", igPosts: "Пости Instagram",
             igStories: "Сторіс Instagram", volunteer: "Волонтерські збори",
+            openTelegram: "Відкрити в Telegram",
         },
         en: {
-            back: "Back", heroTitle: "My Portfolio",
+            back: "Back", heroTitle: "PORTFOLIO",
             heroSub: "A curated selection of branding, motion design, and creative projects.",
             tabAll: "All", tabCases: "Cases", tabLogos: "Logos", tabPosters: "Posters", tabMotion: "Motion",
             sourceLabel: "SOURCE FILE", projectLabel: "DESIGN PROJECT", realLabel: "REAL PHOTO",
@@ -26,6 +27,7 @@
             secCases: "Cases", secLogos: "Logos", secPosters: "Posters", secMotion: "Motion Graphics",
             stickers: "Stickers", animStickers: "Animated Stickers", igPosts: "Instagram Posts",
             igStories: "Instagram Stories", volunteer: "Volunteer Fundraisers",
+            openTelegram: "Open in Telegram",
         }
     };
     let lang = window.LordskampUI
@@ -168,34 +170,174 @@
         logoVideo: 'LogoAnim/03.mp4'
     };
 
+    const TELEGRAM_STICKER_LINKS = {
+        static: 'https://t.me/addstickers/ZXDFest',
+        animated: 'https://t.me/addstickers/Zaxidfest2020'
+    };
+
     /* ── Lightbox ── */
     const lightbox = document.getElementById('lightbox');
     const lightboxContent = document.getElementById('lightboxContent');
     const lightboxClose = document.getElementById('lightboxClose');
+    let activeLightboxAnimation = null;
+    let activeLightboxCleanup = null;
+    let lightboxClearTimer = 0;
+    const volunteerStates = new Map();
+    const VOLUNTEER_FADE_MS = 250;
 
-    function openLightbox(src, type = 'image') {
+    function clearLightboxContent() {
+        if (activeLightboxAnimation) {
+            activeLightboxAnimation.destroy();
+            activeLightboxAnimation = null;
+        }
+        if (activeLightboxCleanup) {
+            activeLightboxCleanup();
+            activeLightboxCleanup = null;
+        }
         lightboxContent.innerHTML = '';
+        lightboxContent.removeAttribute('data-media-type');
+        lightbox.removeAttribute('data-media-type');
+    }
+
+    function openLightbox(src, type = 'image', items = null, options = {}) {
+        if (!lightbox || !lightboxContent || (!src && !(items && items.length) && type !== 'volunteer')) return;
+
+        window.clearTimeout(lightboxClearTimer);
+        clearLightboxContent();
+        lightbox.dataset.mediaType = type;
+        lightboxContent.dataset.mediaType = type;
+
         if (type === 'video') {
             const v = document.createElement('video');
-            v.src = src; v.controls = true; v.autoplay = true; v.style.maxWidth = '92vw'; v.style.maxHeight = '92vh'; v.style.borderRadius = '8px';
+            v.src = src;
+            v.controls = true;
+            v.autoplay = true;
+            v.playsInline = true;
             lightboxContent.appendChild(v);
+        } else if (type === 'lottie') {
+            const lottieFrame = el('div', 'lightbox-lottie');
+            lightboxContent.appendChild(lottieFrame);
+            if (typeof lottie !== 'undefined') {
+                activeLightboxAnimation = lottie.loadAnimation({
+                    container: lottieFrame,
+                    renderer: 'svg',
+                    loop: true,
+                    autoplay: true,
+                    path: encodeURI(src),
+                    rendererSettings: {
+                        progressiveLoad: true,
+                        preserveAspectRatio: 'xMidYMid meet'
+                    }
+                });
+            }
+        } else if (type === 'logo') {
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = '';
+            img.className = 'lightbox-logo';
+            if (!String(src).includes('(color)')) img.classList.add('logo-mono');
+            lightboxContent.appendChild(img);
+        } else if (type === 'carousel') {
+            const carouselItems = (Array.isArray(items) && items.length) ? items : [src];
+            const strip = el('div', 'lightbox-carousel-strip');
+            strip.style.setProperty('--carousel-count', carouselItems.length);
+            carouselItems.forEach(itemSrc => {
+                const img = document.createElement('img');
+                img.src = itemSrc;
+                img.alt = '';
+                img.loading = 'eager';
+                if (itemSrc === src) img.dataset.current = 'true';
+                strip.appendChild(img);
+            });
+            lightboxContent.appendChild(strip);
+        } else if (type === 'volunteer') {
+            const state = volunteerStates.get(options.volunteerKey);
+            if (state) {
+                lightboxContent.appendChild(makeVolunteerLightbox(state));
+            } else if (src) {
+                const img = document.createElement('img');
+                img.src = src; img.alt = '';
+                lightboxContent.appendChild(img);
+            }
         } else {
             const img = document.createElement('img');
             img.src = src; img.alt = '';
             lightboxContent.appendChild(img);
         }
+
         lightbox.classList.add('active');
+        lightbox.setAttribute('aria-hidden', 'false');
         document.body.style.overflow = 'hidden';
     }
 
     function closeLightbox() {
+        if (!lightbox || !lightboxContent) return;
         lightbox.classList.remove('active');
+        lightbox.setAttribute('aria-hidden', 'true');
         document.body.style.overflow = '';
-        setTimeout(() => { lightboxContent.innerHTML = ''; }, 300);
+        lightboxClearTimer = window.setTimeout(clearLightboxContent, 300);
+    }
+
+    function makeMediaOpenable(target, src, type = 'image', options = {}) {
+        if (!target || !src) return target;
+
+        target.dataset.lightboxSrc = src;
+        target.dataset.lightboxType = type;
+        if (Array.isArray(options.items) && options.items.length) {
+            target.dataset.lightboxItems = JSON.stringify(options.items);
+        }
+        if (options.volunteerKey) {
+            target.dataset.lightboxVolunteerKey = options.volunteerKey;
+        }
+        target.classList.add('lightbox-trigger');
+
+        if (!target.hasAttribute('tabindex')) target.tabIndex = 0;
+        if (!target.hasAttribute('role')) target.setAttribute('role', 'button');
+
+        const openFromTarget = event => {
+            if (options.shouldOpen && !options.shouldOpen(event, target)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            let items = null;
+            if (target.dataset.lightboxItems) {
+                try {
+                    const parsed = JSON.parse(target.dataset.lightboxItems);
+                    if (Array.isArray(parsed)) items = parsed;
+                } catch (_) {
+                    items = null;
+                }
+            }
+            const lightboxOptions = {};
+            if (target.dataset.lightboxVolunteerKey) {
+                lightboxOptions.volunteerKey = target.dataset.lightboxVolunteerKey;
+            }
+            openLightbox(target.dataset.lightboxSrc, target.dataset.lightboxType || type, items, lightboxOptions);
+        };
+
+        target.addEventListener('click', openFromTarget);
+        target.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            openFromTarget(event);
+        });
+
+        return target;
+    }
+
+    function makeTelegramStickerLink(url) {
+        const link = el('a', 'telegram-sticker-link');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.innerHTML = '<i class="fab fa-telegram-plane" aria-hidden="true"></i>';
+        const label = el('span', '', t('openTelegram'));
+        label.dataset.i18n = 'openTelegram';
+        link.appendChild(label);
+        return link;
     }
 
     lightboxClose.addEventListener('click', closeLightbox);
     lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+    lightboxContent.addEventListener('click', e => e.stopPropagation());
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 
     /* ── Build Helpers ── */
@@ -204,6 +346,126 @@
         if (cls) e.className = cls;
         if (html) e.innerHTML = html;
         return e;
+    }
+
+    function getVolunteerState(caseItem, folder) {
+        const key = `${caseItem.id}:${folder.dir}`;
+        if (volunteerStates.has(key)) return volunteerStates.get(key);
+
+        const sources = folder.files.map(file => `${caseItem.path}/${folder.dir}/${file}`);
+        let currentIdx = 0;
+        let remainingIdx = [];
+        const listeners = new Set();
+
+        const currentSrc = () => sources[currentIdx] || '';
+        const refillQueue = () => {
+            remainingIdx = sources
+                .map((_, idx) => idx)
+                .filter(idx => idx !== currentIdx);
+
+            for (let i = remainingIdx.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [remainingIdx[i], remainingIdx[j]] = [remainingIdx[j], remainingIdx[i]];
+            }
+        };
+        const notify = () => {
+            const src = currentSrc();
+            listeners.forEach(listener => listener(src, { immediate: false }));
+        };
+
+        refillQueue();
+
+        const state = {
+            key,
+            sources,
+            hasAlternatives: sources.length > 1,
+            getCurrentSrc: currentSrc,
+            shuffle() {
+                if (sources.length < 2) return;
+                if (!remainingIdx.length) refillQueue();
+                currentIdx = remainingIdx.pop();
+                notify();
+            },
+            subscribe(listener) {
+                listeners.add(listener);
+                listener(currentSrc(), { immediate: true });
+                return () => listeners.delete(listener);
+            }
+        };
+
+        volunteerStates.set(key, state);
+        return state;
+    }
+
+    function makeVolunteerCard(state, options = {}) {
+        const card = el('div', `volunteer-card${options.inLightbox ? ' volunteer-card--lightbox' : ''}`);
+        const img = document.createElement('img');
+        img.alt = '';
+        img.loading = options.inLightbox ? 'eager' : 'lazy';
+        img.decoding = 'async';
+        img.style.cssText = options.inLightbox
+            ? 'display:block;margin:0;'
+            : 'width:100%;display:block;margin:0;';
+        card.dataset.volunteerKey = state.key;
+        card.appendChild(img);
+
+        let fadeTimer = 0;
+        const syncImage = (nextSrc, meta = {}) => {
+            window.clearTimeout(fadeTimer);
+            card.dataset.lightboxSrc = nextSrc;
+
+            if (meta.immediate || img.src.endsWith(encodeURI(nextSrc))) {
+                img.src = nextSrc;
+                img.style.opacity = '1';
+                return;
+            }
+
+            img.style.opacity = '0';
+            fadeTimer = window.setTimeout(() => {
+                img.src = nextSrc;
+                img.style.opacity = '1';
+            }, VOLUNTEER_FADE_MS);
+        };
+        const unsubscribe = state.subscribe(syncImage);
+
+        if (state.hasAlternatives) {
+            const hint = el('button', 'volunteer-tap-hint');
+            hint.type = 'button';
+            hint.setAttribute('aria-label', t('clickToShuffle'));
+            hint.appendChild(el('i', 'fas fa-random'));
+            hint.appendChild(document.createTextNode(' '));
+            const hintText = el('span', '', t('clickToShuffle'));
+            hintText.dataset.i18n = 'clickToShuffle';
+            hint.appendChild(hintText);
+            hint.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                state.shuffle();
+            });
+            card.appendChild(hint);
+        }
+
+        if (!options.inLightbox) {
+            makeMediaOpenable(card, state.getCurrentSrc(), 'volunteer', {
+                volunteerKey: state.key
+            });
+        }
+
+        return {
+            card,
+            cleanup() {
+                window.clearTimeout(fadeTimer);
+                unsubscribe();
+            }
+        };
+    }
+
+    function makeVolunteerLightbox(state) {
+        const frame = el('div', 'lightbox-volunteer-frame');
+        const view = makeVolunteerCard(state, { inLightbox: true });
+        activeLightboxCleanup = view.cleanup;
+        frame.appendChild(view.card);
+        return frame;
     }
 
     function makeSectionBlock(title, icon, i18nKey) {
@@ -228,13 +490,8 @@
         }
         const img = document.createElement('img');
         img.src = src; img.alt = ''; img.loading = 'lazy';
-        // Only IRL images can open in lightbox
-        if (badge && badge.cls === 'real-label') {
-            img.style.cursor = 'zoom-in';
-            img.addEventListener('click', () => openLightbox(src));
-        }
         w.appendChild(img);
-        return w;
+        return makeMediaOpenable(w, src);
     }
 
     function setupHorizontalStoriesScroller(scroller) {
@@ -313,7 +570,7 @@
         const img = document.createElement('img');
         img.src = src; img.alt = ''; img.loading = 'lazy';
         w.appendChild(img);
-        return w;
+        return makeMediaOpenable(w, src);
     }
 
     function makeLazyVideo(src, options = {}) {
@@ -509,9 +766,10 @@
                     const img = document.createElement('img');
                     img.src = `${c.path}/${c.stickers.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
                     si.appendChild(img);
-                    sg.appendChild(si);
+                    sg.appendChild(makeMediaOpenable(si, img.src));
                 });
                 container.appendChild(sg);
+                container.appendChild(makeTelegramStickerLink(TELEGRAM_STICKER_LINKS.static));
                 body.appendChild(container);
             }
 
@@ -529,10 +787,12 @@
                 const lottiePath = c.lottieStickers.path || c.path;
                 c.lottieStickers.files.forEach(f => {
                     const li = el('div', 'lottie-item');
-                    li.dataset.lottieSrc = `${lottiePath}/${c.lottieStickers.dir}/${f}`;
-                    lg.appendChild(li);
+                    const src = `${lottiePath}/${c.lottieStickers.dir}/${f}`;
+                    li.dataset.lottieSrc = src;
+                    lg.appendChild(makeMediaOpenable(li, src, 'lottie'));
                 });
                 container.appendChild(lg);
+                container.appendChild(makeTelegramStickerLink(TELEGRAM_STICKER_LINKS.animated));
                 body.appendChild(container);
             }
 
@@ -550,7 +810,7 @@
                     const img = document.createElement('img');
                     img.src = `${c.path}/${c.igGrid.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
                     gi.appendChild(img);
-                    igg.appendChild(gi);
+                    igg.appendChild(makeMediaOpenable(gi, img.src));
                 });
                 body.appendChild(igg);
             }
@@ -568,7 +828,7 @@
                     img.src = `${c.path}/${c.igStaticStories.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
                     img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
                     gi.appendChild(img);
-                    isg.appendChild(gi);
+                    isg.appendChild(makeMediaOpenable(gi, img.src));
                 });
                 body.appendChild(isg);
             }
@@ -580,8 +840,7 @@
                 c.igAnimPosts.videos.forEach(f => {
                     const src = `${c.path}/${c.igAnimPosts.dir}/${f}`;
                     const vi = makeLazyVideo(src, { className: 'ig-grid-item', aspectRatio: '1' });
-                    vi.addEventListener('click', () => openLightbox(src, 'video'));
-                    vg.appendChild(vi);
+                    vg.appendChild(makeMediaOpenable(vi, src, 'video'));
                 });
                 body.appendChild(vg);
             }
@@ -595,8 +854,7 @@
                     c.igAnimPosts.videos.forEach(f => {
                         const src = `${c.path}/${c.igAnimPosts.dir}/${f}`;
                         const vi = makeLazyVideo(src, { className: 'ig-grid-item', aspectRatio: '1' });
-                        vi.addEventListener('click', () => openLightbox(src, 'video'));
-                        igPostsMixed.appendChild(vi);
+                        igPostsMixed.appendChild(makeMediaOpenable(vi, src, 'video'));
                     });
                 }
 
@@ -606,7 +864,7 @@
                         const img = document.createElement('img');
                         img.src = `${c.path}/${c.igGrid.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
                         gi.appendChild(img);
-                        igPostsMixed.appendChild(gi);
+                        igPostsMixed.appendChild(makeMediaOpenable(gi, img.src));
                     });
                 }
 
@@ -625,8 +883,7 @@
                         aspectRatio: '9/16',
                         style: 'flex: 0 0 calc((100% - (var(--inner-gap) * 2)) / 3); border-radius: 10px; overflow: hidden; scroll-snap-align: start; cursor: pointer; position: relative;'
                     });
-                    vi.addEventListener('click', () => openLightbox(src, 'video'));
-                    asg.appendChild(vi);
+                    asg.appendChild(makeMediaOpenable(vi, src, 'video'));
                 });
                 body.appendChild(asg);
             }
@@ -642,8 +899,7 @@
                         style: 'cursor:pointer;',
                         autoRatio: true
                     });
-                    vi.addEventListener('click', () => openLightbox(src, 'video'));
-                    vg.appendChild(vi);
+                    vg.appendChild(makeMediaOpenable(vi, src, 'video'));
                 });
                 body.appendChild(vg);
             }
@@ -652,45 +908,8 @@
             if (c.isVolunteer && c.folders) {
                 const vGrid = el('div', 'volunteer-grid');
                 c.folders.forEach(folder => {
-                    const vCard = el('div', 'volunteer-card');
-                    const img = document.createElement('img');
-                    img.src = `${c.path}/${folder.dir}/${folder.files[0]}`; img.alt = ''; img.loading = 'lazy';
-                    img.style.cssText = 'width:100%;display:block;margin:0;';
-                    vCard.appendChild(img);
-
-                    if (folder.files.length > 1) {
-                        const hint = el('div', 'volunteer-tap-hint');
-                        hint.appendChild(el('i', 'fas fa-random'));
-                        hint.appendChild(document.createTextNode(' '));
-                        const hintText = el('span', '', t('clickToShuffle'));
-                        hintText.dataset.i18n = 'clickToShuffle';
-                        hint.appendChild(hintText);
-                        vCard.appendChild(hint);
-                        let currentIdx = 0;
-                        let remainingIdx = [];
-
-                        const refillQueue = () => {
-                            remainingIdx = folder.files
-                                .map((_, idx) => idx)
-                                .filter(idx => idx !== currentIdx);
-                            for (let i = remainingIdx.length - 1; i > 0; i--) {
-                                const j = Math.floor(Math.random() * (i + 1));
-                                [remainingIdx[i], remainingIdx[j]] = [remainingIdx[j], remainingIdx[i]];
-                            }
-                        };
-
-                        refillQueue();
-                        vCard.addEventListener('click', () => {
-                            if (!remainingIdx.length) refillQueue();
-                            currentIdx = remainingIdx.pop();
-                            img.style.opacity = '0';
-                            setTimeout(() => {
-                                img.src = `${c.path}/${folder.dir}/${folder.files[currentIdx]}`;
-                                img.style.opacity = '1';
-                            }, 250);
-                        });
-                    }
-                    vGrid.appendChild(vCard);
+                    const state = getVolunteerState(c, folder);
+                    vGrid.appendChild(makeVolunteerCard(state).card);
                 });
                 body.appendChild(vGrid);
             }
@@ -700,16 +919,17 @@
                 const cGrid = el('div', 'carousel-grid');
                 c.carouselFolders.forEach(folder => {
                     const cWrapper = el('div', 'carousel-wrapper');
+                    const carouselMask = el('div', 'carousel-mask');
                     const carousel = el('div', 'insta-carousel');
-                    carousel.style.margin = '.5rem 0';
-                    carousel.style.borderRadius = '12px';
+                    const carouselSources = folder.files.map(file => `${c.path}/${folder.dir}/${file}`);
                     
                     folder.files.forEach(f => {
-                        const slide = el('div', 'carousel-slide img-wrap');
+                        const slide = el('div', 'carousel-slide');
                         const img = document.createElement('img');
                         img.src = `${c.path}/${folder.dir}/${f}`;
                         img.alt = ''; img.loading = 'lazy';
-                        img.style.cssText = 'width:100%; height:auto; display:block;';
+                        img.decoding = 'async';
+                        img.style.cssText = 'width:100%;height:auto;display:block;border-radius:0;filter:none;box-shadow:none;';
                         img.draggable = false; // Disable native browser drag
                         
                         // Equalize heights by setting flex-grow based on aspect ratio
@@ -731,13 +951,17 @@
                             e.preventDefault(); // Stop native ghost drag
                         });
                         img.addEventListener('mousemove', e => { if (Math.abs(e.pageX - startX) > 5) isDragging = true; });
-                        img.addEventListener('click', e => { if (!isDragging) openLightbox(img.src); });
+                        makeMediaOpenable(img, img.src, 'carousel', {
+                            shouldOpen: () => !isDragging,
+                            items: carouselSources
+                        });
                         
                         slide.appendChild(img);
                         carousel.appendChild(slide);
                     });
                     cWrapper.style.flex = '1'; // Default fallback until image loads
-                    cWrapper.appendChild(carousel);
+                    carouselMask.appendChild(carousel);
+                    cWrapper.appendChild(carouselMask);
 
                     if (folder.files.length > 1) {
                         const dots = el('div', 'carousel-dots');
@@ -844,7 +1068,7 @@
             const isColor = logo.file.includes('(color)');
             img.className = 'logo-svg' + (isColor ? '' : ' logo-mono');
             cell.appendChild(img);
-            grid.appendChild(cell);
+            grid.appendChild(makeMediaOpenable(cell, img.src, 'logo'));
         });
         section.shell.appendChild(grid);
         sec.appendChild(section.island);
@@ -862,7 +1086,7 @@
             const img = document.createElement('img');
             img.src = `portfolio/Posters/${p}`; img.alt = ''; img.loading = 'lazy';
             item.appendChild(img);
-            grid.appendChild(item);
+            grid.appendChild(makeMediaOpenable(item, img.src));
         });
         section.shell.appendChild(grid);
         sec.appendChild(section.island);
@@ -880,8 +1104,9 @@
         MOTION.lottie.forEach(f => {
             const item = el('div', 'lottie-item fade-up');
             item.style.aspectRatio = '1'; item.style.minHeight = '150px';
-            item.dataset.lottieSrc = `${MOTION.path}/${f}`;
-            grid.appendChild(item);
+            const src = `${MOTION.path}/${f}`;
+            item.dataset.lottieSrc = src;
+            grid.appendChild(makeMediaOpenable(item, src, 'lottie'));
         });
 
         // Logo video
@@ -892,8 +1117,7 @@
                 aspectRatio: '1',
                 style: 'cursor:pointer;'
             });
-            vi.addEventListener('click', () => openLightbox(src, 'video'));
-            grid.appendChild(vi);
+            grid.appendChild(makeMediaOpenable(vi, src, 'video'));
         }
 
         // Motion videos — auto aspect ratio detection
@@ -904,8 +1128,7 @@
                 style: 'cursor:pointer;',
                 autoRatio: true
             });
-            vi.addEventListener('click', () => openLightbox(src, 'video'));
-            grid.appendChild(vi);
+            grid.appendChild(makeMediaOpenable(vi, src, 'video'));
         });
 
         section.shell.appendChild(grid);
