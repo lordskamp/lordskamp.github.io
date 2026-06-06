@@ -121,6 +121,15 @@
             padding: 0;
         }
 
+        img {
+            -webkit-user-drag: none;
+            -khtml-user-drag: none;
+            -moz-user-drag: none;
+            -o-user-drag: none;
+            user-drag: none;
+            -webkit-touch-callout: none;
+        }
+
         html {
             height: -webkit-fill-available;
             min-height: var(--app-height);
@@ -1352,6 +1361,15 @@
                         </a>
                     </div>
 
+                    <!-- View Portfolio Button -->
+                    <a href="portfolio.html" data-brand="Portfolio"
+                        class="link-item flex items-center p-4 rounded-lg group"
+                        style="background: linear-gradient(135deg, rgba(140, 61, 193, 0.4), rgba(72, 0, 255, 0.3)); border: 1px solid rgba(140, 61, 193, 0.5);">
+                        <i class="fas fa-palette text-white text-xl w-8"></i>
+                        <span class="ml-3 font-medium text-white" data-i18n="viewPortfolio">View Portfolio</span>
+                        <i class="fas fa-arrow-right ml-auto text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all text-sm"></i>
+                    </a>
+
                     <div class="link-item flex p-0 rounded-lg overflow-hidden" data-brand="Resume"
                         style="background: rgba(139, 92, 246, 0.5); border: 1px solid rgba(139, 92, 246, 0.5);">
                         <!-- Main Link -->
@@ -1881,6 +1899,7 @@
                     email: "lordskamp@yahoo.com",
                     instagramPortfolio: "Instagram",
                     madeWith: 'Зроблено з допомогою ШІ',
+                    viewPortfolio: "Переглянути портфоліо",
                     viewCV: "Переглянути резюме",
                     copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
                     copied: "✔ Скопійовано!",
@@ -1929,6 +1948,7 @@
                     email: "lordskamp@yahoo.com",
                     instagramPortfolio: "Instagram",
                     madeWith: 'Made with AI',
+                    viewPortfolio: "View Portfolio",
                     viewCV: "View CV",
                     copyright: 'Fork of <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">this repository</a>',
                     copied: "✔ Copied!",
@@ -2458,7 +2478,8 @@
                     'Threads': '#ffffff',
                     'Behance': '#0057ff',
                     'Instagram-Portfolio': '#ff306c',
-                    'Resume': '#8b5cf6'
+                    'Resume': '#8b5cf6',
+                    'Portfolio': '#8c3dc1'
                 };
 
 
@@ -2707,6 +2728,12 @@
                     }, 500);
                 });
             })();
+        </script>
+        <script>
+            // Disable image dragging globally
+            document.addEventListener('dragstart', (e) => {
+                if (e.target.tagName === 'IMG') e.preventDefault();
+            }, false);
         </script>
 </body>
 
