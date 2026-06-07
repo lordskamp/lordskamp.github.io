@@ -11,23 +11,33 @@
             back: "Назад", heroTitle: "ПОРТФОЛІО",
             heroSub: "Добірка проєктів з брендингу, моушн-дизайну та креативних робіт.",
             tabAll: "Усе", tabCases: "Кейси", tabLogos: "Лого", tabPosters: "Постери", tabMotion: "Моушн",
-            sourceLabel: "ВИХІДНИЙ ФАЙЛ", projectLabel: "ДИЗАЙН-ПРОЄКТ", realLabel: "РЕАЛЬНЕ ФОТО",
+            sourceLabel: "ІЛЮСТРАЦІЯ ВІД ХУДОЖНИКА", projectLabel: "ДИЗАЙН-ПРОЄКТ", realLabel: "РЕАЛЬНЕ ФОТО",
+            sourceNote: "Базова ілюстрація надана художником. Усі подальші дизайни, адаптації та розвиток дизайн-системи виконані мною.",
+            sourceReworkLabel: "МІЙ РЕВОРК 2020 → 2021",
+            sourceReworkNote: "Фестиваль 2020 скасували через COVID-19, тому для 2021 я зробив реворк ілюстрації 2020. Саме ця версія стала основою для подальших дизайнів та адаптацій.",
             zoomHint: "Наведіть для зуму", clickToShuffle: "Натисніть, щоб змінити",
             secCases: "Кейси", secLogos: "Логотипи", secPosters: "Постери", secMotion: "Моушн-графіка",
             stickers: "Наліпки", animStickers: "Анімовані наліпки", igPosts: "Пости Instagram",
             igStories: "Сторіс Instagram", volunteer: "Волонтерські збори",
             openTelegram: "Відкрити в Telegram",
+            madeWith: 'Зроблено з допомогою ШІ',
+            copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
         },
         en: {
             back: "Back", heroTitle: "PORTFOLIO",
             heroSub: "A curated selection of branding, motion design, and creative projects.",
             tabAll: "All", tabCases: "Cases", tabLogos: "Logos", tabPosters: "Posters", tabMotion: "Motion",
-            sourceLabel: "SOURCE FILE", projectLabel: "DESIGN PROJECT", realLabel: "REAL PHOTO",
+            sourceLabel: "ARTIST ILLUSTRATION", projectLabel: "DESIGN PROJECT", realLabel: "REAL PHOTO",
+            sourceNote: "Base illustration provided by the artist. All subsequent designs, adaptations, and design-system development were done by me.",
+            sourceReworkLabel: "MY REWORK 2020 → 2021",
+            sourceReworkNote: "The 2020 festival was canceled due to COVID-19, so for 2021 I reworked the 2020 illustration. This version became the base for the subsequent designs and adaptations.",
             zoomHint: "Hover to zoom", clickToShuffle: "Click to change",
             secCases: "Cases", secLogos: "Logos", secPosters: "Posters", secMotion: "Motion Graphics",
             stickers: "Stickers", animStickers: "Animated Stickers", igPosts: "Instagram Posts",
             igStories: "Instagram Stories", volunteer: "Volunteer Fundraisers",
             openTelegram: "Open in Telegram",
+            madeWith: 'Made with AI',
+            copyright: 'Fork of <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">this repository</a>',
         }
     };
     let lang = window.LordskampUI
@@ -38,7 +48,14 @@
     function applyI18n() {
         document.documentElement.lang = lang;
         document.querySelectorAll('[data-i18n]').forEach(el => {
-            el.textContent = t(el.dataset.i18n);
+            const key = el.dataset.i18n;
+            const label = el.dataset.i18nLabel;
+            const value = label ? `${t(key)} • ${label}` : t(key);
+            if (key === 'madeWith' || key === 'copyright') {
+                el.innerHTML = value;
+            } else {
+                el.textContent = value;
+            }
         });
     }
 
@@ -68,8 +85,8 @@
             subs: [
                 { name: 'Main Stage', dir: '1. Main_Stage', project: 'Main_Project.png', real: ['Main_RealPhoto_1.jpg', 'Main_RealPhoto_3.jpg', 'Main_RealPhoto_4.jpg', 'Main_RealPhoto_5.jpg', 'Main_RealPhoto_6.jpg', 'Main_RealPhoto_7.jpg', 'Main_RealPhoto_8.jpg', 'Main_RealPhoto_9.jpg'] },
                 { name: 'Rock Stage', dir: '2. Rock_Stage', project: 'Rock_Project.png', real: ['Rock_RealPhoto_1.jpg', 'Rock_RealPhoto_2.jpg'] },
-                { name: 'Love Stage', dir: '3. Love_Stage', project: 'Love_Project.png', real: ['Love_RealPhoto_1.jpg', 'Love_RealPhoto_2.jpg'] },
-                { name: 'Entry Banner', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg', 'Entry_RealPhoto_2.jpg'] },
+                { name: 'Love Stage', dir: '3. Love_Stage', project: 'Love_Project.png', real: ['Love_RealPhoto_1.jpg'] },
+                { name: 'Entry Banner', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg'] },
                 { name: 'T-Shirt', dir: '5.TShirt', project: 'TShirt_Project.png', real: ['TShirt_RealPhoto_1.jpg', 'TShirt_RealPhoto_2.jpg'] },
             ],
             stickers: { dir: '6. Telegram_StaticStickers', files: ['0.png', '1.png', '2.png', '3.png', '5.png', '6.png', '7.png', '8.png', '9.png'] }
@@ -81,8 +98,19 @@
             path: 'portfolio/Cases/3. Zaxidfest2021',
             sources: [
                 { path: 'portfolio/Cases/2. Zaxidfest2020/Source.png', label: '2020' },
-                { path: 'portfolio/Cases/3. Zaxidfest2021/Source.png', label: '2021' },
-                { path: 'portfolio/Cases/3. Zaxidfest2021/Map.jpg', label: null },
+                { path: 'portfolio/Cases/3. Zaxidfest2021/Source.png', label: '2021', badgeTextKey: 'sourceReworkLabel', noteKey: 'sourceReworkNote' },
+            ],
+            subs: [
+                { name: 'Main Stage', dir: '1. Main_Stage', project: 'Main_Project.png', real: ['Main_RealPhoto_1.jpg', 'Main_RealPhoto_2.jpg', 'Main_RealPhoto_3.jpg', 'Main_RealPhoto_4.jpg', 'Main_RealPhoto_5.jpg', 'Main_RealPhoto_6.jpg', 'Main_RealPhoto_7.jpg', 'Main_RealPhoto_8.jpg'], realRowClass: 'main-stage-photos' },
+                { name: 'Rock Stage', dir: '2. Rock_Stage', project: 'Rock_Project.png', real: ['Rock_RealPhoto_1.jpg', 'Rock_RealPhoto_2.jpg'], realRowClass: 'rock-project-photos' },
+                { name: 'Love Stage', dir: '3. Love_Stage', project: 'Love_Projec1t.png', real: ['Love_RealPhoto_1.jpg'], realRowClass: 'love-project-photos' },
+                { name: 'Entry Banner', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg'], realRowClass: 'entry-project-photos' },
+                { name: 'T-Shirt', dir: '5.TShirt', project: 'TShirt_Project.png', real: ['TShirt_RealPhoto_1.jpg', 'TShirt_RealPhoto_2.jpg'], realRowClass: 'tshirt-project-photos' },
+                { name: 'Map', dir: '', project: 'Map_Project.jpg', real: ['Map_RealPhoto.jpg'], aspectRatio: '1544 / 976' },
+            ],
+            stagePairs: [
+                { names: ['Rock Stage', 'Love Stage'], columns: '2fr 1fr' },
+                { names: ['Entry Banner', 'T-Shirt'], columns: '1fr 2fr' }
             ],
             lottieStickers: { path: 'portfolio/Cases/2. Zaxidfest2020', dir: 'Telegram_AnimatedStickers(Lottie format)', files: ['0.json', '1.json', '2.json', '3.json', '4.json', '5.json'] },
             igGrid: {
@@ -137,14 +165,171 @@
     ];
 
     const LOGOS = [
-        { file: '01.svg', grid: '01(grid).svg' },
-        { file: '02(color).svg' }, { file: '03.svg' }, { file: '04.svg' }, { file: '05(color).svg' },
-        { file: '06.svg' }, { file: '07.svg' }, { file: '08(color).svg' }, { file: '09(color).svg' },
-        { file: '10.svg' }, { file: '11.svg' }, { file: '12(color).svg' }, { file: '13.svg' },
+        { file: '01.svg' },
+        { file: '02.svg' }, { file: '03.svg' }, { file: '04(color).svg' }, { file: '05.svg' },
+        { file: '06.svg' }, { file: '07.svg' }, { file: '8.svg' }, { file: '09.svg' },
+        { file: '10.svg' }, { file: '11(color).svg' }, { file: '12.svg' }, { file: '13.svg' },
         { file: '14.svg', lottie: '14(Lottie).json' }, { file: '15(color).svg' }, { file: '16(color).svg' },
-        { file: '17.svg' }, { file: '18(color).svg' }, { file: '19.svg' },
-        { file: '50.svg' }, { file: '51(color).svg' },
+        { file: '17(color).svg' }, { file: '18.svg' }, { file: '19(color).svg' },
+        { file: '50(color).svg' }, { file: '51(color).svg' },
     ];
+
+    const LOGO_VIEWBOX_PADDING = 0.08;
+    const LOGO_BASE_SIZE = 76;
+    const LOGO_MAX_SIZE = 92;
+    const LOGO_ASPECT_BOOST_POWER = 0.34;
+    let logoMeasureQueue = Promise.resolve();
+    const logoMonoBySrc = new Map();
+
+    function normalizeLogoSvgViewBox(svg, box) {
+        const side = Math.max(box.width, box.height) * (1 + LOGO_VIEWBOX_PADDING * 2);
+        const x = box.x + box.width / 2 - side / 2;
+        const y = box.y + box.height / 2 - side / 2;
+
+        svg.setAttribute('viewBox', `${x} ${y} ${side} ${side}`);
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        svg.setAttribute('width', '1');
+        svg.setAttribute('height', '1');
+    }
+
+    function getBalancedLogoSize(box) {
+        const longSide = Math.max(box.width, box.height);
+        const shortSide = Math.min(box.width, box.height);
+        if (shortSide <= 0) return LOGO_BASE_SIZE;
+
+        const aspectSpread = longSide / shortSide;
+        const aspectBoost = Math.pow(aspectSpread, LOGO_ASPECT_BOOST_POWER);
+        return Math.min(LOGO_MAX_SIZE, LOGO_BASE_SIZE * aspectBoost);
+    }
+
+    function parseSvgColor(value) {
+        if (!value) return null;
+        const color = String(value).trim().toLowerCase();
+        if (!color || color === 'none' || color === 'transparent' || color === 'currentcolor') return null;
+
+        if (color === 'black') return [0, 0, 0];
+        if (color === 'white') return [255, 255, 255];
+
+        const hex = color.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+        if (hex) {
+            let raw = hex[1];
+            if (raw.length === 3 || raw.length === 4) {
+                raw = raw.slice(0, 3).split('').map(ch => ch + ch).join('');
+            } else {
+                raw = raw.slice(0, 6);
+            }
+            return [
+                parseInt(raw.slice(0, 2), 16),
+                parseInt(raw.slice(2, 4), 16),
+                parseInt(raw.slice(4, 6), 16)
+            ];
+        }
+
+        const rgb = color.match(/^rgba?\(([^)]+)\)$/);
+        if (rgb) {
+            const parts = rgb[1].split(',').map(part => parseFloat(part));
+            if (parts.length >= 3 && parts.slice(0, 3).every(Number.isFinite)) {
+                return parts.slice(0, 3).map(part => Math.max(0, Math.min(255, part)));
+            }
+        }
+
+        return null;
+    }
+
+    function isNeutralColor(rgb) {
+        const max = Math.max(...rgb);
+        const min = Math.min(...rgb);
+        return max - min <= 18;
+    }
+
+    function isMonochromeLogo(svgText, file) {
+        if (file.includes('(color)')) return false;
+
+        const colors = new Set();
+        const colorMatches = svgText.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)|\b(?:black|white|transparent|none|currentColor)\b/g) || [];
+        colorMatches.forEach(match => colors.add(match));
+
+        const hasHueColor = [...colors]
+            .map(parseSvgColor)
+            .filter(Boolean)
+            .some(rgb => !isNeutralColor(rgb));
+
+        return !hasHueColor;
+    }
+
+    function sanitizeLogoSvg(svg) {
+        svg.querySelectorAll('script, foreignObject').forEach(node => node.remove());
+        if (!svg.getAttribute('xmlns')) svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        return svg;
+    }
+
+    function measureLogoSvg(svg) {
+        return new Promise(resolve => {
+            const holder = document.createElement('div');
+            holder.style.cssText = 'position:absolute;left:-99999px;top:-99999px;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;';
+            document.body.appendChild(holder);
+            holder.appendChild(svg);
+
+            window.requestAnimationFrame(() => {
+                let box = null;
+                try {
+                    box = svg.getBBox();
+                } catch (_) {
+                    box = null;
+                }
+                holder.remove();
+                resolve(box && box.width > 0 && box.height > 0 ? box : null);
+            });
+        });
+    }
+
+    function queueLogoMeasurement(svg) {
+        const result = logoMeasureQueue.then(() => measureLogoSvg(svg), () => measureLogoSvg(svg));
+        logoMeasureQueue = result.catch(() => {});
+        return result;
+    }
+
+    function setLogoObjectUrl(img, svg) {
+        if (img.dataset.logoObjectUrl) {
+            URL.revokeObjectURL(img.dataset.logoObjectUrl);
+        }
+
+        const serialized = new XMLSerializer().serializeToString(svg);
+        const objectUrl = URL.createObjectURL(new Blob([serialized], { type: 'image/svg+xml' }));
+        img.dataset.logoObjectUrl = objectUrl;
+        img.src = objectUrl;
+        return objectUrl;
+    }
+
+    async function loadNormalizedLogoImg(logo, src, img) {
+        try {
+            const response = await fetch(encodeURI(src));
+            if (!response.ok) throw new Error(`Logo not found: ${src}`);
+
+            const svgText = await response.text();
+            const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+            const svg = doc.querySelector('svg');
+            if (!svg || doc.querySelector('parsererror')) throw new Error(`Invalid SVG: ${src}`);
+
+            sanitizeLogoSvg(svg);
+            const isMono = isMonochromeLogo(svgText, logo.file);
+            const box = await queueLogoMeasurement(svg);
+
+            if (box) {
+                normalizeLogoSvgViewBox(svg, box);
+                img.style.setProperty('--logo-size', `${getBalancedLogoSize(box).toFixed(1)}%`);
+            }
+
+            const normalizedSrc = setLogoObjectUrl(img, svg);
+            img.classList.toggle('logo-mono', isMono);
+            logo.isMono = isMono;
+            logo.normalizedSrc = normalizedSrc;
+            logoMonoBySrc.set(src, isMono);
+            logoMonoBySrc.set(normalizedSrc, isMono);
+        } catch (_) {
+            img.classList.remove('logo-mono');
+        }
+    }
 
     const POSTERS = [
         'Poster (0).jpg', 'Poster (1).jpg', 'Poster (2).jpg', 'Poster (4).jpg', 'Poster (5).jpg',
@@ -174,6 +359,41 @@
         static: 'https://t.me/addstickers/ZXDFest',
         animated: 'https://t.me/addstickers/Zaxidfest2020'
     };
+
+    const ZAXID_PROJECT_CLASSES = {
+        'Main Stage': 'main-stage-project',
+        'Rock Stage': 'rock-project',
+        'Love Stage': 'love-project',
+        'Entry Banner': 'entry-project',
+        'T-Shirt': 'tshirt-project',
+        'Map': 'map-project'
+    };
+
+    const ZAXID_REAL_ROW_CLASSES = {
+        'Main Stage': 'main-stage-photos',
+        'Rock Stage': 'rock-project-photos',
+        'Love Stage': 'love-project-photos',
+        'Entry Banner': 'entry-project-photos',
+        'T-Shirt': 'tshirt-project-photos'
+    };
+
+    const DEFAULT_ZAXID_STAGE_PAIRS = [
+        { names: ['Rock Stage', 'Love Stage'], columns: '2fr 1fr' },
+        { names: ['Entry Banner', 'T-Shirt'], columns: '1fr 2fr' }
+    ];
+
+    function isZaxidCase(caseItem) {
+        return caseItem && (caseItem.id === 'zaxid2019' || caseItem.id === 'zaxid2020_21');
+    }
+
+    function caseAssetPath(caseItem, sub, file) {
+        return [caseItem.path, sub && sub.dir, file].filter(Boolean).join('/');
+    }
+
+    function getZaxidStagePairs(caseItem) {
+        if (!isZaxidCase(caseItem)) return [];
+        return caseItem.stagePairs || DEFAULT_ZAXID_STAGE_PAIRS;
+    }
 
     /* ── Lightbox ── */
     const lightbox = document.getElementById('lightbox');
@@ -235,7 +455,10 @@
             img.src = src;
             img.alt = '';
             img.className = 'lightbox-logo';
-            if (!String(src).includes('(color)')) img.classList.add('logo-mono');
+            const logoMeta = LOGOS.find(logo => `portfolio/Logos/${logo.file}` === src || logo.normalizedSrc === src);
+            if (logoMonoBySrc.get(src) === true || (logoMeta && logoMeta.isMono === true)) {
+                img.classList.add('logo-mono');
+            }
             lightboxContent.appendChild(img);
         } else if (type === 'carousel') {
             const carouselItems = (Array.isArray(items) && items.length) ? items : [src];
@@ -471,7 +694,6 @@
     function makeSectionBlock(title, icon, i18nKey) {
         const island = el('section', 'island fade-up');
         const heading = el('h2', 'section-title');
-        heading.appendChild(el('i', `fas ${icon}`));
         const titleEl = el('span', '', title);
         if (i18nKey) titleEl.dataset.i18n = i18nKey;
         heading.appendChild(titleEl);
@@ -486,6 +708,7 @@
         if (badge) {
             const b = el('span', badge.cls, badge.text);
             if (badge.key) b.dataset.i18n = badge.key;
+            if (badge.label) b.dataset.i18nLabel = badge.label;
             w.appendChild(b);
         }
         const img = document.createElement('img');
@@ -494,16 +717,41 @@
         return makeMediaOpenable(w, src);
     }
 
+    function makeSourceCard(src, options = {}) {
+        const card = el('div', 'source-card');
+        const {
+            label = '',
+            badgeKey = 'sourceLabel',
+            badgeTextKey = '',
+            noteKey = 'sourceNote'
+        } = options;
+        const badgeKeyResolved = badgeTextKey || badgeKey;
+        const badgeText = badgeTextKey
+            ? t(badgeTextKey)
+            : (label ? `${t(badgeKey)} • ${label}` : t(badgeKey));
+        card.appendChild(makeImgWrap(src, '', {
+            cls: 'source-badge source-origin-badge',
+            text: badgeText,
+            key: badgeKeyResolved,
+            label: badgeTextKey ? '' : label
+        }));
+        const note = el('div', 'source-note', t(noteKey));
+        note.dataset.i18n = noteKey;
+        card.appendChild(note);
+        return card;
+    }
+
     function setupHorizontalStoriesScroller(scroller) {
         if (!scroller) return;
 
-        scroller.style.touchAction = 'pan-x';
+        scroller.style.touchAction = 'pan-x pan-y';
         scroller.style.WebkitOverflowScrolling = 'touch';
         scroller.style.overscrollBehaviorX = 'contain';
         scroller.style.cursor = 'grab';
 
         // Make vertical wheel move the horizontal track if there is room to scroll.
         scroller.addEventListener('wheel', (e) => {
+            if (window.innerWidth <= 768) return;
             if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
 
             const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
@@ -561,8 +809,9 @@
     }
 
     /* ── Project Image (static wrap) ── */
-    function makeProjectZoom(src, extraClass = '') {
+    function makeProjectZoom(src, extraClass = '', options = {}) {
         const w = el('div', `img-wrap project-media${extraClass ? ` ${extraClass}` : ''}`);
+        if (options.aspectRatio) w.style.aspectRatio = options.aspectRatio;
         const badge = el('span', 'source-badge', t('projectLabel'));
         badge.dataset.i18n = 'projectLabel';
         badge.style.background = 'rgba(72,0,255,.85)';
@@ -656,20 +905,51 @@
                 : null;
             const caseTitle = c.titleKey ? t(c.titleKey) : c.name;
             const caseSection = makeSectionBlock(caseTitle, c.icon || 'fa-briefcase', c.titleKey);
+            caseSection.island.classList.add(`case-${c.id}`);
             if (c.id === 'igcarousels') {
                 caseSection.island.classList.add('case-span-2');
             }
 
             const body = el('div', 'case-body');
             body.style.padding = '0';
+            let lottieStickersRendered = false;
+            const appendLottieStickers = () => {
+                if (!c.lottieStickers || lottieStickersRendered) return;
+
+                const container = el('div', 'img-wrap');
+                const badgeKey = 'animStickers';
+                const badgeText = t(badgeKey);
+                const badge = el('span', 'source-badge', badgeText);
+                badge.dataset.i18n = badgeKey;
+                container.appendChild(badge);
+
+                const lg = el('div', 'stickers-grid lottie-stickers-grid');
+                lg.style.paddingTop = '2rem'; // Space for badge
+                const lottiePath = c.lottieStickers.path || c.path;
+                c.lottieStickers.files.forEach(f => {
+                    const li = el('div', 'lottie-item');
+                    const src = `${lottiePath}/${c.lottieStickers.dir}/${f}`;
+                    li.dataset.lottieSrc = src;
+                    lg.appendChild(makeMediaOpenable(li, src, 'lottie'));
+                });
+                container.appendChild(lg);
+                container.appendChild(makeTelegramStickerLink(TELEGRAM_STICKER_LINKS.animated));
+                body.appendChild(container);
+                lottieStickersRendered = true;
+            };
 
             // Source image(s)
             if (c.source) {
-                body.appendChild(makeImgWrap(`${c.path}/${c.source}`, '', { cls: 'source-badge', text: t('sourceLabel'), key: 'sourceLabel' }));
+                body.appendChild(makeSourceCard(`${c.path}/${c.source}`));
             }
 
             if (zaxidSource2020) {
-                body.appendChild(makeImgWrap(zaxidSource2020.path, '', { cls: 'source-badge', text: '2020' }));
+                body.appendChild(makeSourceCard(zaxidSource2020.path, zaxidSource2020));
+                appendLottieStickers();
+            }
+
+            if (zaxidSource2021) {
+                body.appendChild(makeSourceCard(zaxidSource2021.path, zaxidSource2021));
             }
 
             // Merged Zaxid 2020→2021 sources (tell the reuse story visually)
@@ -691,45 +971,53 @@
                     subTitle.textContent = sub.name;
                     target.appendChild(subTitle);
 
+                    let projectClass = sub.projectClass || '';
+                    let realRowClass = sub.realRowClass ? ` ${sub.realRowClass}` : '';
+                    if (isZaxidCase(c)) {
+                        projectClass = [projectClass, ZAXID_PROJECT_CLASSES[sub.name]].filter(Boolean).join(' ');
+                        if (!realRowClass && ZAXID_REAL_ROW_CLASSES[sub.name]) {
+                            realRowClass = ` ${ZAXID_REAL_ROW_CLASSES[sub.name]}`;
+                        }
+                    }
+
                     // Project with zoom
-                    const projectClass = (c.id === 'zaxid2019' && sub.name === 'Main Stage') ? 'main-stage-project' : '';
-                    target.appendChild(makeProjectZoom(`${c.path}/${sub.dir}/${sub.project}`, projectClass));
+                    target.appendChild(makeProjectZoom(caseAssetPath(c, sub, sub.project), projectClass, { aspectRatio: sub.aspectRatio }));
 
                     // Real photos
                     if (sub.real && sub.real.length) {
-                        const realRow = el('div', 'real-photos-row');
+                        const realRow = el('div', 'real-photos-row' + realRowClass);
                         realRow.style.marginTop = '.5rem';
                         sub.real.forEach(r => {
-                            realRow.appendChild(makeImgWrap(`${c.path}/${sub.dir}/${r}`, 'real-photo-wrap', { cls: 'real-label', text: '<i class="fas fa-camera"></i>' }));
+                            realRow.appendChild(makeImgWrap(caseAssetPath(c, sub, r), 'real-photo-wrap', { cls: 'real-label', text: '<i class="fas fa-camera"></i>' }));
                         });
                         target.appendChild(realRow);
                     }
                 };
 
-                if (c.id === 'zaxid2019') {
-                    const pairDefs = [
-                        ['Rock Stage', 'Love Stage'],
-                        ['Entry Banner', 'T-Shirt']
-                    ];
-                    const pairMap = new Map(pairDefs.map(([left, right]) => [
-                        left,
-                        [c.subs.find(s => s.name === left), c.subs.find(s => s.name === right)]
+                const zaxidPairs = getZaxidStagePairs(c);
+                if (zaxidPairs.length) {
+                    const pairMap = new Map(zaxidPairs.map(pair => [
+                        pair.names[0],
+                        {
+                            columns: pair.columns || '1fr 1fr',
+                            subs: pair.names.map(name => c.subs.find(s => s.name === name))
+                        }
                     ]));
                     const pairRightNames = new Set();
                     pairMap.forEach(pair => {
-                        if (pair[0] && pair[1]) {
-                            pairRightNames.add(pair[1].name);
+                        if (pair.subs[0] && pair.subs[1]) {
+                            pairRightNames.add(pair.subs[1].name);
                         }
                     });
                     const rendered = new Set();
 
                     c.subs.forEach(sub => {
                         const pair = pairMap.get(sub.name);
-                        if (pair && pair[0] && pair[1]) {
+                        if (pair && pair.subs[0] && pair.subs[1]) {
                             const stagesRow = el('div', 'zaxid-stage-row');
-                            stagesRow.style.cssText = 'display:grid;gap:var(--inner-gap);grid-template-columns:1fr 1fr;';
+                            stagesRow.style.cssText = `display:grid;gap:var(--inner-gap);grid-template-columns:${pair.columns};`;
 
-                            pair.forEach(stage => {
+                            pair.subs.forEach(stage => {
                                 const col = el('div', 'zaxid-stage-col');
                                 renderSubCase(col, stage);
                                 stagesRow.appendChild(col);
@@ -759,10 +1047,13 @@
                 badge.dataset.i18n = 'stickers';
                 container.appendChild(badge);
 
-                const sg = el('div', 'stickers-grid');
+                const sg = el('div', 'stickers-grid static-stickers-grid');
                 sg.style.paddingTop = '2rem'; // Space for badge
                 c.stickers.files.forEach(f => {
                     const si = el('div', 'sticker-item');
+                    if (c.id === 'zaxid2019' && f === '3.png') {
+                        si.classList.add('mobile-only-sticker');
+                    }
                     const img = document.createElement('img');
                     img.src = `${c.path}/${c.stickers.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
                     si.appendChild(img);
@@ -774,32 +1065,7 @@
             }
 
             // Lottie stickers
-            if (c.lottieStickers) {
-                const container = el('div', 'img-wrap');
-                const badgeKey = isZaxidMergedLayout ? 'stickers' : 'animStickers';
-                const badgeText = t(badgeKey);
-                const badge = el('span', 'source-badge', badgeText);
-                badge.dataset.i18n = badgeKey;
-                container.appendChild(badge);
-
-                const lg = el('div', 'stickers-grid');
-                lg.style.paddingTop = '2rem'; // Space for badge
-                const lottiePath = c.lottieStickers.path || c.path;
-                c.lottieStickers.files.forEach(f => {
-                    const li = el('div', 'lottie-item');
-                    const src = `${lottiePath}/${c.lottieStickers.dir}/${f}`;
-                    li.dataset.lottieSrc = src;
-                    lg.appendChild(makeMediaOpenable(li, src, 'lottie'));
-                });
-                container.appendChild(lg);
-                container.appendChild(makeTelegramStickerLink(TELEGRAM_STICKER_LINKS.animated));
-                body.appendChild(container);
-            }
-
-            if (zaxidSource2021) {
-                body.appendChild(makeImgWrap(zaxidSource2021.path, '', { cls: 'source-badge', text: '2021' }));
-            }
-
+            appendLottieStickers();
             // IG Static posts (3x3 grid preview, scrollable) — no label
             if (c.igGrid && !isZaxidMergedLayout) {
                 const igg = el('div', 'ig-grid hide-scroll');
@@ -1007,6 +1273,7 @@
                     let wheelTimeout;
 
                     carousel.addEventListener('wheel', (e) => {
+                        if (window.innerWidth <= 768) return;
                         if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
                             e.preventDefault();
                             
@@ -1064,11 +1331,12 @@
         LOGOS.forEach(logo => {
             const cell = el('div', 'logo-cell fade-up');
             const img = document.createElement('img');
-            img.src = `portfolio/Logos/${logo.file}`; img.alt = ''; img.loading = 'lazy';
-            const isColor = logo.file.includes('(color)');
-            img.className = 'logo-svg' + (isColor ? '' : ' logo-mono');
+            const src = `portfolio/Logos/${logo.file}`;
+            img.src = src; img.alt = ''; img.loading = 'lazy';
+            img.className = 'logo-svg';
             cell.appendChild(img);
-            grid.appendChild(makeMediaOpenable(cell, img.src, 'logo'));
+            loadNormalizedLogoImg(logo, src, img);
+            grid.appendChild(makeMediaOpenable(cell, src, 'logo'));
         });
         section.shell.appendChild(grid);
         sec.appendChild(section.island);
