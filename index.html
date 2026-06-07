@@ -593,6 +593,77 @@
             transform: translateY(-2px);
         }
 
+        .portfolio-cta {
+            min-height: 62px;
+            justify-content: center;
+            text-align: center;
+            isolation: isolate;
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)) padding-box,
+                linear-gradient(135deg, #ff4fd8, #7c3aed 45%, #22d3ee) border-box;
+            border: 1px solid transparent;
+            box-shadow:
+                0 18px 36px rgba(124, 58, 237, 0.28),
+                inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        .portfolio-cta::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(255, 79, 216, 0.42), transparent 32%),
+                radial-gradient(circle at 85% 30%, rgba(34, 211, 238, 0.35), transparent 34%),
+                linear-gradient(135deg, rgba(124, 58, 237, 0.52), rgba(15, 23, 42, 0.18));
+            opacity: 0.9;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .portfolio-cta::after {
+            content: "";
+            position: absolute;
+            top: -60%;
+            bottom: -60%;
+            left: -35%;
+            width: 30%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+            transform: rotate(18deg) translateX(-180%);
+            transition: transform 0.7s ease;
+            pointer-events: none;
+        }
+
+        .portfolio-cta:hover {
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.07)) padding-box,
+                linear-gradient(135deg, #ff7ae6, #8b5cf6 42%, #67e8f9) border-box !important;
+            border-color: transparent;
+            box-shadow:
+                0 22px 48px rgba(34, 211, 238, 0.2),
+                0 18px 42px rgba(255, 79, 216, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.34);
+            transform: translateY(-3px) scale(1.01);
+        }
+
+        .portfolio-cta:hover::before {
+            opacity: 1;
+            transform: scale(1.04);
+        }
+
+        .portfolio-cta:hover::after {
+            transform: rotate(18deg) translateX(520%);
+        }
+
+        .portfolio-cta span {
+            display: block;
+            width: 100%;
+            margin: 0;
+            color: #ffffff;
+            font-weight: 800;
+            letter-spacing: 0;
+            text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+        }
+
         #profileImg {
             transform-style: preserve-3d;
             transition: transform 0.18s ease, box-shadow 0.18s ease;
@@ -1348,11 +1419,8 @@
 
                     <!-- View Portfolio Button -->
                     <a href="portfolio.html" data-brand="Portfolio"
-                        class="link-item flex items-center p-4 rounded-lg group"
-                        style="background: linear-gradient(135deg, rgba(140, 61, 193, 0.4), rgba(72, 0, 255, 0.3)); border: 1px solid rgba(140, 61, 193, 0.5);">
-                        <i class="fas fa-palette text-white text-xl w-8"></i>
-                        <span class="ml-3 font-medium text-white" data-i18n="viewPortfolio">View Portfolio</span>
-                        <i class="fas fa-arrow-right ml-auto text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all text-sm"></i>
+                        class="link-item portfolio-cta flex items-center p-4 rounded-lg">
+                        <span data-i18n="viewPortfolio">View Portfolio</span>
                     </a>
 
                     <div class="link-item flex p-0 rounded-lg overflow-hidden" data-brand="Resume"
