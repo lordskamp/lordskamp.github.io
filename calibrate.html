@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#8c3dc1">
+    <title>Lordskamp | Monitor Calibration</title>
+    <meta name="description" content="Calibrate your desktop monitor using your iPhone camera as an approximate colorimeter. Real-time P2P WebRTC connection, delta-E analysis, and gamma curve plotting.">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+        /* ── Design System (inherited from index.html & portfolio.html) ── */
+        :root {
+            --red: #8c3dc1;
+            --bg: #0a0a0a;
+            --text-color: #ffffff;
+            --text-muted: #9ca3af;
+            --glass: rgba(31, 41, 55, 0.35);
+            --glass-border: rgba(140, 61, 193, 0.2);
+            --blur: blur(12px);
+            --page-bg: radial-gradient(ellipse at bottom, #1a1a1a 0%, var(--bg) 70%);
+            --glass-hover: rgba(55, 65, 81, 0.6);
+            --border-hover: rgba(140, 61, 193, 0.5);
+            --island-bg: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+            --island-border: rgba(255,255,255,0.04);
+            --island-shadow: 0 10px 30px rgba(3,7,18,0.6);
+            --island-shadow-hover: 0 18px 48px rgba(0,0,0,0.65);
+            --grid-size: 50px;
+            --bg-overscan: 64px;
+            --sphere-blend: screen;
+            --particle-color: white;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --app-height: 100vh;
+            --bg-height: 100vh;
+        }
+        :root.light-theme {
+            --bg: #f2f4f7;
+            --page-bg: radial-gradient(circle at top, #ffffff 0%, #f2f4f7 60%, #e2e8f0 100%);
+            --text-color: #0f172a;
+            --text-muted: #64748b;
+            --glass: rgba(255,255,255,0.25);
+            --glass-border: rgba(255,255,255,0.8);
+            --glass-hover: rgba(255,255,255,0.5);
+            --border-hover: rgba(140,61,193,0.6);
+            --sphere-blend: normal;
+            --island-bg: linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1));
+            --island-border: rgba(255,255,255,0.9);
+            --island-shadow: 0 10px 40px -10px rgba(0,0,0,0.1), 0 0 20px rgba(255,255,255,0.5) inset;
+            --island-shadow-hover: 0 18px 48px rgba(0,0,0,0.08), 0 0 30px rgba(255,255,255,0.6) inset;
+            --particle-color: #8c3dc1;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html {
+            height: -webkit-fill-available;
+            background: var(--page-bg);
+            background-color: var(--bg);
+            scroll-behavior: smooth;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-color);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background: var(--page-bg);
+            background-color: var(--bg);
+            transition: color .3s ease, background-color .3s ease;
+        }
+
+        /* ── Background (exact match from portfolio.html) ── */
+        .gradient-background {
+            position: fixed;
+            top: calc(-1 * var(--bg-overscan));
+            left: 0; width: 100%;
+            height: calc(var(--bg-height) + (var(--bg-overscan) * 2));
+            min-height: 110vh;
+            z-index: 1; overflow: hidden; pointer-events: none;
+            background-color: var(--bg);
+            transform: translate3d(0,0,0); backface-visibility: hidden;
+        }
+        .gradient-sphere {
+            position: absolute; border-radius: 50%;
+            filter: blur(80px); mix-blend-mode: var(--sphere-blend);
+            transition: mix-blend-mode .3s ease;
+            will-change: transform; contain: strict;
+        }
+        .sphere-1 { width:50vw;height:50vw;background:linear-gradient(45deg,rgba(255,0,128,.9),rgba(255,60,172,.7),rgba(255,102,0,.5));top:-15%;left:-15%;animation:float-1 6s ease-in-out infinite; }
+        .sphere-2 { width:55vw;height:55vw;background:linear-gradient(220deg,rgba(72,0,255,.9),rgba(140,61,193,.7),rgba(0,200,255,.5));bottom:-25%;right:-15%;animation:float-2 8s ease-in-out infinite; }
+        .sphere-3 { width:40vw;height:40vw;background:linear-gradient(120deg,rgba(133,89,255,.8),rgba(98,216,249,.6),rgba(0,255,200,.4));top:50%;left:15%;animation:float-3 7s ease-in-out infinite; }
+        .sphere-4 { width:35vw;height:35vw;background:linear-gradient(300deg,rgba(255,0,200,.7),rgba(140,61,193,.6),rgba(72,0,255,.4));top:10%;right:20%;animation:float-4 9s ease-in-out infinite; }
+        
+        @keyframes float-1{0%,100%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.8}25%{transform:translate(15%,5%) scale(1.15) rotate(90deg);opacity:1}50%{transform:translate(10%,15%) scale(1.1) rotate(180deg);opacity:.9}75%{transform:translate(-5%,10%) scale(1.2) rotate(270deg);opacity:1}}
+        @keyframes float-2{0%,100%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.9}33%{transform:translate(-15%,-10%) scale(1.2) rotate(-120deg);opacity:1}66%{transform:translate(5%,-15%) scale(1.1) rotate(-240deg);opacity:.85}}
+        @keyframes float-3{0%,100%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.7}20%{transform:translate(-10%,-5%) scale(1.15) rotate(72deg);opacity:.9}40%{transform:translate(5%,-10%) scale(1.1) rotate(144deg);opacity:.8}60%{transform:translate(10%,5%) scale(1.2) rotate(216deg);opacity:1}80%{transform:translate(-5%,10%) scale(1.05) rotate(288deg);opacity:.85}}
+        @keyframes float-4{0%,100%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.7}25%{transform:translate(-10%,10%) scale(1.1) rotate(-90deg);opacity:.9}50%{transform:translate(-5%,-10%) scale(1.15) rotate(-180deg);opacity:1}75%{transform:translate(10%,-5%) scale(1.05) rotate(-270deg);opacity:.8}}
+
+        .glow {
+            position:absolute;width:40vw;height:40vh;
+            background:radial-gradient(circle,rgba(72,0,255,.15),transparent 70%);
+            top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;
+            animation:pulse 8s infinite alternate;filter:blur(15px);
+            contain:strict;will-change:opacity,transform;
+        }
+        @keyframes pulse{0%{opacity:.3;transform:translate(-50%,-50%) scale(.9)}100%{opacity:.7;transform:translate(-50%,-50%) scale(1.1)}}
+
+        .grid-overlay {
+            position:absolute;top:0;left:0;width:100%;height:100%;
+            background-size:var(--grid-size) var(--grid-size);
+            background-position:center center;
+            background-image:
+                linear-gradient(to right,#d7e5fa 1px,transparent 1px),
+                linear-gradient(to bottom,#d7e5fa 1px,transparent 1px);
+            z-index:2;opacity:.64;mix-blend-mode:overlay;contain:strict;
+        }
+
+        @media(max-width:768px){
+            :root{--grid-size:35px;}
+            .sphere-1{width:70vw;height:70vw;filter:blur(30px);}
+            .sphere-2{width:75vw;height:75vw;filter:blur(30px);}
+            .sphere-3{width:55vw;height:55vw;filter:blur(25px);}
+            .sphere-4{width:50vw;height:50vw;filter:blur(25px);}
+        }
+
+        /* ── Glassmorphism UI elements ── */
+        .glass-card {
+            background: var(--island-bg);
+            border: 1px solid var(--island-border);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
+            box-shadow: var(--island-shadow);
+            border-radius: 24px;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        .glass-card:hover {
+            box-shadow: var(--island-shadow-hover);
+            border-color: var(--border-hover);
+        }
+
+        .btn-glass {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
+            border-radius: 999px;
+            transition: all 0.25s ease;
+            color: var(--text-color);
+            cursor: pointer;
+        }
+        .btn-glass:hover {
+            background: var(--glass-hover);
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
+        }
+        .btn-glass:active {
+            transform: translateY(0);
+        }
+
+        /* ── Fullscreen Patch overlay ── */
+        .fullscreen-patch-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 9999;
+            background-color: #000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .patch-color-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s ease;
+        }
+
+        /* Targets for placing phone */
+        .alignment-ring {
+            width: 180px;
+            height: 180px;
+            border: 4px dashed rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
+            position: relative;
+        }
+        .alignment-ring::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            background: #ff3366;
+            border-radius: 50%;
+            position: absolute;
+        }
+
+        .alignment-instruction {
+            position: absolute;
+            bottom: 12%;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 24px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            font-size: 0.95rem;
+            font-weight: 500;
+            text-align: center;
+            pointer-events: none;
+            max-width: 80%;
+        }
+
+        /* ── Camera view for phone ── */
+        .camera-container {
+            position: relative;
+            width: 240px;
+            height: 240px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid var(--red);
+            box-shadow: 0 8px 32px rgba(140, 61, 193, 0.3);
+            margin: 0 auto;
+        }
+        video#webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .camera-target {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px; height: 50px;
+            border: 2px dashed #00ffff;
+            border-radius: 50%;
+            pointer-events: none;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.4);
+        }
+
+        .result-color-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: inline-block;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        .delta-e-pill {
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+
+        .delta-excellent { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .delta-good { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .delta-poor { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        .chart-container svg {
+            width: 100%;
+            height: auto;
+            max-height: 260px;
+        }
+
+        /* Mode Selector buttons */
+        .mode-selection-btn {
+            transition: all 0.3s ease;
+        }
+        .mode-selection-btn:hover {
+            border-color: var(--red);
+            background: rgba(140, 61, 193, 0.1);
+        }
+
+        .has-site-header .content-wrapper {
+            padding-top: calc(5rem + var(--safe-top, 0px));
+        }
+
+        /* ── Custom Cursor (exact match from index.html) ── */
+        .custom-cursor {
+            position:fixed;left:0;top:0;width:20px;height:20px;border-radius:50%;
+            background:rgba(255,255,255,.6);pointer-events:none;
+            z-index:2147483647!important;transform:translate(-50%,-50%);
+            will-change:transform;
+            transition:width .15s ease,height .15s ease,background .15s ease,box-shadow .15s ease;
+            box-shadow:0 0 10px rgba(255,255,255,.5);contain:layout style;
+        }
+        .custom-cursor.cursor-hover {
+            width:40px;height:40px;background:rgba(255,255,255,.6);
+            box-shadow:0 0 15px rgba(255,255,255,1), 0 0 30px rgba(255,255,255,.8);
+        }
+        body.light-theme .custom-cursor {
+            background:rgba(0,0,0,.6);
+            box-shadow:0 0 10px rgba(0,0,0,.3);
+        }
+        body.light-theme .custom-cursor.cursor-hover {
+            background:rgba(0,0,0,.6);
+            box-shadow:0 0 15px rgba(0,0,0,.5);
+        }
+    </style>
+    <link rel="stylesheet" href="site-ui.css">
+    <script defer src="site-ui.js?v=20260610-mobile-cursor-off"></script>
+</head>
+<body class="relative min-h-screen text-white select-none">
+
+    <!-- Background Animation (exact match from portfolio.html) -->
+    <div class="gradient-background">
+        <div class="gradient-sphere sphere-1"></div>
+        <div class="gradient-sphere sphere-2"></div>
+        <div class="gradient-sphere sphere-3"></div>
+        <div class="gradient-sphere sphere-4"></div>
+        <div class="glow"></div>
+        <div class="grid-overlay"></div>
+    </div>
+
+    <!-- Content Mount -->
+    <div class="content-wrapper relative z-10 w-full max-w-4xl mx-auto px-4 pb-20">
+        <div id="siteHeaderMount" data-site-page="portfolio"></div>
+
+        <!-- ═════════ DEVICE SELECTOR MODE ═════════ -->
+        <section id="modeSelectorSection" class="mt-8 text-center hidden">
+            <div class="glass-card p-8 md:p-12 max-w-xl mx-auto mt-12">
+                <i class="fas fa-desktop-retro text-5xl mb-6 text-[#8c3dc1]"></i>
+                <h2 class="text-2xl md:text-3xl font-extrabold mb-4" data-i18n="pageTitle">Monitor Calibration</h2>
+                <p class="text-sm md:text-base text-gray-400 mb-8" data-i18n="desktopSubtitle">Choose how you want to use this device:</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button id="selectDesktopModeBtn" class="mode-selection-btn glass-card p-6 flex flex-col items-center justify-center border border-dashed border-gray-700 hover:border-solid">
+                        <i class="fas fa-desktop text-3xl mb-3"></i>
+                        <span class="font-bold text-lg mb-1">Desktop</span>
+                        <span class="text-xs text-gray-400 text-center">Use as the screen to calibrate</span>
+                    </button>
+                    <button id="selectPhoneModeBtn" class="mode-selection-btn glass-card p-6 flex flex-col items-center justify-center border border-dashed border-gray-700 hover:border-solid">
+                        <i class="fas fa-mobile-alt text-3xl mb-3"></i>
+                        <span class="font-bold text-lg mb-1">iPhone / Mobile</span>
+                        <span class="text-xs text-gray-400 text-center">Use as camera sensor</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═════════ DESKTOP FLOW ═════════ -->
+        <main id="desktopModeSection" class="mt-8 hidden">
+            <!-- Hero -->
+            <section class="text-center mb-10">
+                <h1 class="text-3xl md:text-5xl font-black tracking-tight mb-3" data-i18n="desktopTitle">Monitor Color Calibration</h1>
+                <p class="text-gray-400 text-sm md:text-base max-w-2xl mx-auto" data-i18n="desktopSubtitle">Use your iPhone camera as an approximate colorimeter to analyze color accuracy and calculate monitor gamma.</p>
+            </section>
+
+            <!-- Disclaimer -->
+            <div class="glass-card p-6 mb-8 border-l-4 border-amber-500/80 bg-amber-950/10">
+                <div class="flex items-start gap-4">
+                    <i class="fas fa-triangle-exclamation text-amber-500 text-xl mt-1"></i>
+                    <div>
+                        <h3 class="font-bold text-amber-400 text-sm md:text-base" data-i18n="disclaimerTitle">Camera Disclaimer</h3>
+                        <p class="text-gray-300 text-xs md:text-sm mt-1" data-i18n="disclaimerText">Phone cameras are not laboratory-grade colorimeters. Factors like auto-exposure, ambient lighting, and screen reflections will impact readings. This tool provides educational, approximate reference values.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Steps & Setup Grid -->
+            <div id="desktopSetupArea" class="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+                <!-- Left: How to Guide -->
+                <div class="glass-card p-6 md:p-8 md:col-span-7 flex flex-col justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
+                            <i class="fas fa-route text-[#8c3dc1]"></i>
+                            <span>How it works</span>
+                        </h2>
+                        
+                        <div class="space-y-6">
+                            <div class="flex gap-4">
+                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-[#8c3dc1]/20 border border-[#8c3dc1] flex items-center justify-center font-bold text-sm text-[#8c3dc1]">1</div>
+                                <div>
+                                    <h4 class="font-bold text-sm md:text-base" data-i18n="step1Title">Connect Phone</h4>
+                                    <p class="text-xs md:text-sm text-gray-400 mt-1" data-i18n="step1Text">Scan the QR code on the right with your iPhone to establish a secure real-time WebRTC link.</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-4">
+                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-[#8c3dc1]/20 border border-[#8c3dc1] flex items-center justify-center font-bold text-sm text-[#8c3dc1]">2</div>
+                                <div>
+                                    <h4 class="font-bold text-sm md:text-base" data-i18n="step2Title">Position Sensor</h4>
+                                    <p class="text-xs md:text-sm text-gray-400 mt-1" data-i18n="step2Text">Press the phone camera flat against the center of the screen within the alignment guide.</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-4">
+                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-[#8c3dc1]/20 border border-[#8c3dc1] flex items-center justify-center font-bold text-sm text-[#8c3dc1]">3</div>
+                                <div>
+                                    <h4 class="font-bold text-sm md:text-base" data-i18n="step3Title">Run Calibration</h4>
+                                    <p class="text-xs md:text-sm text-gray-400 mt-1" data-i18n="step3Text">The screen will flash multiple color patches. Keep the phone steady until completion.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: QR Code & Status Connection -->
+                <div class="glass-card p-6 md:p-8 md:col-span-5 flex flex-col items-center justify-center text-center">
+                    <div id="desktopPeerInit" class="w-full flex flex-col items-center justify-center">
+                        <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#8c3dc1] mb-4"></div>
+                        <p class="text-sm text-gray-400" data-i18n="waitingConnection">Setting up signaling...</p>
+                    </div>
+
+                    <div id="desktopPeerReady" class="w-full hidden flex flex-col items-center">
+                        <!-- QR Mount -->
+                        <div id="qrContainer" class="p-4 bg-white rounded-2xl inline-block shadow-2xl mb-4 transform hover:scale-105 transition-transform duration-300">
+                            <!-- SVG QR here -->
+                        </div>
+                        
+                        <div class="text-center mt-2 w-full">
+                            <span class="text-xs text-gray-400 block mb-1" data-i18n="sessionCodeLabel">Or enter session code:</span>
+                            <span id="sessionCodeDisplay" class="font-mono text-xl font-bold tracking-widest text-[#8c3dc1] bg-white/5 border border-white/10 px-4 py-2 rounded-xl">--- ---</span>
+                        </div>
+
+                        <!-- Waiting status badge -->
+                        <div class="mt-6 flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 rounded-full text-xs">
+                            <span class="relative flex h-2 w-2">
+                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                              <span class="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                            </span>
+                            <span data-i18n="waitingConnection">Waiting for connection...</span>
+                        </div>
+                    </div>
+
+                    <!-- Sensor Connected state -->
+                    <div id="desktopSensorConnected" class="w-full hidden flex flex-col items-center">
+                        <div class="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-3xl mb-4 animate-bounce">
+                            <i class="fas fa-link"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-emerald-400 mb-1" data-i18n="connectedStatus">Sensor Connected!</h3>
+                        <p class="text-xs text-gray-400 px-4 mb-8">Your iPhone is successfully linked as a sensor. Position it on the screen and start.</p>
+                        
+                        <button id="startCalibrationBtn" class="btn-glass px-8 py-3 w-full font-bold flex items-center justify-center gap-2">
+                            <i class="fas fa-play text-xs"></i>
+                            <span data-i18n="startCalibration">Start Calibration</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calibration Progress Section (Before fullscreen) -->
+            <div id="desktopProgressArea" class="glass-card p-6 text-center hidden">
+                <div class="max-w-md mx-auto py-8">
+                    <h3 class="text-xl font-bold mb-2" data-i18n="calibrationRunning">Calibration in progress...</h3>
+                    <p id="patchProgressText" class="text-sm text-gray-400 mb-6">Preparing patches...</p>
+                    <div class="w-full bg-white/5 rounded-full h-3 mb-2 overflow-hidden border border-white/5">
+                        <div id="calibrationProgressBar" class="bg-gradient-to-r from-[#8c3dc1] to-pink-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RESULTS PANEL -->
+            <div id="desktopResultsArea" class="hidden space-y-6">
+                <!-- Summary Card -->
+                <div class="glass-card p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div class="flex items-center gap-5">
+                        <div id="resultsMainBadge" class="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-black">
+                            A
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <h2 class="text-xl md:text-2xl font-black" data-i18n="completed">Calibration Completed!</h2>
+                                <span id="accuracyLabel" class="delta-e-pill">Good</span>
+                            </div>
+                            <div class="flex gap-6 mt-2 text-xs md:text-sm text-gray-400">
+                                <div><span data-i18n="averageDeltaE">Average Delta E:</span> <strong id="avgDeltaEDisplay" class="text-white">---</strong></div>
+                                <div><span data-i18n="maxDeltaE">Max Delta E:</span> <strong id="maxDeltaEDisplay" class="text-white">---</strong></div>
+                                <div><span data-i18n="gammaEstimate">Estimated Gamma:</span> <strong id="gammaDisplay" class="text-white">---</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3 w-full md:w-auto">
+                        <button id="exportJsonBtn" class="btn-glass px-4 py-2 text-sm font-bold flex-1 md:flex-initial flex items-center justify-center gap-2">
+                            <i class="fas fa-file-code"></i>
+                            <span data-i18n="exportJson">Export JSON</span>
+                        </button>
+                        <button id="exportCsvBtn" class="btn-glass px-4 py-2 text-sm font-bold flex-1 md:flex-initial flex items-center justify-center gap-2">
+                            <i class="fas fa-file-csv"></i>
+                            <span data-i18n="exportCsv">Export CSV</span>
+                        </button>
+                        <button id="recalibrateBtn" class="btn-glass px-4 py-2 text-sm font-bold flex-1 md:flex-initial flex items-center justify-center gap-2 bg-[#8c3dc1]/10 border-[#8c3dc1]/30 text-[#8c3dc1]">
+                            <i class="fas fa-redo-alt"></i>
+                            <span data-i18n="restart">Recalibrate</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Analysis Details: Table vs Gamma Chart -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Left: Table of colors -->
+                    <div class="glass-card p-6 lg:col-span-7 overflow-hidden">
+                        <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                            <i class="fas fa-list-check text-[#8c3dc1]"></i>
+                            <span>Measurements Detail</span>
+                        </h3>
+                        <div class="overflow-x-auto max-h-[400px] overflow-y-auto pr-1">
+                            <table class="w-full text-left text-xs md:text-sm">
+                                <thead>
+                                    <tr class="border-b border-white/5 text-gray-400">
+                                        <th class="py-2">Color</th>
+                                        <th class="py-2" data-i18n="patchColExpected">Expected</th>
+                                        <th class="py-2" data-i18n="patchColMeasured">Measured</th>
+                                        <th class="py-2 text-right" data-i18n="patchColDelta">Delta E</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resultsTableBody">
+                                    <!-- Populated in JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Right: Gamma Response Curve -->
+                    <div class="glass-card p-6 lg:col-span-5 flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-lg font-bold mb-4 flex items-center gap-2" data-i18n="gammaChartTitle">
+                                Gamma Response Curve
+                            </h3>
+                            <div class="chart-container flex items-center justify-center bg-white/5 rounded-2xl p-4 border border-white/5">
+                                <svg id="gammaChartSvg" viewBox="0 0 100 100">
+                                    <!-- Base Grid -->
+                                    <line x1="10" y1="90" x2="90" y2="90" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+                                    <line x1="10" y1="10" x2="10" y2="90" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+                                    <!-- Target Curve (2.2) -->
+                                    <path id="targetCurvePath" d="" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+                                    <!-- Measured Curve -->
+                                    <path id="measuredCurvePath" d="" fill="none" stroke="#8c3dc1" stroke-width="2.5"/>
+                                    <!-- Measured Dots -->
+                                    <g id="measuredDotsGroup"></g>
+                                </svg>
+                            </div>
+                            
+                            <div class="flex justify-center gap-6 text-xs text-gray-400 mt-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-block w-3 h-0.5 border-t border-dashed border-white/50"></span>
+                                    <span data-i18n="gammaChartTarget">Target 2.2</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-block w-3 h-0.5 bg-[#8c3dc1]"></span>
+                                    <span data-i18n="gammaChartMeasured">Measured</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 pt-4 border-t border-white/5">
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1" data-i18n="howToUseTitle">How to use this data?</h4>
+                            <p class="text-xs text-gray-400 leading-relaxed" data-i18n="howToUseText">Download the CSV or JSON data and upload it to online profile generators or tools like DisplayCAL to compile a custom ICC device profile.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+
+        <!-- ═════════ PHONE FLOW ═════════ -->
+        <main id="phoneModeSection" class="mt-8 hidden">
+            <section class="text-center mb-8">
+                <h1 class="text-2xl font-black mb-1" data-i18n="phoneTitle">Mobile Color Sensor</h1>
+                <p class="text-xs text-gray-400" data-i18n="phoneSubtitle">Use this device to capture and measure color values from your monitor.</p>
+            </section>
+
+            <!-- Card UI -->
+            <div class="glass-card p-6 max-w-sm mx-auto text-center">
+                <!-- Connect State -->
+                <div id="phoneConnectArea">
+                    <i class="fas fa-qrcode text-4xl mb-4 text-[#8c3dc1]"></i>
+                    <h3 class="text-lg font-bold mb-4" data-i18n="enterSessionCode">Enter Session Code</h3>
+                    <div class="flex gap-2 justify-center mb-6">
+                        <input id="sessionCodeInput" type="text" maxlength="6" placeholder="000000" class="w-40 text-center font-mono text-xl font-bold tracking-widest bg-white/5 border border-white/10 rounded-xl px-3 py-2 focus:border-[#8c3dc1] focus:outline-none">
+                        <button id="phoneConnectBtn" class="btn-glass px-4 py-2 font-bold" data-i18n="connectBtn">Connect</button>
+                    </div>
+                    <p class="text-xs text-gray-400 leading-relaxed">Ensure both your computer and phone are connected to the internet.</p>
+                </div>
+
+                <!-- Connecting State -->
+                <div id="phoneConnectingArea" class="hidden py-8">
+                    <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#8c3dc1] mx-auto mb-4"></div>
+                    <p class="text-sm text-gray-400" data-i18n="connectingStatus">Connecting to desktop...</p>
+                </div>
+
+                <!-- Setup sensor state -->
+                <div id="phoneCameraSetupArea" class="hidden">
+                    <div class="w-16 h-16 rounded-full bg-[#8c3dc1]/10 border border-[#8c3dc1]/20 flex items-center justify-center text-[#8c3dc1] text-2xl mx-auto mb-4">
+                        <i class="fas fa-camera"></i>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2" data-i18n="connectedStatus">Connected to desktop!</h3>
+                    <p class="text-xs text-gray-400 leading-relaxed mb-6" data-i18n="holdSteady">Place phone camera flat against screen and hold steady.</p>
+                    
+                    <button id="openCameraBtn" class="btn-glass px-8 py-3 w-full font-bold flex items-center justify-center gap-2">
+                        <i class="fas fa-video text-xs"></i>
+                        <span data-i18n="openCamera">Open Camera</span>
+                    </button>
+                </div>
+
+                <!-- Camera Active State -->
+                <div id="phoneCameraActiveArea" class="hidden flex flex-col items-center">
+                    <div class="camera-container mb-6">
+                        <video id="webcam" autoplay playsinline muted></video>
+                        <div class="camera-target"></div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs mb-4">
+                        <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span id="phoneMeasurementStatus" data-i18n="holdSteady">Align sensor with center target.</span>
+                    </div>
+                    <p class="text-xs text-gray-400" id="measuredRGBLabel">Measured: R--- G--- B---</p>
+                </div>
+
+                <!-- Completed State -->
+                <div id="phoneCompletedArea" class="hidden py-8">
+                    <div class="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-2xl mx-auto mb-4 animate-bounce">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2" data-i18n="completed">Calibration Completed!</h3>
+                    <p class="text-xs text-gray-400">Review results on your desktop screen.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ═════════ FULLSCREEN PATCH OVERLAY ═════════ -->
+    <div id="fullscreenPatch" class="fullscreen-patch-overlay">
+        <div id="patchColorContainer" class="patch-color-container">
+            <div class="alignment-ring"></div>
+            <div class="alignment-instruction">
+                <span id="fullscreenInstructionText">Place iPhone camera FLAT inside the circle</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden sample canvas -->
+    <canvas id="offscreenCanvas" style="display: none;"></canvas>
+
+    <!-- Custom Cursor -->
+    <div id="cursor" class="custom-cursor"></div>
+
+    <script>
+    (() => {
+        'use strict';
+
+        // ── Translations ──
+        const translations = {
+            uk: {
+                pageTitle: "Калібрування монітора",
+                desktopTitle: "Калібрування кольору монітора",
+                desktopSubtitle: "Використовуйте камеру вашого iPhone як колориметр для аналізу точності передачі кольору та розрахунку гами.",
+                disclaimerTitle: "Обмеження камери",
+                disclaimerText: "Камери телефонів не є професійними колориметрами. Автоекспозиція, баланс білого та навколишнє освітлення впливають на заміри. Цей інструмент надає приблизні дані.",
+                step1Title: "1. Підключіть телефон",
+                step1Text: "Зіскануйте QR-код справа за допомогою iPhone, щоб встановити пряме з'єднання P2P WebRTC.",
+                step2Title: "2. Розмістіть сенсор",
+                step2Text: "Притисніть камеру iPhone впритул до екрана по центру мішені.",
+                step3Title: "3. Почніть калібрування",
+                step3Text: "Екран покаже серію кольорових плашок. Не рухайте телефон до завершення процесу.",
+                waitingConnection: "Очікування підключення...",
+                sessionCodeLabel: "Або введіть код сесії:",
+                startCalibration: "Почати калібрування",
+                calibrationRunning: "Калібрування триває...",
+                calibratingPatch: "Замір кольору {current} з {total}...",
+                phoneTitle: "Мобільний сенсор кольору",
+                phoneSubtitle: "Використовуйте цей телефон для вимірювання кольорових патчів на моніторі.",
+                enterSessionCode: "Введіть код сесії",
+                connectBtn: "Підключитися",
+                connectingStatus: "Підключення до десктопа...",
+                connectedStatus: "Підключено!",
+                openCamera: "Відкрити камеру",
+                holdSteady: "Притисніть камеру до мішені та тримайте нерухомо.",
+                measuring: "Зчитування кольору...",
+                completed: "Калібрування завершено!",
+                averageDeltaE: "Середня Delta E:",
+                maxDeltaE: "Макс. Delta E:",
+                gammaEstimate: "Розрахована Гама:",
+                colorAccuracy: "Точність кольору:",
+                accuracyExcellent: "Відмінна (Delta E < 1.5)",
+                accuracyGood: "Добра (Delta E < 3.0)",
+                accuracyPoor: "Низька (Delta E >= 3.0)",
+                exportJson: "Експорт JSON",
+                exportCsv: "Експорт CSV",
+                restart: "Почати спочатку",
+                howToUseTitle: "Як використовувати ці дані?",
+                howToUseText: "Завантажте CSV або JSON та імпортуйте в DisplayCAL або HCFR, щоб створити індивідуальний ICC-профіль для вашої системи.",
+                patchColExpected: "Очікуваний",
+                patchColMeasured: "Виміряний",
+                patchColDelta: "Delta E",
+                gammaChartTitle: "Крива гама-відгуку",
+                gammaChartTarget: "Ціль 2.2",
+                gammaChartMeasured: "Виміряна",
+                errorTitle: "Помилка",
+                errNoCamera: "Доступ до камери відхилено або недоступний.",
+                errPeerJs: "Помилка зв'язку з сервером. Перезавантажте сторінку.",
+                errConnectionLost: "З'єднання втрачено. Почніть спочатку."
+            },
+            en: {
+                pageTitle: "Monitor Calibration",
+                desktopTitle: "Monitor Color Calibration",
+                desktopSubtitle: "Use your iPhone camera as an approximate colorimeter to analyze color accuracy and calculate monitor gamma.",
+                disclaimerTitle: "Camera Disclaimer",
+                disclaimerText: "Phone cameras are not laboratory-grade colorimeters. Auto-exposure, ambient lighting, and reflections impact readings. This tool provides educational, approximate reference values.",
+                step1Title: "1. Connect Phone",
+                step1Text: "Scan the QR code on the right with your iPhone to establish a secure real-time WebRTC link.",
+                step2Title: "2. Position Sensor",
+                step2Text: "Press the phone camera flat against the center of the screen within the alignment guide.",
+                step3Title: "3. Run Calibration",
+                step3Text: "The screen will flash multiple color patches. Keep the phone steady until completion.",
+                waitingConnection: "Waiting for connection...",
+                sessionCodeLabel: "Or enter session code:",
+                startCalibration: "Start Calibration",
+                calibrationRunning: "Calibration in progress...",
+                calibratingPatch: "Measuring patch {current} of {total}...",
+                phoneTitle: "Mobile Color Sensor",
+                phoneSubtitle: "Use this device to capture and measure color values from your monitor.",
+                enterSessionCode: "Enter Session Code",
+                connectBtn: "Connect",
+                connectingStatus: "Connecting to desktop...",
+                connectedStatus: "Sensor Connected!",
+                openCamera: "Open Camera",
+                holdSteady: "Place phone camera flat against screen and hold steady.",
+                measuring: "Measuring color...",
+                completed: "Calibration Completed!",
+                averageDeltaE: "Average Delta E:",
+                maxDeltaE: "Max Delta E:",
+                gammaEstimate: "Estimated Gamma:",
+                colorAccuracy: "Color Accuracy:",
+                accuracyExcellent: "Excellent (Delta E < 1.5)",
+                accuracyGood: "Good (Delta E < 3.0)",
+                accuracyPoor: "Poor (Delta E >= 3.0)",
+                exportJson: "Export JSON",
+                exportCsv: "Export CSV",
+                restart: "Recalibrate",
+                howToUseTitle: "How to use this data?",
+                howToUseText: "Download the CSV or JSON data and upload it to online profile generators or tools like DisplayCAL to compile a custom ICC device profile.",
+                patchColExpected: "Expected",
+                patchColMeasured: "Measured",
+                patchColDelta: "Delta E",
+                gammaChartTitle: "Gamma Response Curve",
+                gammaChartTarget: "Target 2.2",
+                gammaChartMeasured: "Measured",
+                errorTitle: "Error",
+                errNoCamera: "Camera access denied or unavailable.",
+                errPeerJs: "Failed to connect to signaling server. Please reload.",
+                errConnectionLost: "Connection lost. Please restart."
+            }
+        };
+
+        let currentLang = 'en';
+
+        function t(key) {
+            return translations[currentLang][key] || translations['en'][key] || key;
+        }
+
+        function updatePageLanguage() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                el.textContent = t(key);
+            });
+            // Update page title
+            document.title = "Lordskamp | " + t('pageTitle');
+        }
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            updatePageLanguage();
+        }
+
+        // Initialize: Hook into the site-ui translation system if available
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.LordskampUI) {
+                setLanguage(window.LordskampUI.getLanguage());
+                window.addEventListener('lordskamp:languagechange', (event) => {
+                    const nextLang = event.detail && event.detail.language;
+                    if (nextLang) setLanguage(nextLang);
+                });
+            } else {
+                const browserLang = (navigator.language || '').toLowerCase().startsWith('uk') ? 'uk' : 'en';
+                setLanguage(browserLang);
+            }
+        });
+
+
+        // ── Color patches (24 standard patch set, ColorChecker inspired) ──
+        const patches = [
+            // Grayscale
+            { name: "Black", rgb: [0, 0, 0] },
+            { name: "Gray 20%", rgb: [51, 51, 51] },
+            { name: "Gray 40%", rgb: [102, 102, 102] },
+            { name: "Gray 60%", rgb: [153, 153, 153] },
+            { name: "Gray 80%", rgb: [204, 204, 204] },
+            { name: "White", rgb: [255, 255, 255] },
+            
+            // Primary & Secondary
+            { name: "Primary Red", rgb: [255, 0, 0] },
+            { name: "Primary Green", rgb: [0, 255, 0] },
+            { name: "Primary Blue", rgb: [0, 0, 255] },
+            { name: "Cyan", rgb: [0, 255, 255] },
+            { name: "Magenta", rgb: [255, 0, 255] },
+            { name: "Yellow", rgb: [255, 255, 0] },
+            
+            // ColorChecker tones
+            { name: "Dark Skin", rgb: [115, 82, 68] },
+            { name: "Light Skin", rgb: [194, 150, 130] },
+            { name: "Blue Sky", rgb: [98, 122, 157] },
+            { name: "Foliage", rgb: [87, 108, 67] },
+            { name: "Blue Flower", rgb: [129, 128, 177] },
+            { name: "Bluish Green", rgb: [102, 191, 186] },
+            { name: "Orange", rgb: [219, 116, 39] },
+            { name: "Purplish Blue", rgb: [70, 92, 168] },
+            { name: "Moderate Red", rgb: [186, 68, 85] },
+            { name: "Purple", rgb: [92, 59, 120] },
+            { name: "Yellow Green", rgb: [112, 189, 74] },
+            { name: "Orange Yellow", rgb: [222, 142, 40] }
+        ];
+
+
+        // ── State variables ──
+        let peerInstance = null;
+        let dataConn = null;
+        let deviceMode = null; // 'desktop' or 'phone'
+        let currentSessionId = '';
+        let isCalibrating = false;
+        let currentPatchIndex = 0;
+        let calibrationResults = [];
+        let blackLevelReading = null;  // For dark current correction
+        let whiteLevelReading = null;  // For gains / white point correction
+
+
+        // ── DOM Elements ──
+        const modeSelectorSection = document.getElementById('modeSelectorSection');
+        const selectDesktopModeBtn = document.getElementById('selectDesktopModeBtn');
+        const selectPhoneModeBtn = document.getElementById('selectPhoneModeBtn');
+
+        const desktopModeSection = document.getElementById('desktopModeSection');
+        const desktopPeerInit = document.getElementById('desktopPeerInit');
+        const desktopPeerReady = document.getElementById('desktopPeerReady');
+        const desktopSensorConnected = document.getElementById('desktopSensorConnected');
+        const qrContainer = document.getElementById('qrContainer');
+        const sessionCodeDisplay = document.getElementById('sessionCodeDisplay');
+        const startCalibrationBtn = document.getElementById('startCalibrationBtn');
+        const desktopProgressArea = document.getElementById('desktopProgressArea');
+        const patchProgressText = document.getElementById('patchProgressText');
+        const calibrationProgressBar = document.getElementById('calibrationProgressBar');
+        
+        const fullscreenPatch = document.getElementById('fullscreenPatch');
+        const patchColorContainer = document.getElementById('patchColorContainer');
+        const fullscreenInstructionText = document.getElementById('fullscreenInstructionText');
+
+        const desktopResultsArea = document.getElementById('desktopResultsArea');
+        const avgDeltaEDisplay = document.getElementById('avgDeltaEDisplay');
+        const maxDeltaEDisplay = document.getElementById('maxDeltaEDisplay');
+        const gammaDisplay = document.getElementById('gammaDisplay');
+        const accuracyLabel = document.getElementById('accuracyLabel');
+        const resultsMainBadge = document.getElementById('resultsMainBadge');
+        const resultsTableBody = document.getElementById('resultsTableBody');
+
+        const phoneModeSection = document.getElementById('phoneModeSection');
+        const phoneConnectArea = document.getElementById('phoneConnectArea');
+        const sessionCodeInput = document.getElementById('sessionCodeInput');
+        const phoneConnectBtn = document.getElementById('phoneConnectBtn');
+        const phoneConnectingArea = document.getElementById('phoneConnectingArea');
+        const phoneCameraSetupArea = document.getElementById('phoneCameraSetupArea');
+        const openCameraBtn = document.getElementById('openCameraBtn');
+        const phoneCameraActiveArea = document.getElementById('phoneCameraActiveArea');
+        const phoneMeasurementStatus = document.getElementById('phoneMeasurementStatus');
+        const measuredRGBLabel = document.getElementById('measuredRGBLabel');
+        const phoneCompletedArea = document.getElementById('phoneCompletedArea');
+
+        const exportJsonBtn = document.getElementById('exportJsonBtn');
+        const exportCsvBtn = document.getElementById('exportCsvBtn');
+        const recalibrateBtn = document.getElementById('recalibrateBtn');
+
+
+        // ── Device Detection & Routing ──
+        function detectDeviceMode() {
+            const params = new URLSearchParams(window.location.search);
+            const queryMode = params.get('mode');
+            const session = params.get('session');
+
+            if (queryMode === 'phone' || session) {
+                deviceMode = 'phone';
+                if (session) sessionCodeInput.value = session;
+                setupPhoneMode();
+            } else if (queryMode === 'desktop') {
+                deviceMode = 'desktop';
+                setupDesktopMode();
+            } else {
+                // Determine based on screen size or user agent
+                const isMobile = window.matchMedia('(max-width: 768px)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                if (isMobile) {
+                    deviceMode = 'phone';
+                    setupPhoneMode();
+                } else {
+                    deviceMode = 'desktop';
+                    setupDesktopMode();
+                }
+            }
+        }
+
+
+        // ── PEERJS REAL-TIME COMMUNICATION ──
+        function initPeerJS(onOpenCallback) {
+            // Setup a PeerJS peer pointing to public PeerJS server
+            peerInstance = new Peer(null, {
+                debug: 1
+            });
+
+            peerInstance.on('open', (id) => {
+                currentSessionId = id;
+                onOpenCallback(id);
+            });
+
+            peerInstance.on('error', (err) => {
+                console.error("PeerJS error:", err);
+                alert(t('errPeerJs') + ' (' + err.type + ')');
+            });
+        }
+
+
+        // ── DESKTOP CODE ──
+        function setupDesktopMode() {
+            desktopModeSection.classList.remove('hidden');
+            
+            initPeerJS((id) => {
+                desktopPeerInit.classList.add('hidden');
+                desktopPeerReady.classList.remove('hidden');
+
+                // Generate Session code: format xxxxx (e.g. 5-digit number or first few chars of ID)
+                // PeerJS IDs can be longer, but we display the actual full ID in QR and code
+                const shortCode = id.substring(0, 6).toUpperCase();
+                sessionCodeDisplay.textContent = shortCode.substring(0, 3) + ' ' + shortCode.substring(3, 6);
+
+                // Build scan URL
+                const phoneUrl = window.location.origin + window.location.pathname + '?mode=phone&session=' + id;
+                
+                // Generate SVG QR
+                const qr = qrcode(0, 'L');
+                qr.addData(phoneUrl);
+                qr.make();
+                qrContainer.innerHTML = qr.createSvgTag(6, 4);
+            });
+
+            // Listen for connections from Phone
+            peerInstance.on('connection', (conn) => {
+                dataConn = conn;
+                setupDesktopConnectionEvents();
+            });
+        }
+
+        function setupDesktopConnectionEvents() {
+            desktopPeerReady.classList.add('hidden');
+            desktopSensorConnected.classList.remove('hidden');
+
+            dataConn.on('open', () => {
+                console.log("WebRTC channel opened with mobile sensor!");
+            });
+
+            dataConn.on('data', (data) => {
+                handlePhoneData(data);
+            });
+
+            dataConn.on('close', () => {
+                console.warn("Mobile sensor disconnected.");
+                alert(t('errConnectionLost'));
+                location.reload();
+            });
+        }
+
+        function sendDesktopCommand(cmd) {
+            if (dataConn && dataConn.open) {
+                dataConn.send(cmd);
+            }
+        }
+
+        function handlePhoneData(data) {
+            if (data.type === 'color_reading') {
+                handleColorReading(data.rgb);
+            }
+        }
+
+
+        // ── PHONE CODE ──
+        function setupPhoneMode() {
+            phoneModeSection.classList.remove('hidden');
+            
+            phoneConnectBtn.addEventListener('click', () => {
+                const code = sessionCodeInput.value.trim().toLowerCase();
+                if (!code) return;
+
+                phoneConnectArea.classList.add('hidden');
+                phoneConnectingArea.classList.remove('hidden');
+
+                // If user typed the 6-character code directly, connect to that peer ID
+                // Note: PeerJS uses random UUIDs usually, but since the QR has the full ID in the URL,
+                // typing works if the ID matches what's typed or if they scanned.
+                // For simplicity, we just use the entered code as the peer ID.
+                connectToDesktop(code);
+            });
+
+            // If session code is already in input (from query param), auto-connect
+            if (sessionCodeInput.value.trim()) {
+                phoneConnectArea.classList.add('hidden');
+                phoneConnectingArea.classList.remove('hidden');
+                initPeerJS(() => {
+                    connectToDesktop(sessionCodeInput.value.trim());
+                });
+            } else {
+                initPeerJS(() => {
+                    // Signaling ready for manual input
+                });
+            }
+        }
+
+        function connectToDesktop(desktopId) {
+            dataConn = peerInstance.connect(desktopId);
+
+            dataConn.on('open', () => {
+                phoneConnectingArea.classList.add('hidden');
+                phoneCameraSetupArea.classList.remove('hidden');
+            });
+
+            dataConn.on('data', (cmd) => {
+                handleDesktopCommand(cmd);
+            });
+
+            dataConn.on('close', () => {
+                alert(t('errConnectionLost'));
+                location.reload();
+            });
+
+            dataConn.on('error', (err) => {
+                console.error("Connection error:", err);
+                alert(t('errConnectionLost'));
+                location.reload();
+            });
+        }
+
+        let mediaStream = null;
+        let intervalSample = null;
+
+        function handleDesktopCommand(cmd) {
+            if (cmd.type === 'start_calibration') {
+                phoneCameraSetupArea.classList.add('hidden');
+                phoneCameraActiveArea.classList.remove('hidden');
+                startSamplingLoop();
+            } else if (cmd.type === 'measure_patch') {
+                phoneMeasurementStatus.textContent = t('measuring');
+                // Trigger sampling
+                setTimeout(() => {
+                    sampleCameraColor((avgRGB) => {
+                        phoneMeasurementStatus.textContent = t('holdSteady');
+                        measuredRGBLabel.textContent = `Measured: R${avgRGB[0]} G${avgRGB[1]} B${avgRGB[2]}`;
+                        dataConn.send({
+                            type: 'color_reading',
+                            rgb: avgRGB
+                        });
+                    });
+                }, 400); // Small delay to let sensor adjust
+            } else if (cmd.type === 'calibration_finished') {
+                stopCamera();
+                phoneCameraActiveArea.classList.add('hidden');
+                phoneCompletedArea.classList.remove('hidden');
+            }
+        }
+
+        openCameraBtn.addEventListener('click', async () => {
+            const webcamEl = document.getElementById('webcam');
+            try {
+                // Request back camera
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                });
+                webcamEl.srcObject = mediaStream;
+                webcamEl.play();
+
+                // Advanced controls: attempt to lock focus & white balance to manual if supported
+                const track = mediaStream.getVideoTracks()[0];
+                if (track && track.getCapabilities) {
+                    const capabilities = track.getCapabilities();
+                    const advancedConstraints = {};
+                    
+                    if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes('manual')) {
+                        advancedConstraints.whiteBalanceMode = 'manual';
+                    }
+                    if (capabilities.exposureMode && capabilities.exposureMode.includes('manual')) {
+                        advancedConstraints.exposureMode = 'manual';
+                    }
+                    if (capabilities.focusMode && capabilities.focusMode.includes('manual')) {
+                        advancedConstraints.focusMode = 'manual';
+                    }
+
+                    if (Object.keys(advancedConstraints).length > 0) {
+                        await track.applyConstraints({ advanced: [advancedConstraints] }).catch(e => console.log(e));
+                    }
+                }
+
+                phoneCameraSetupArea.classList.add('hidden');
+                phoneCameraActiveArea.classList.remove('hidden');
+
+                // Let desktop know camera is ready
+                sendDesktopCommand({ type: 'camera_ready' });
+            } catch (err) {
+                console.error("Camera access error:", err);
+                alert(t('errNoCamera'));
+            }
+        });
+
+        function startSamplingLoop() {
+            // Update real-time measurement labels periodically for feedback
+            const webcamEl = document.getElementById('webcam');
+            intervalSample = setInterval(() => {
+                if (mediaStream) {
+                    sampleCameraColor((avgRGB) => {
+                        measuredRGBLabel.textContent = `Measured: R${avgRGB[0]} G${avgRGB[1]} B${avgRGB[2]}`;
+                    });
+                }
+            }, 300);
+        }
+
+        function stopCamera() {
+            if (intervalSample) clearInterval(intervalSample);
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        function sampleCameraColor(callback) {
+            const webcamEl = document.getElementById('webcam');
+            const canvas = document.getElementById('offscreenCanvas');
+            if (!webcamEl.videoWidth) return;
+
+            const ctx = canvas.getContext('2d');
+            canvas.width = webcamEl.videoWidth;
+            canvas.height = webcamEl.videoHeight;
+
+            // Draw current frame to canvas
+            ctx.drawImage(webcamEl, 0, 0, canvas.width, canvas.height);
+
+            // Sample central region: 30x30 pixels
+            const sampleSize = 30;
+            const sx = Math.floor((canvas.width - sampleSize) / 2);
+            const sy = Math.floor((canvas.height - sampleSize) / 2);
+
+            const imgData = ctx.getImageData(sx, sy, sampleSize, sampleSize);
+            const data = imgData.data;
+
+            let rSum = 0, gSum = 0, bSum = 0;
+            const totalPixels = sampleSize * sampleSize;
+
+            for (let i = 0; i < data.length; i += 4) {
+                rSum += data[i];
+                gSum += data[i+1];
+                bSum += data[i+2];
+            }
+
+            const rAvg = Math.round(rSum / totalPixels);
+            const gAvg = Math.round(gSum / totalPixels);
+            const bAvg = Math.round(bSum / totalPixels);
+
+            callback([rAvg, gAvg, bAvg]);
+        }
+
+
+        // ── CALIBRATION STATE MACHINE (DESKTOP) ──
+        startCalibrationBtn.addEventListener('click', () => {
+            requestFullscreen();
+        });
+
+        function requestFullscreen() {
+            const docEl = document.documentElement;
+            const requestMethod = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            if (requestMethod) {
+                requestMethod.call(docEl)
+                    .then(() => startCalibrationFlow())
+                    .catch((err) => {
+                        console.warn("Fullscreen request rejected, continuing inline:", err);
+                        startCalibrationFlow();
+                    });
+            } else {
+                startCalibrationFlow();
+            }
+        }
+
+        function exitFullscreen() {
+            const exitMethod = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
+            if (exitMethod && document.fullscreenElement) {
+                exitMethod.call(document);
+            }
+        }
+
+        function startCalibrationFlow() {
+            isCalibrating = true;
+            currentPatchIndex = 0;
+            calibrationResults = [];
+            blackLevelReading = null;
+            whiteLevelReading = null;
+
+            // Update UI: show fullscreen patch overlay
+            fullscreenPatch.style.display = 'flex';
+            
+            // Inform phone to start calibration
+            sendDesktopCommand({ type: 'start_calibration' });
+
+            // Small delay for alignment
+            fullscreenInstructionText.textContent = t('holdSteady');
+            setPatchColor([0,0,0]); // Start with black target alignment
+
+            setTimeout(() => {
+                runNextCalibrationPatch();
+            }, 3000);
+        }
+
+        function setPatchColor(rgb) {
+            patchColorContainer.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+        }
+
+        function runNextCalibrationPatch() {
+            if (currentPatchIndex >= patches.length) {
+                finishCalibration();
+                return;
+            }
+
+            const targetPatch = patches[currentPatchIndex];
+            setPatchColor(targetPatch.rgb);
+            
+            fullscreenInstructionText.textContent = `${t('calibratingPatch').replace('{current}', currentPatchIndex + 1).replace('{total}', patches.length)}`;
+
+            // Give screen a moment to display and camera to settle, then request reading
+            setTimeout(() => {
+                sendDesktopCommand({ type: 'measure_patch', patchIndex: currentPatchIndex });
+            }, 600);
+        }
+
+        function handleColorReading(measuredRGB) {
+            if (!isCalibrating) return;
+
+            const expectedRGB = patches[currentPatchIndex].rgb;
+
+            // Capture initial reference readings
+            // First patch in list is Grayscale Black: [0,0,0]
+            // Sixth patch in list is Grayscale White: [255,255,255]
+            if (currentPatchIndex === 0) {
+                blackLevelReading = measuredRGB;
+            } else if (currentPatchIndex === 5) {
+                whiteLevelReading = measuredRGB;
+            }
+
+            // Normalization algorithm (Software white balance and black level compensation)
+            let correctedRGB = [...measuredRGB];
+            if (blackLevelReading && whiteLevelReading) {
+                for (let c = 0; c < 3; c++) {
+                    const denominator = whiteLevelReading[c] - blackLevelReading[c];
+                    if (denominator > 10) { // Avoid division by zero
+                        let norm = (measuredRGB[c] - blackLevelReading[c]) / denominator;
+                        norm = Math.max(0, Math.min(1, norm)); // Clamp [0, 1]
+                        correctedRGB[c] = Math.round(norm * 255);
+                    }
+                }
+            }
+
+            // Calculate Delta E (CIE76) between expected and corrected measured color
+            const deltaE = calculateDeltaE(expectedRGB, correctedRGB);
+
+            calibrationResults.push({
+                name: patches[currentPatchIndex].name,
+                expected: expectedRGB,
+                measuredRaw: measuredRGB,
+                measuredCorrected: correctedRGB,
+                deltaE: deltaE
+            });
+
+            currentPatchIndex++;
+            runNextCalibrationPatch();
+        }
+
+        function finishCalibration() {
+            isCalibrating = false;
+            exitFullscreen();
+            fullscreenPatch.style.display = 'none';
+
+            // Send finish to mobile
+            sendDesktopCommand({ type: 'calibration_finished' });
+
+            // Display results
+            desktopSetupArea.classList.add('hidden');
+            desktopProgressArea.classList.add('hidden');
+            desktopResultsArea.classList.remove('hidden');
+
+            renderCalibrationResults();
+        }
+
+
+        // ── COLOR SCIENCE CALCULATION ENGINE ──
+        function calculateDeltaE(rgb1, rgb2) {
+            const lab1 = rgb2lab(rgb1);
+            const lab2 = rgb2lab(rgb2);
+            
+            const dL = lab1[0] - lab2[0];
+            const da = lab1[1] - lab2[1];
+            const db = lab1[2] - lab2[2];
+            
+            return Math.round(Math.sqrt(dL * dL + da * da + db * db) * 100) / 100;
+        }
+
+        function rgb2lab(rgb) {
+            // 1. Normalize
+            let r = rgb[0] / 255;
+            let g = rgb[1] / 255;
+            let b = rgb[2] / 255;
+
+            // 2. Inverse Gamma Companding
+            r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+            g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+            b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+
+            // 3. Convert to D65 XYZ
+            let x = r * 0.4124 + g * 0.3576 + b * 0.1805;
+            let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+            let z = r * 0.0193 + g * 0.1192 + b * 0.9505;
+
+            // 4. XYZ to Lab (D65 White Point: xn=0.95047, yn=1.0, zn=1.08883)
+            x = x / 0.95047;
+            y = y / 1.00000;
+            z = z / 1.08883;
+
+            x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x) + (16 / 116);
+            y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y) + (16 / 116);
+            z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z) + (16 / 116);
+
+            const L = (116 * y) - 16;
+            const a = 500 * (x - y);
+            const b_val = 200 * (y - z);
+
+            return [L, a, b_val];
+        }
+
+
+        // ── FIT GAMMA CURVE (LOG REGRESSION) ──
+        function estimateGamma(grayscaleResults) {
+            // Fit: y = x^gamma where x is target luminance index, y is measured normalized luminance.
+            // Grayscale steps: index 0 (0%), 1 (20%), 2 (40%), 3 (60%), 4 (80%), 5 (100%)
+            // Filter middle values (x=0.2, 0.4, 0.6, 0.8) to do the logarithmic fitting
+            const xVals = [0.2, 0.4, 0.6, 0.8];
+            const yVals = [];
+
+            // Get average corrected gray value for each step
+            for (let i = 1; i <= 4; i++) {
+                const res = grayscaleResults[i];
+                // Average intensity of R, G, B normalized to [0,1]
+                const avgVal = (res.measuredCorrected[0] + res.measuredCorrected[1] + res.measuredCorrected[2]) / 3 / 255;
+                yVals.push(Math.max(0.01, avgVal)); // clamp minimum to avoid log(0)
+            }
+
+            // ln(y) = gamma * ln(x) -> simple linear fit through origin: gamma = sum(ln(x)*ln(y)) / sum(ln(x)^2)
+            let sumXY = 0;
+            let sumX2 = 0;
+            for (let i = 0; i < xVals.length; i++) {
+                const lnX = Math.log(xVals[i]);
+                const lnY = Math.log(yVals[i]);
+                sumXY += lnX * lnY;
+                sumX2 += lnX * lnX;
+            }
+
+            const gamma = sumX2 > 0 ? sumXY / sumX2 : 2.2;
+            return Math.round(gamma * 100) / 100;
+        }
+
+
+        // ── RENDER RESULTS & CHARTS ──
+        function renderCalibrationResults() {
+            // 1. Calculations
+            let sumDeltaE = 0;
+            let maxDeltaE = 0;
+            calibrationResults.forEach(r => {
+                sumDeltaE += r.deltaE;
+                if (r.deltaE > maxDeltaE) maxDeltaE = r.deltaE;
+            });
+            const avgDeltaE = Math.round((sumDeltaE / calibrationResults.length) * 100) / 100;
+
+            // Estimate Gamma from the first 6 grayscale patches
+            const estimatedGamma = estimateGamma(calibrationResults.slice(0, 6));
+
+            // 2. Display Scores
+            avgDeltaEDisplay.textContent = avgDeltaE;
+            maxDeltaEDisplay.textContent = maxDeltaE;
+            gammaDisplay.textContent = estimatedGamma;
+
+            // Set Rating Badge
+            let scoreLetter = 'F';
+            let ratingText = t('accuracyPoor');
+            let badgeClass = 'delta-poor';
+
+            if (avgDeltaE < 1.5) {
+                scoreLetter = 'A';
+                ratingText = t('accuracyExcellent');
+                badgeClass = 'delta-excellent';
+            } else if (avgDeltaE < 3.0) {
+                scoreLetter = 'B';
+                ratingText = t('accuracyGood');
+                badgeClass = 'delta-good';
+            }
+
+            accuracyLabel.textContent = ratingText;
+            accuracyLabel.className = `delta-e-pill ${badgeClass}`;
+            
+            resultsMainBadge.textContent = scoreLetter;
+            resultsMainBadge.className = `w-20 h-20 rounded-full flex items-center justify-center text-3xl font-black ${
+                scoreLetter === 'A' ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' :
+                scoreLetter === 'B' ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400' :
+                'bg-red-500/10 border border-red-500/30 text-red-400'
+            }`;
+
+            // 3. Render Table
+            resultsTableBody.innerHTML = '';
+            calibrationResults.forEach(res => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-white/5 hover:bg-white/5 transition-colors';
+                
+                const deltaPillClass = res.deltaE < 1.5 ? 'delta-excellent' : (res.deltaE < 3.0 ? 'delta-good' : 'delta-poor');
+
+                tr.innerHTML = `
+                    <td class="py-3 flex items-center gap-3">
+                        <span class="text-xs font-semibold text-gray-300">${res.name}</span>
+                    </td>
+                    <td class="py-3">
+                        <div class="flex items-center gap-2">
+                            <span class="result-color-dot" style="background-color: rgb(${res.expected.join(',')})"></span>
+                            <span class="font-mono text-xs text-gray-400">RGB(${res.expected.join(',')})</span>
+                        </div>
+                    </td>
+                    <td class="py-3">
+                        <div class="flex items-center gap-2">
+                            <span class="result-color-dot" style="background-color: rgb(${res.measuredCorrected.join(',')})"></span>
+                            <span class="font-mono text-xs text-gray-400">RGB(${res.measuredCorrected.join(',')})</span>
+                        </div>
+                    </td>
+                    <td class="py-3 text-right">
+                        <span class="delta-e-pill ${deltaPillClass}">${res.deltaE}</span>
+                    </td>
+                `;
+                resultsTableBody.appendChild(tr);
+            });
+
+            // 4. Render SVG Gamma Chart
+            drawGammaCurveChart(estimatedGamma);
+        }
+
+        function drawGammaCurveChart(measuredGamma) {
+            const targetCurvePath = document.getElementById('targetCurvePath');
+            const measuredCurvePath = document.getElementById('measuredCurvePath');
+            const measuredDotsGroup = document.getElementById('measuredDotsGroup');
+
+            // Curves math: SVG runs from x=10 to x=90, y=90 (0 value) to y=10 (1.0 value)
+            const mapX = (x) => 10 + x * 80;
+            const mapY = (y) => 90 - y * 80;
+
+            // 1. Target Curve (2.2)
+            let dTarget = '';
+            for (let i = 0; i <= 20; i++) {
+                const x = i / 20;
+                const y = Math.pow(x, 2.2);
+                dTarget += `${i === 0 ? 'M' : 'L'} ${mapX(x)} ${mapY(y)}`;
+            }
+            targetCurvePath.setAttribute('d', dTarget);
+
+            // 2. Measured Curve (fitted gamma)
+            let dMeasured = '';
+            for (let i = 0; i <= 20; i++) {
+                const x = i / 20;
+                const y = Math.pow(x, measuredGamma);
+                dMeasured += `${i === 0 ? 'M' : 'L'} ${mapX(x)} ${mapY(y)}`;
+            }
+            measuredCurvePath.setAttribute('d', dMeasured);
+
+            // 3. Measured Points (from first 6 gray patches)
+            measuredDotsGroup.innerHTML = '';
+            const grayPatches = calibrationResults.slice(0, 6);
+            grayPatches.forEach((res, index) => {
+                const targetX = index / 5;
+                const avgVal = (res.measuredCorrected[0] + res.measuredCorrected[1] + res.measuredCorrected[2]) / 3 / 255;
+                
+                const cx = mapX(targetX);
+                const cy = mapY(avgVal);
+
+                // Add glowing circle to group
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', cx);
+                circle.setAttribute('cy', cy);
+                circle.setAttribute('r', '2.5');
+                circle.setAttribute('fill', '#ffffff');
+                circle.setAttribute('stroke', '#8c3dc1');
+                circle.setAttribute('stroke-width', '1');
+                measuredDotsGroup.appendChild(circle);
+            });
+        }
+
+
+        // ── EXPORT ACTIONS ──
+        exportJsonBtn.addEventListener('click', () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(calibrationResults, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href",     dataStr);
+            downloadAnchor.setAttribute("download", `lordskamp_calibration_${currentSessionId.substring(0,5)}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        exportCsvBtn.addEventListener('click', () => {
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Patch Name,Expected R,Expected G,Expected B,Measured Corrected R,Measured Corrected G,Measured Corrected B,Delta E\n";
+            
+            calibrationResults.forEach(r => {
+                csvContent += `"${r.name}",${r.expected.join(',')},${r.measuredCorrected.join(',')},${r.deltaE}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", encodedUri);
+            downloadAnchor.setAttribute("download", `lordskamp_calibration_${currentSessionId.substring(0,5)}.csv`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        recalibrateBtn.addEventListener('click', () => {
+            desktopResultsArea.classList.add('hidden');
+            desktopSetupArea.classList.remove('hidden');
+        });
+
+
+        // ── CUSTOM GLASS CURSOR IMPLEMENTATION (matching other pages) ──
+        (() => {
+            const cursor = document.getElementById('cursor');
+            if (!cursor) return;
+
+            // Only activate cursor if fine pointer (mouse) is supported
+            const hasFinePointer = window.matchMedia('(pointer: fine)').matches;
+            if (!hasFinePointer) {
+                cursor.style.display = 'none';
+                return;
+            }
+
+            let mouseX = -100, mouseY = -100;
+            let cursorX = -100, cursorY = -100;
+
+            document.addEventListener('mousemove', (e) => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+
+            // Smooth cursor follow interpolation
+            function updateCursor() {
+                const dx = mouseX - cursorX;
+                const dy = mouseY - cursorY;
+                cursorX += dx * 0.15;
+                cursorY += dy * 0.15;
+
+                cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`;
+                requestAnimationFrame(updateCursor);
+            }
+            updateCursor();
+
+            // Hover state scaling
+            const hoverTargets = 'a, button, input, [role="button"], .mode-selection-btn';
+            document.addEventListener('mouseover', (e) => {
+                if (e.target.closest(hoverTargets)) {
+                    cursor.classList.add('cursor-hover');
+                }
+            });
+            document.addEventListener('mouseout', (e) => {
+                if (!e.target.closest(hoverTargets)) {
+                    cursor.classList.remove('cursor-hover');
+                }
+            });
+        })();
+
+
+        // ── Start App ──
+        detectDeviceMode();
+
+    })();
+    </script>
+</body>
+</html>
