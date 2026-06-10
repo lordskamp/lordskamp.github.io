@@ -182,40 +182,75 @@
             transition: background-color 0.2s ease;
         }
 
-        /* Targets for placing phone */
-        .alignment-ring {
-            width: 180px;
-            height: 180px;
-            border: 4px dashed rgba(255, 255, 255, 0.6);
-            border-radius: 50%;
+        /* ── Phone Silhouette Alignment Guide ── */
+        .phone-silhouette {
+            position: relative;
+            width: 170px;
+            height: 340px;
+            border: 2px dashed rgba(255, 255, 255, 0.45);
+            border-radius: 36px;
+            background: rgba(0, 0, 0, 0.65);
+            box-shadow: 0 0 30px rgba(140, 61, 193, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.05);
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
-            position: relative;
+            margin-bottom: 24px;
         }
-        .alignment-ring::after {
-            content: '';
-            width: 20px;
-            height: 20px;
-            background: #ff3366;
-            border-radius: 50%;
+
+        .phone-dynamic-island {
             position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 65px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .phone-camera-lens {
+            position: absolute;
+            top: 23px;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 32px;
+            height: 32px;
+            border: 2px dashed #00ffff;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+            animation: pulse-ring 2s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.8; }
+            50% { transform: translate(-50%, -50%) scale(1.05); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.8; }
+        }
+
+        .phone-silhouette-text {
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.45);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            text-align: center;
+            padding: 0 10px;
+            margin-top: 40px;
         }
 
         .alignment-instruction {
-            position: absolute;
-            bottom: 12%;
             background: rgba(0, 0, 0, 0.85);
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             color: #fff;
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             font-weight: 500;
             text-align: center;
-            pointer-events: none;
             max-width: 80%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         }
 
         /* ── Camera view for phone ── */
@@ -628,10 +663,16 @@
 
     <!-- ═════════ FULLSCREEN PATCH OVERLAY ═════════ -->
     <div id="fullscreenPatch" class="fullscreen-patch-overlay">
-        <div id="patchColorContainer" class="patch-color-container">
-            <div class="alignment-ring"></div>
-            <div class="alignment-instruction">
-                <span id="fullscreenInstructionText">Place iPhone camera FLAT inside the circle</span>
+        <div id="patchColorContainer" class="patch-color-container relative">
+            <div id="alignmentGuide" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-opacity duration-300">
+                <div class="phone-silhouette">
+                    <div class="phone-dynamic-island"></div>
+                    <div class="phone-camera-lens"></div>
+                    <div class="phone-silhouette-text" data-i18n="alignPhoneHere">Align iPhone here</div>
+                </div>
+                <div class="alignment-instruction">
+                    <span id="fullscreenInstructionText" data-i18n="alignInstructionText">Place iPhone screen FLAT against the screen</span>
+                </div>
             </div>
         </div>
     </div>
@@ -662,6 +703,8 @@
                 step3Text: "Екран покаже серію кольорових плашок. Не рухайте телефон до завершення процесу.",
                 waitingConnection: "Очікування підключення...",
                 sessionCodeLabel: "Або введіть код сесії:",
+                alignPhoneHere: "Притуліть iPhone сюди",
+                alignInstructionText: "Прикладіть iPhone екраном до монітора, вирівнявши камеру з мішенню",
                 startCalibration: "Почати калібрування",
                 calibrationRunning: "Калібрування триває...",
                 calibratingPatch: "Замір кольору {current} з {total}...",
@@ -712,6 +755,8 @@
                 step3Text: "The screen will flash multiple color patches. Keep the phone steady until completion.",
                 waitingConnection: "Waiting for connection...",
                 sessionCodeLabel: "Or enter session code:",
+                alignPhoneHere: "Align iPhone here",
+                alignInstructionText: "Place iPhone screen FLAT against the monitor, aligning camera with the target",
                 startCalibration: "Start Calibration",
                 calibrationRunning: "Calibration in progress...",
                 calibratingPatch: "Measuring patch {current} of {total}...",
@@ -903,10 +948,25 @@
         }
 
 
+        function generateSessionId() {
+            const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+            let result = '';
+            for (let i = 0; i < 6; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
         // ── PEERJS REAL-TIME COMMUNICATION ──
-        function initPeerJS(onOpenCallback) {
+        function initPeerJS(customId, onOpenCallback) {
+            if (peerInstance) {
+                try {
+                    peerInstance.destroy();
+                } catch (_) {}
+            }
+
             // Setup a PeerJS peer pointing to public PeerJS server
-            peerInstance = new Peer(null, {
+            peerInstance = new Peer(customId, {
                 debug: 1
             });
 
@@ -917,7 +977,13 @@
 
             peerInstance.on('error', (err) => {
                 console.error("PeerJS error:", err);
-                alert(t('errPeerJs') + ' (' + err.type + ')');
+                if (err.type === 'unavailable-id') {
+                    console.warn("Session ID collision, retrying with new ID...");
+                    const newId = generateSessionId();
+                    initPeerJS(newId, onOpenCallback);
+                } else {
+                    alert(t('errPeerJs') + ' (' + err.type + ')');
+                }
             });
         }
 
@@ -926,14 +992,14 @@
         function setupDesktopMode() {
             desktopModeSection.classList.remove('hidden');
             
-            initPeerJS((id) => {
+            const customId = generateSessionId();
+            
+            initPeerJS(customId, (id) => {
                 desktopPeerInit.classList.add('hidden');
                 desktopPeerReady.classList.remove('hidden');
 
-                // Generate Session code: format xxxxx (e.g. 5-digit number or first few chars of ID)
-                // PeerJS IDs can be longer, but we display the actual full ID in QR and code
-                const shortCode = id.substring(0, 6).toUpperCase();
-                sessionCodeDisplay.textContent = shortCode.substring(0, 3) + ' ' + shortCode.substring(3, 6);
+                // Display session code format: ABC DEF
+                sessionCodeDisplay.textContent = id.substring(0, 3).toUpperCase() + ' ' + id.substring(3, 6).toUpperCase();
 
                 // Build scan URL
                 const phoneUrl = window.location.origin + window.location.pathname + '?mode=phone&session=' + id;
@@ -989,28 +1055,25 @@
             phoneModeSection.classList.remove('hidden');
             
             phoneConnectBtn.addEventListener('click', () => {
-                const code = sessionCodeInput.value.trim().toLowerCase();
+                const code = sessionCodeInput.value.replace(/\s+/g, '').trim().toLowerCase();
                 if (!code) return;
 
                 phoneConnectArea.classList.add('hidden');
                 phoneConnectingArea.classList.remove('hidden');
 
-                // If user typed the 6-character code directly, connect to that peer ID
-                // Note: PeerJS uses random UUIDs usually, but since the QR has the full ID in the URL,
-                // typing works if the ID matches what's typed or if they scanned.
-                // For simplicity, we just use the entered code as the peer ID.
                 connectToDesktop(code);
             });
 
             // If session code is already in input (from query param), auto-connect
-            if (sessionCodeInput.value.trim()) {
+            const urlSession = sessionCodeInput.value.replace(/\s+/g, '').trim().toLowerCase();
+            if (urlSession) {
                 phoneConnectArea.classList.add('hidden');
                 phoneConnectingArea.classList.remove('hidden');
-                initPeerJS(() => {
-                    connectToDesktop(sessionCodeInput.value.trim());
+                initPeerJS(null, () => {
+                    connectToDesktop(urlSession);
                 });
             } else {
-                initPeerJS(() => {
+                initPeerJS(null, () => {
                     // Signaling ready for manual input
                 });
             }
@@ -1071,10 +1134,10 @@
         openCameraBtn.addEventListener('click', async () => {
             const webcamEl = document.getElementById('webcam');
             try {
-                // Request back camera
+                // Request front camera
                 mediaStream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        facingMode: 'environment',
+                        facingMode: 'user',
                         width: { ideal: 640 },
                         height: { ideal: 480 }
                     },
@@ -1205,19 +1268,23 @@
             blackLevelReading = null;
             whiteLevelReading = null;
 
-            // Update UI: show fullscreen patch overlay
+            // Update UI: show fullscreen patch overlay and alignment guide
             fullscreenPatch.style.display = 'flex';
+            document.getElementById('alignmentGuide').style.opacity = '1';
             
             // Inform phone to start calibration
             sendDesktopCommand({ type: 'start_calibration' });
 
             // Small delay for alignment
-            fullscreenInstructionText.textContent = t('holdSteady');
             setPatchColor([0,0,0]); // Start with black target alignment
 
             setTimeout(() => {
-                runNextCalibrationPatch();
-            }, 3000);
+                // Fade out alignment guide so it doesn't pollute the camera readings with lines/text
+                document.getElementById('alignmentGuide').style.opacity = '0';
+                setTimeout(() => {
+                    runNextCalibrationPatch();
+                }, 400); // Wait for fade out transition
+            }, 4000); // Give user 4 seconds to place the phone against the guide
         }
 
         function setPatchColor(rgb) {
