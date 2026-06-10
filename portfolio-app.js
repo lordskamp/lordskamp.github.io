@@ -176,8 +176,8 @@
                 { name: 'Map', dir: '', project: 'Map_Project.jpg', real: ['Map_RealPhoto.jpg'], aspectRatio: '1544 / 976', realOverlay: true },
             ],
             stagePairs: [
-                { names: ['Rock Stage', 'Love Stage'], columns: '2fr 1fr' },
-                { names: ['Entry Banner', 'T-Shirt'], columns: '1fr 2fr' }
+                { names: ['Rock Stage', 'Love Stage'], spans: [2, 1] },
+                { names: ['Entry Banner', 'T-Shirt'], spans: [1, 2] }
             ],
             lottieStickers: { path: 'portfolio/Cases/2. Zaxidfest2020', dir: 'Telegram_AnimatedStickers(Lottie format)', files: ['0.json', '1.json', '2.json', '3.json', '4.json', '5.json'] },
             igGrid: {
@@ -445,8 +445,8 @@
     };
 
     const DEFAULT_ZAXID_STAGE_PAIRS = [
-        { names: ['Rock Stage', 'Love Stage'], columns: '2fr 1fr' },
-        { names: ['Entry Banner', 'T-Shirt'], columns: '1fr 2fr' }
+        { names: ['Rock Stage', 'Love Stage'], spans: [2, 1] },
+        { names: ['Entry Banner', 'T-Shirt'], spans: [1, 2] }
     ];
 
     function isZaxidCase(caseItem) {
@@ -1040,7 +1040,8 @@
 
             // Sub-cases (Project + Real photos)
             if (c.subs) {
-                const renderSubCase = (target, sub) => {
+                const renderSubCase = (target, sub, options = {}) => {
+                    const includeRealPhotos = options.includeRealPhotos !== false;
                     const subTitle = el('div', 'subcase-title', '');
                     subTitle.style.cssText = 'font-size:.75rem;font-weight:700;color:var(--text-muted);margin:.75rem 0 .4rem;text-transform:uppercase;letter-spacing:.06em;';
                     subTitle.textContent = sub.name;
@@ -1068,7 +1069,7 @@
                     target.appendChild(projectNode);
 
                     // Real photos
-                    if (sub.real && sub.real.length) {
+                    if (includeRealPhotos && sub.real && sub.real.length) {
                         const realRow = el('div', 'real-photos-row' + realRowClass);
                         realRow.style.marginTop = '.5rem';
                         sub.real.forEach(r => {
@@ -1078,12 +1079,25 @@
                     }
                 };
 
+                const makeSharedPairRealPhotos = (subs) => {
+                    const realRow = el('div', 'real-photos-row zaxid-pair-real-photos');
+                    subs.forEach(stage => {
+                        if (!stage || !stage.real || !stage.real.length) return;
+                        stage.real.forEach(r => {
+                            realRow.appendChild(makeImgWrap(caseAssetPath(c, stage, r), 'real-photo-wrap'));
+                        });
+                    });
+                    if (!realRow.children.length) return null;
+                    realRow.style.setProperty('--pair-photo-count', realRow.children.length);
+                    return realRow;
+                };
+
                 const zaxidPairs = getZaxidStagePairs(c);
                 if (zaxidPairs.length) {
                     const pairMap = new Map(zaxidPairs.map(pair => [
                         pair.names[0],
                         {
-                            columns: pair.columns || '1fr 1fr',
+                            spans: Array.isArray(pair.spans) ? pair.spans : [1, 1],
                             subs: pair.names.map(name => c.subs.find(s => s.name === name))
                         }
                     ]));
@@ -1099,14 +1113,21 @@
                         const pair = pairMap.get(sub.name);
                         if (pair && pair.subs[0] && pair.subs[1]) {
                             const stagesRow = el('div', 'zaxid-stage-row');
-                            stagesRow.style.cssText = `display:grid;gap:var(--inner-gap);grid-template-columns:${pair.columns};`;
+                            stagesRow.style.cssText = 'display:grid;gap:var(--inner-gap);grid-template-columns:repeat(3,minmax(0,1fr));';
 
-                            pair.subs.forEach(stage => {
+                            pair.subs.forEach((stage, stageIdx) => {
                                 const col = el('div', 'zaxid-stage-col');
-                                renderSubCase(col, stage);
+                                const span = Math.max(1, Math.min(3, Number(pair.spans[stageIdx]) || 1));
+                                col.style.gridColumn = `span ${span}`;
+                                renderSubCase(col, stage, { includeRealPhotos: false });
                                 stagesRow.appendChild(col);
                                 rendered.add(stage.name);
                             });
+
+                            const sharedRealRow = makeSharedPairRealPhotos(pair.subs);
+                            if (sharedRealRow) {
+                                stagesRow.appendChild(sharedRealRow);
+                            }
 
                             body.appendChild(stagesRow);
                             return;

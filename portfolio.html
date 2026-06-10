@@ -458,12 +458,19 @@
             height: auto;
             display: block;
         }
+        .zaxid-stage-row {
+            align-items:stretch;
+            container-type:inline-size;
+        }
         .zaxid-stage-col {
             display: flex;
             flex-direction: column;
+            min-width:0;
         }
         .zaxid-stage-col .project-media {
             flex-grow: 0;
+            height:clamp(11.75rem, 74cqw, 31.5rem);
+            aspect-ratio:auto;
         }
         .rock-project { aspect-ratio: 3452 / 3866; }
         .love-project { aspect-ratio: 1726 / 3866; }
@@ -498,14 +505,14 @@
         .tshirt-project-photos .real-photo-wrap {
             aspect-ratio:16 / 9;
         }
-        .zaxid-stage-row .love-project-photos,
-        .zaxid-stage-row .entry-project-photos {
-            justify-items:center;
+        .zaxid-pair-real-photos {
+            grid-column:1 / -1;
+            grid-template-columns:repeat(var(--pair-photo-count, 3), minmax(0, 1fr));
+            justify-items:stretch;
         }
-        .zaxid-stage-row .love-project-photos .real-photo-wrap,
-        .zaxid-stage-row .entry-project-photos .real-photo-wrap {
-            width:calc(100% - .375rem);
-            max-width:100%;
+        .zaxid-pair-real-photos .real-photo-wrap {
+            width:100%;
+            max-width:none;
         }
         .zaxid-stage-row .real-photo-wrap {
             height: auto;
@@ -1282,7 +1289,7 @@
     <!-- Custom Cursor -->
     <div class="custom-cursor" id="customCursor"></div>
 
-    <script defer src="portfolio-app.js?v=20260610-sticker-grids"></script>
+    <script defer src="portfolio-app.js?v=20260610-aligned-photo-modules"></script>
 
     <!-- ── Particles System (from index.html) ── -->
     <script>
