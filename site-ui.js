@@ -358,7 +358,11 @@
     }
 
     function initCursor() {
-        if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return;
+        if (window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches) {
+            document.body.classList.remove('custom-cursor-active');
+            window.customCursorPos = { x: 0, y: 0, color: null };
+            return;
+        }
 
         window.customCursorPos = window.customCursorPos || { x: 0, y: 0, color: null };
 

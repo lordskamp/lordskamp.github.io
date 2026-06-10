@@ -291,10 +291,10 @@
             width: 100%;
             height: 100%;
             background-size: var(--grid-size) var(--grid-size);
-            background-position: center top;
+            background-position: center center;
             background-image:
-                linear-gradient(to right, transparent calc(50% - 1px), #d7e5fa calc(50% - 1px), #d7e5fa calc(50% + 1px), transparent calc(50% + 1px)),
-                linear-gradient(to bottom, transparent calc(50% - 1px), #d7e5fa calc(50% - 1px), #d7e5fa calc(50% + 1px), transparent calc(50% + 1px));
+                linear-gradient(to right, #d7e5fa 1px, transparent 1px),
+                linear-gradient(to bottom, #d7e5fa 1px, transparent 1px);
             z-index: 2;
             opacity: 0.64;
             mix-blend-mode: overlay;
@@ -980,7 +980,7 @@
            but this CSS rule handles the "freeze" case where JS events are missed */
 
         /* Hide custom cursor on touch devices */
-        @media (hover: none) and (pointer: coarse) {
+        @media (max-width: 768px), (hover: none), (pointer: coarse) {
             .custom-cursor {
                 display: none !important;
             }
@@ -1245,9 +1245,115 @@
         }
 
         /* Social icons hover adjustments for light theme - REMOVED per user request to keep them white */
+        @media (max-width: 768px), (hover: none), (pointer: coarse) {
+            .magnetic:hover,
+            .glow-effect:hover,
+            .link-item:hover,
+            .portfolio-cta:hover,
+            .island:hover,
+            .social-icon:hover,
+            a[data-brand="Wishlist"]:hover,
+            .award-card:hover {
+                transform: none !important;
+                filter: none !important;
+                text-shadow: none !important;
+            }
+
+            .glow-effect:hover {
+                box-shadow: 0 0 20px rgba(140, 61, 193, 0.3);
+            }
+
+            .link-item:hover {
+                background: var(--glass);
+                border-color: var(--glass-border);
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            }
+
+            .portfolio-cta:hover {
+                background: rgba(139, 92, 246, 0.5) !important;
+                border-color: rgba(139, 92, 246, 0.5);
+                box-shadow:
+                    0 10px 24px rgba(76, 29, 149, 0.24),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+            }
+
+            .island:hover {
+                box-shadow: var(--island-shadow);
+            }
+
+            .social-icon:hover,
+            a[title]:hover,
+            #langBtn[data-brand="Language"]:hover {
+                color: var(--text-color) !important;
+                border-color: var(--glass-border) !important;
+                box-shadow: none !important;
+                text-shadow: none !important;
+            }
+
+            a[data-brand="Wishlist"]:hover {
+                background: var(--glass);
+                border-color: var(--glass-border) !important;
+                box-shadow: none;
+                color: var(--text-color);
+            }
+
+            .link-item[data-brand="Telegram"]:hover {
+                border-color: rgba(36, 161, 222, 0.5);
+            }
+
+            .link-item[data-brand="WhatsApp"]:hover {
+                border-color: rgba(37, 211, 102, 0.5);
+            }
+
+            .link-item[data-brand="Viber"]:hover {
+                border-color: rgba(115, 96, 242, 0.5);
+            }
+
+            .link-item[data-brand="Email"]:hover {
+                border-color: rgba(74, 222, 128, 0.5);
+            }
+
+            .link-item[data-brand="Behance"]:hover,
+            .link-item[data-brand="Resume"]:hover,
+            .link-item[data-brand="Instagram-Portfolio"]:hover {
+                background: var(--glass) !important;
+                border-color: var(--glass-border) !important;
+                box-shadow: none !important;
+            }
+
+            .link-item[data-brand="Behance"]:hover i,
+            .link-item[data-brand="Behance"]:hover span,
+            .link-item[data-brand="Resume"] > a:hover i,
+            .link-item[data-brand="Resume"] > a:hover span,
+            .link-item[data-brand="Instagram-Portfolio"]:hover i,
+            .link-item[data-brand="Instagram-Portfolio"]:hover span {
+                color: inherit !important;
+            }
+
+            .link-item[data-brand="Resume"] > a:hover {
+                background: transparent;
+            }
+
+            .award-card:hover::before {
+                left: -100%;
+            }
+
+            .award-card:hover {
+                border-color: rgba(255, 255, 255, 0.1);
+                box-shadow: none;
+            }
+
+            .award-gold:hover {
+                border-color: rgba(255, 215, 0, 0.3);
+            }
+
+            .award-silver:hover {
+                border-color: rgba(192, 192, 192, 0.3);
+            }
+        }
     </style>
     <link rel="stylesheet" href="site-ui.css">
-    <script src="site-ui.js?v=20260608-cursor-target-2"></script>
+    <script src="site-ui.js?v=20260610-mobile-cursor-off"></script>
 </head>
 
 <body class="">
@@ -1353,6 +1459,9 @@
                     </a>
                     <a href="https://www.facebook.com/lordskamp/" target="_blank" class="social-icon" title="Facebook">
                         <i class="fab fa-facebook"></i>
+                    </a>
+                    <a href="http://t.me/lordskamp" target="_blank" class="social-icon" title="Telegram">
+                        <i class="fab fa-telegram"></i>
                     </a>
                     <a href="https://www.youtube.com/@Lordskamp" target="_blank" class="social-icon" title="YouTube">
                         <i class="fab fa-youtube"></i>
@@ -1688,6 +1797,8 @@
                 const particlesContainer = document.getElementById('particles-container');
                 if (!particlesContainer) return;
 
+                const isMobileExperience = window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches;
+                const supportsFineHover = !isMobileExperience && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
                 const AMBIENT_COUNT = 30;
                 const TRAIL_POOL_SIZE = 20;
                 const TRAIL_DURATION_MS = 1500;
@@ -1775,16 +1886,19 @@
 
                 /* ==== Mouse trail particles (pool reuse, max 1 per frame) ==== */
                 const trailPool = [];
-                for (let i = 0; i < TRAIL_POOL_SIZE; i++) {
-                    const p = document.createElement('div');
-                    p.className = 'particle';
-                    p.style.opacity = '0';
-                    particlesContainer.appendChild(p);
-                    trailPool.push(p);
+                if (supportsFineHover) {
+                    for (let i = 0; i < TRAIL_POOL_SIZE; i++) {
+                        const p = document.createElement('div');
+                        p.className = 'particle';
+                        p.style.opacity = '0';
+                        particlesContainer.appendChild(p);
+                        trailPool.push(p);
+                    }
                 }
 
                 let trailIdx = 0;
                 function spawnTrail(clientX, clientY) {
+                    if (!trailPool.length) return;
                     const p = trailPool[trailIdx];
                     trailIdx = (trailIdx + 1) % trailPool.length;
 
@@ -1860,7 +1974,9 @@
                     }
                 }
 
-                document.addEventListener(moveEvent, onMove, { passive: true });
+                if (supportsFineHover) {
+                    document.addEventListener(moveEvent, onMove, { passive: true });
+                }
 
                 // Pause/restart animations when tab is hidden/visible (saves CPU, no feature loss)
                 document.addEventListener('visibilitychange', () => {
@@ -2050,12 +2166,27 @@
                 el.classList.add('animate-blur-up');
             });
 
-            /* ==== 3-D Tilt Cards (glare disabled for perf) ==== */
-            VanillaTilt.init($$('.link-item:not(.portfolio-cta)'), {
-                max: 5,
-                speed: 600,
-                glare: false
-            });
+            /* ==== 3-D Tilt Cards (desktop/fine pointer only) ==== */
+            if (!window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+                const initVanillaTilt = () => {
+                    if (!window.VanillaTilt) return;
+                    window.VanillaTilt.init($$('.link-item:not(.portfolio-cta)'), {
+                        max: 5,
+                        speed: 600,
+                        glare: false
+                    });
+                };
+
+                if (window.VanillaTilt) {
+                    initVanillaTilt();
+                } else {
+                    const tiltScript = document.createElement('script');
+                    tiltScript.src = 'https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js';
+                    tiltScript.async = true;
+                    tiltScript.onload = initVanillaTilt;
+                    document.head.appendChild(tiltScript);
+                }
+            }
 
             /* ==== Ripple Click ==== */
             $$('.link-item:not(.portfolio-cta)').forEach((btn) => {
@@ -2071,99 +2202,6 @@
                     setTimeout(() => span.remove(), 600);
                 });
             });
-
-            /* ==== Scroll Gap Pulse (iMessage-like spacing) ==== */
-            (() => {
-                if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-                const islands = $$('.island');
-                if (!islands.length) return;
-
-                const states = islands.map((el) => {
-                    const cs = getComputedStyle(el);
-                    return {
-                        el,
-                        top: parseFloat(cs.marginTop) || 0,
-                        bottom: parseFloat(cs.marginBottom) || 0
-                    };
-                });
-
-                let rafId = 0;
-                let target = 0;
-                let current = 0;
-                let lastScrollY = window.scrollY || window.pageYOffset || 0;
-
-                const MAX_SHIFT = 7;
-                const IMPULSE_MULTIPLIER = 0.16;
-                const TARGET_DAMPING = 0.9;
-                const LERP = 0.11;
-
-                function applyGapShift(shift) {
-                    const lastIndex = Math.max(states.length - 1, 1);
-                    const normalized = shift / MAX_SHIFT;
-                    const eased =
-                        Math.sign(normalized) *
-                        Math.pow(Math.abs(normalized), 1.15) *
-                        MAX_SHIFT;
-
-                    states.forEach((item, index) => {
-                        const depth = 0.94 + (index / lastIndex) * 0.12;
-                        const gapShift = eased * depth;
-                        item.el.style.marginTop = `${item.top + gapShift}px`;
-                        item.el.style.marginBottom = `${item.bottom + gapShift}px`;
-                    });
-                }
-
-                function animate() {
-                    rafId = requestAnimationFrame(animate);
-
-                    target *= TARGET_DAMPING;
-                    current += (target - current) * LERP;
-
-                    if (Math.abs(target) < 0.02 && Math.abs(current) < 0.02) {
-                        target = 0;
-                        current = 0;
-                        applyGapShift(0);
-                        cancelAnimationFrame(rafId);
-                        rafId = 0;
-                        return;
-                    }
-
-                    applyGapShift(current);
-                }
-
-                function onScroll() {
-                    const scrollY = window.scrollY || window.pageYOffset || 0;
-                    const delta = Math.abs(scrollY - lastScrollY);
-                    lastScrollY = scrollY;
-
-                    if (delta < 0.1) return;
-
-                    const impulse = Math.min(MAX_SHIFT, delta * IMPULSE_MULTIPLIER);
-                    target = Math.min(MAX_SHIFT, target + impulse * 0.6);
-
-                    if (!rafId) rafId = requestAnimationFrame(animate);
-                }
-
-                function refreshBaseMargins() {
-                    applyGapShift(0);
-                    states.forEach((item) => {
-                        const cs = getComputedStyle(item.el);
-                        item.top = parseFloat(cs.marginTop) || 0;
-                        item.bottom = parseFloat(cs.marginBottom) || 0;
-                    });
-                }
-
-                let resizeTimer = 0;
-                function onResize() {
-                    clearTimeout(resizeTimer);
-                    resizeTimer = setTimeout(refreshBaseMargins, 120);
-                }
-
-                window.addEventListener('scroll', onScroll, { passive: true });
-                window.addEventListener('resize', onResize, { passive: true });
-            })();
-
 
             /* ==== Auto-Typing Tagline ==== */
             let idx = 0, pos = 0, forward = true;
@@ -2214,6 +2252,8 @@
 
         <script>
             (() => {
+                if (window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
                 // Target profile image and all island blocks
                 const elements = document.querySelectorAll('#profileImg, .island:not(.no-parallax)');
                 if (!elements.length) return;
@@ -2398,6 +2438,7 @@
                 const socialIcons = document.getElementById('social-icons');
                 const wishlistPillRow = document.getElementById('wishlist-pill-row');
                 const wishlistPill = document.getElementById('wishlist-pill');
+                const gridOverlay = document.querySelector('.grid-overlay');
                 if (!socialIcons) return;
 
                 function readRootNumber(varName, fallbackValue) {
@@ -2411,7 +2452,6 @@
 
                 function snapSocialIconsToGrid() {
                     const gridSize = getGridSize();
-                    const bgOverscan = readRootNumber('--bg-overscan', 0);
 
                     // Measure from the neutral state so offsets do not accumulate.
                     socialIcons.style.setProperty('--social-grid-shift-x', '0px');
@@ -2423,9 +2463,11 @@
                     const currentFirstCellCenterX = rect.left + (gridSize / 2);
                     const currentRowCenterY = rect.top + (rect.height / 2);
 
-                    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-                    const xPhase = (viewportWidth / 2) + (gridSize / 2);
-                    const yPhase = gridSize - bgOverscan;
+                    const gridRect = gridOverlay
+                        ? gridOverlay.getBoundingClientRect()
+                        : { left: 0, top: 0, width: document.documentElement.clientWidth || window.innerWidth, height: window.innerHeight };
+                    const xPhase = gridRect.left + (gridRect.width / 2);
+                    const yPhase = gridRect.top + (gridRect.height / 2);
 
                     const targetFirstCellCenterX = xPhase + (Math.round((currentFirstCellCenterX - xPhase) / gridSize) * gridSize);
                     const targetRowCenterY = yPhase + (Math.round((currentRowCenterY - yPhase) / gridSize) * gridSize);

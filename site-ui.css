@@ -480,7 +480,7 @@ body:has(.island:hover iframe) .custom-cursor {
     font-size: 0.82rem;
 }
 
-@media (hover: none), (pointer: coarse) {
+@media (max-width: 768px), (hover: none), (pointer: coarse) {
     .custom-cursor {
         display: none !important;
     }

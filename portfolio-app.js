@@ -46,6 +46,7 @@
     const t = k => (i18n[lang] && i18n[lang][k]) || (i18n.en[k]) || k;
     const deferredSectionBuilders = new Map();
     const builtSections = new Set();
+    let portfolioGridSnapReady = false;
     const runWhenIdle = window.requestIdleCallback
         ? callback => window.requestIdleCallback(callback, { timeout: 1800 })
         : callback => window.setTimeout(callback, 250);
@@ -107,12 +108,87 @@
         return value.replace(/^portfolio\//, 'portfolio/thumbs/') + '.webp';
     }
 
+    function renderPortfolioTitle(el, value) {
+        const letters = Array.from(value || '');
+        el.textContent = '';
+        el.style.setProperty('--title-cells', Math.max(letters.length, 1));
+        el.setAttribute('aria-label', value);
+
+        const fragment = document.createDocumentFragment();
+        letters.forEach(letter => {
+            const span = document.createElement('span');
+            span.className = 'portfolio-title__letter';
+            span.setAttribute('aria-hidden', 'true');
+            span.textContent = letter;
+            fragment.appendChild(span);
+        });
+        el.appendChild(fragment);
+    }
+
+    function readRootNumber(varName, fallbackValue) {
+        const parsed = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(varName));
+        return Number.isFinite(parsed) ? parsed : fallbackValue;
+    }
+
+    function snapPortfolioTitleLettersToGrid() {
+        const title = document.querySelector('.portfolio-title');
+        const gridOverlay = document.querySelector('.grid-overlay');
+        const gridSize = readRootNumber('--grid-size', 50);
+        if (!title || !gridOverlay || !gridSize) return;
+
+        title.style.setProperty('--portfolio-title-letter-shift-y', '0px');
+
+        const titleRect = title.getBoundingClientRect();
+        const gridRect = gridOverlay.getBoundingClientRect();
+        if (titleRect.height <= 0 || gridRect.height <= 0) return;
+
+        const currentCenterY = titleRect.top + (titleRect.height / 2);
+        const gridCenterY = gridRect.top + (gridRect.height / 2);
+        const targetCenterY = gridCenterY + (Math.round((currentCenterY - gridCenterY) / gridSize) * gridSize);
+        const shiftY = targetCenterY - currentCenterY;
+        title.style.setProperty('--portfolio-title-letter-shift-y', `${shiftY.toFixed(2)}px`);
+    }
+
+    function snapPortfolioTabsToGrid() {
+        const tabs = document.querySelector('.category-tabs');
+        const gridOverlay = document.querySelector('.grid-overlay');
+        const gridSize = readRootNumber('--grid-size', 50);
+        if (!tabs || !gridOverlay || !gridSize) return;
+
+        tabs.style.setProperty('--portfolio-tabs-grid-shift-x', '0px');
+        tabs.style.setProperty('--portfolio-tabs-grid-shift-y', '0px');
+
+        const tabsRect = tabs.getBoundingClientRect();
+        const gridRect = gridOverlay.getBoundingClientRect();
+        if (tabsRect.width <= 0 || tabsRect.height <= 0 || gridRect.width <= 0 || gridRect.height <= 0) return;
+
+        const lineOriginX = gridRect.left + ((gridRect.width - gridSize) / 2);
+        const lineOriginY = gridRect.top + ((gridRect.height - gridSize) / 2);
+        const targetLeftX = lineOriginX + (Math.round((tabsRect.left - lineOriginX) / gridSize) * gridSize);
+        const targetTopY = lineOriginY + (Math.round((tabsRect.top - lineOriginY) / gridSize) * gridSize);
+        tabs.style.setProperty('--portfolio-tabs-grid-shift-x', `${(targetLeftX - tabsRect.left).toFixed(2)}px`);
+        tabs.style.setProperty('--portfolio-tabs-grid-shift-y', `${(targetTopY - tabsRect.top).toFixed(2)}px`);
+    }
+
+    function snapPortfolioHeaderToGrid() {
+        snapPortfolioTitleLettersToGrid();
+        snapPortfolioTabsToGrid();
+    }
+
+    function schedulePortfolioTitleSnap() {
+        requestAnimationFrame(() => requestAnimationFrame(snapPortfolioHeaderToGrid));
+    }
+
     function applyI18n() {
         document.documentElement.lang = lang;
         document.querySelectorAll('[data-i18n]').forEach(el => {
             const key = el.dataset.i18n;
             const label = el.dataset.i18nLabel;
             const value = label ? `${t(key)} • ${label}` : t(key);
+            if (key === 'heroTitle' && el.classList.contains('portfolio-title')) {
+                renderPortfolioTitle(el, value);
+                return;
+            }
             if (el.classList.contains('project-icon-badge')) {
                 el.setAttribute('aria-label', value);
                 el.title = value;
@@ -124,6 +200,7 @@
                 el.textContent = value;
             }
         });
+        if (portfolioGridSnapReady) schedulePortfolioTitleSnap();
     }
 
     /* ── Theme ── */
@@ -1565,34 +1642,6 @@
         items.forEach(el => observer.observe(el));
     }
 
-    /* ── Scroll-triggered fade-up ── */
-    function initScrollAnimations(rootNode = document) {
-        if (!('IntersectionObserver' in window)) {
-            rootNode.querySelectorAll('.fade-up').forEach(el => {
-                el.style.animationPlayState = 'running';
-                el.dataset.scrollAnimationReady = 'true';
-            });
-            return;
-        }
-
-        const obs = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.style.animationPlayState = 'running';
-                    entry.target.dataset.scrollAnimationReady = 'true';
-                    obs.unobserve(entry.target);
-                }
-            });
-        }, { rootMargin: '50px', threshold: 0.1 });
-
-        rootNode.querySelectorAll('.fade-up').forEach(el => {
-            if (el.dataset.scrollAnimationReady) return;
-            el.dataset.scrollAnimationReady = 'observing';
-            el.style.animationPlayState = 'paused';
-            obs.observe(el);
-        });
-    }
-
     /* ── Category Filtering ── */
     function buildSectionOnce(id, builder) {
         if (!id || typeof builder !== 'function' || builtSections.has(id)) return;
@@ -1603,7 +1652,6 @@
         if (section) {
             requestAnimationFrame(() => {
                 initLottie(section);
-                initScrollAnimations(section);
             });
         }
     }
@@ -1689,8 +1737,16 @@
         buildSectionOnce('sec-cases', buildCases);
         initFilters();
         initControls();
-        requestAnimationFrame(() => initScrollAnimations(document));
         scheduleDeferredSections();
+        portfolioGridSnapReady = true;
+        schedulePortfolioTitleSnap();
+        setTimeout(schedulePortfolioTitleSnap, 850);
+        setTimeout(schedulePortfolioTitleSnap, 1300);
+        window.addEventListener('resize', schedulePortfolioTitleSnap, { passive: true });
+        window.addEventListener('orientationchange', schedulePortfolioTitleSnap, { passive: true });
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(schedulePortfolioTitleSnap).catch(() => { });
+        }
     }
 
     /* ── Disable Image Dragging ── */
