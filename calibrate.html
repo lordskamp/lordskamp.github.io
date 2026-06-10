@@ -185,8 +185,8 @@
         /* ── Phone Silhouette Alignment Guide ── */
         .phone-silhouette {
             position: relative;
-            width: 170px;
-            height: 340px;
+            width: 280px;
+            height: 560px;
             border: 2px dashed rgba(255, 255, 255, 0.45);
             border-radius: 36px;
             background: rgba(0, 0, 0, 0.65);
@@ -196,6 +196,7 @@
             align-items: center;
             justify-content: center;
             margin-bottom: 24px;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .phone-dynamic-island {
@@ -521,6 +522,10 @@
                             <i class="fas fa-file-csv"></i>
                             <span data-i18n="exportCsv">Export CSV</span>
                         </button>
+                        <button id="exportLutBtn" class="btn-glass px-4 py-2 text-sm font-bold flex-1 md:flex-initial flex items-center justify-center gap-2">
+                            <i class="fas fa-cube"></i>
+                            <span data-i18n="exportLut">Export 3D LUT</span>
+                        </button>
                         <button id="recalibrateBtn" class="btn-glass px-4 py-2 text-sm font-bold flex-1 md:flex-initial flex items-center justify-center gap-2 bg-[#8c3dc1]/10 border-[#8c3dc1]/30 text-[#8c3dc1]">
                             <i class="fas fa-redo-alt"></i>
                             <span data-i18n="restart">Recalibrate</span>
@@ -590,6 +595,30 @@
                             <p class="text-xs text-gray-400 leading-relaxed" data-i18n="howToUseText">Download the CSV or JSON data and upload it to online profile generators or tools like DisplayCAL to compile a custom ICC device profile.</p>
                         </div>
                     </div>
+
+                    <!-- Before/After Image Preview -->
+                    <div class="glass-card p-6 lg:col-span-12 mt-6">
+                        <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                            <i class="fas fa-image text-[#8c3dc1]"></i>
+                            <span data-i18n="imagePreviewTitle">Before & After Preview</span>
+                        </h3>
+                        <p class="text-xs text-gray-400 mb-4">
+                            Simulated effect of the calibration profile on a reference image. 
+                            Left: Uncalibrated (Original). Right: Calibrated (Adjusted).
+                        </p>
+                        <div class="flex flex-col md:flex-row gap-4 items-center justify-center">
+                            <div class="relative w-full max-w-md rounded-xl overflow-hidden border border-white/10">
+                                <span class="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-xs font-bold text-white z-10">Before</span>
+                                <img id="previewBefore" src="portfolio/Cases/1. Zaxidfest2019/1. Main_Stage/Main_RealPhoto_1.jpg" alt="Before" class="w-full h-auto object-cover">
+                            </div>
+                            <i class="fas fa-arrow-right text-2xl text-gray-600 hidden md:block"></i>
+                            <i class="fas fa-arrow-down text-2xl text-gray-600 md:hidden"></i>
+                            <div class="relative w-full max-w-md rounded-xl overflow-hidden border border-[#8c3dc1]/40 shadow-[0_0_20px_rgba(140,61,193,0.3)] bg-black">
+                                <span class="absolute top-2 left-2 bg-[#8c3dc1] px-2 py-1 rounded text-xs font-bold text-white z-10">After (Calibrated)</span>
+                                <canvas id="previewAfterCanvas" class="w-full h-auto block"></canvas>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>
@@ -609,7 +638,7 @@
                     <i class="fas fa-qrcode text-4xl mb-4 text-[#8c3dc1]"></i>
                     <h3 class="text-lg font-bold mb-4" data-i18n="enterSessionCode">Enter Session Code</h3>
                     <div class="flex gap-2 justify-center mb-6">
-                        <input id="sessionCodeInput" type="text" maxlength="6" placeholder="000000" class="w-40 text-center font-mono text-xl font-bold tracking-widest bg-white/5 border border-white/10 rounded-xl px-3 py-2 focus:border-[#8c3dc1] focus:outline-none">
+                        <input id="sessionCodeInput" type="text" maxlength="7" placeholder="000 000" class="w-40 text-center font-mono text-xl font-bold tracking-widest bg-white/5 border border-white/10 rounded-xl px-3 py-2 focus:border-[#8c3dc1] focus:outline-none">
                         <button id="phoneConnectBtn" class="btn-glass px-4 py-2 font-bold" data-i18n="connectBtn">Connect</button>
                     </div>
                     <p class="text-xs text-gray-400 leading-relaxed">Ensure both your computer and phone are connected to the internet.</p>
@@ -727,9 +756,11 @@
                 accuracyPoor: "Низька (Delta E >= 3.0)",
                 exportJson: "Експорт JSON",
                 exportCsv: "Експорт CSV",
+                exportLut: "Експорт 3D LUT (.cube)",
+                imagePreviewTitle: "Попередній перегляд До та Після",
                 restart: "Почати спочатку",
                 howToUseTitle: "Як використовувати ці дані?",
-                howToUseText: "Завантажте CSV або JSON та імпортуйте в DisplayCAL або HCFR, щоб створити індивідуальний ICC-профіль для вашої системи.",
+                howToUseText: "Завантажте CSV або JSON та імпортуйте в DisplayCAL або HCFR, щоб створити індивідуальний ICC-профіль. Або збережіть 3D LUT і застосуйте через DWM_LUT у Windows.",
                 patchColExpected: "Очікуваний",
                 patchColMeasured: "Виміряний",
                 patchColDelta: "Delta E",
@@ -779,9 +810,11 @@
                 accuracyPoor: "Poor (Delta E >= 3.0)",
                 exportJson: "Export JSON",
                 exportCsv: "Export CSV",
+                exportLut: "Export 3D LUT (.cube)",
+                imagePreviewTitle: "Before & After Preview",
                 restart: "Recalibrate",
                 howToUseTitle: "How to use this data?",
-                howToUseText: "Download the CSV or JSON data and upload it to online profile generators or tools like DisplayCAL to compile a custom ICC device profile.",
+                howToUseText: "Download the CSV/JSON data for online profile generators like DisplayCAL. Or save the 3D LUT to apply via DWM_LUT directly in Windows.",
                 patchColExpected: "Expected",
                 patchColMeasured: "Measured",
                 patchColDelta: "Delta E",
@@ -918,6 +951,7 @@
 
         const exportJsonBtn = document.getElementById('exportJsonBtn');
         const exportCsvBtn = document.getElementById('exportCsvBtn');
+        const exportLutBtn = document.getElementById('exportLutBtn');
         const recalibrateBtn = document.getElementById('recalibrateBtn');
 
 
@@ -1134,10 +1168,10 @@
         openCameraBtn.addEventListener('click', async () => {
             const webcamEl = document.getElementById('webcam');
             try {
-                // Request front camera
+                // Request front camera specifically
                 mediaStream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        facingMode: 'user',
+                        facingMode: { ideal: "user" },
                         width: { ideal: 640 },
                         height: { ideal: 480 }
                     },
@@ -1270,17 +1304,20 @@
 
             // Update UI: show fullscreen patch overlay and alignment guide
             fullscreenPatch.style.display = 'flex';
-            document.getElementById('alignmentGuide').style.opacity = '1';
             
-            // Inform phone to start calibration
+            // Send finish to mobile
             sendDesktopCommand({ type: 'start_calibration' });
 
             // Small delay for alignment
             setPatchColor([0,0,0]); // Start with black target alignment
 
             setTimeout(() => {
-                // Fade out alignment guide so it doesn't pollute the camera readings with lines/text
-                document.getElementById('alignmentGuide').style.opacity = '0';
+                // Fade out ONLY the text, keep the frame so camera auto-exposure has a reference
+                document.querySelector('.phone-silhouette-text').style.opacity = '0';
+                document.querySelector('.phone-dynamic-island').style.opacity = '0';
+                document.querySelector('.phone-camera-lens').style.opacity = '0';
+                document.querySelector('.alignment-instruction').style.opacity = '0';
+                
                 setTimeout(() => {
                     runNextCalibrationPatch();
                 }, 400); // Wait for fade out transition
@@ -1288,7 +1325,9 @@
         }
 
         function setPatchColor(rgb) {
-            patchColorContainer.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+            const silhouette = document.querySelector('.phone-silhouette');
+            silhouette.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+            silhouette.style.borderColor = 'transparent'; // hide dashes during read
         }
 
         function runNextCalibrationPatch() {
@@ -1322,16 +1361,14 @@
                 whiteLevelReading = measuredRGB;
             }
 
-            // Normalization algorithm (Software white balance and black level compensation)
+            // Normalization algorithm (Software white balance, discarding unreliable black offsets due to auto-exposure)
             let correctedRGB = [...measuredRGB];
-            if (blackLevelReading && whiteLevelReading) {
+            if (whiteLevelReading) {
                 for (let c = 0; c < 3; c++) {
-                    const denominator = whiteLevelReading[c] - blackLevelReading[c];
-                    if (denominator > 10) { // Avoid division by zero
-                        let norm = (measuredRGB[c] - blackLevelReading[c]) / denominator;
-                        norm = Math.max(0, Math.min(1, norm)); // Clamp [0, 1]
-                        correctedRGB[c] = Math.round(norm * 255);
-                    }
+                    // Normalize purely on white reading to counter tint
+                    let norm = measuredRGB[c] / Math.max(1, whiteLevelReading[c]);
+                    norm = Math.max(0, Math.min(1, norm)); // Clamp [0, 1]
+                    correctedRGB[c] = Math.round(norm * 255);
                 }
             }
 
@@ -1354,6 +1391,14 @@
             isCalibrating = false;
             exitFullscreen();
             fullscreenPatch.style.display = 'none';
+
+            // Reset UI states for recalibration
+            document.querySelector('.phone-silhouette-text').style.opacity = '1';
+            document.querySelector('.phone-dynamic-island').style.opacity = '1';
+            document.querySelector('.phone-camera-lens').style.opacity = '1';
+            document.querySelector('.alignment-instruction').style.opacity = '1';
+            document.querySelector('.phone-silhouette').style.backgroundColor = 'rgba(0, 0, 0, 0.65)';
+            document.querySelector('.phone-silhouette').style.borderColor = 'rgba(255, 255, 255, 0.45)';
 
             // Send finish to mobile
             sendDesktopCommand({ type: 'calibration_finished' });
@@ -1520,6 +1565,53 @@
 
             // 4. Render SVG Gamma Chart
             drawGammaCurveChart(estimatedGamma);
+            
+            // 5. Render Before/After Image Preview
+            renderImagePreview();
+        }
+
+        function renderImagePreview() {
+            const img = document.getElementById('previewBefore');
+            const canvas = document.getElementById('previewAfterCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (!img.complete || img.naturalWidth === 0) {
+                img.onload = applyPreview;
+            } else {
+                applyPreview();
+            }
+
+            function applyPreview() {
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                ctx.drawImage(img, 0, 0);
+
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imgData.data;
+
+                // Determine correction gains based on the measured white point
+                let rGain = 1.0, gGain = 1.0, bGain = 1.0;
+                if (whiteLevelReading && whiteLevelReading[0] > 0) {
+                    // The monitor's measured white cast:
+                    rGain = 255 / whiteLevelReading[0];
+                    gGain = 255 / whiteLevelReading[1];
+                    bGain = 255 / whiteLevelReading[2];
+                    
+                    // Normalize gains so image brightness remains roughly similar
+                    const maxGain = Math.max(rGain, gGain, bGain);
+                    rGain /= maxGain;
+                    gGain /= maxGain;
+                    bGain /= maxGain;
+                }
+
+                // Apply simple linear color cast correction
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = Math.min(255, data[i] * rGain);     // R
+                    data[i+1] = Math.min(255, data[i+1] * gGain); // G
+                    data[i+2] = Math.min(255, data[i+2] * bGain); // B
+                }
+                ctx.putImageData(imgData, 0, 0);
+            }
         }
 
         function drawGammaCurveChart(measuredGamma) {
@@ -1595,6 +1687,46 @@
             const downloadAnchor = document.createElement('a');
             downloadAnchor.setAttribute("href", encodedUri);
             downloadAnchor.setAttribute("download", `lordskamp_calibration_${currentSessionId.substring(0,5)}.csv`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        exportLutBtn.addEventListener('click', () => {
+            const size = 17;
+            let lutContent = `TITLE "Lordskamp Calibration ${currentSessionId}"\nLUT_3D_SIZE ${size}\n\n`;
+            
+            let rGain = 1.0, gGain = 1.0, bGain = 1.0;
+            if (whiteLevelReading && whiteLevelReading[0] > 0) {
+                rGain = 255 / whiteLevelReading[0];
+                gGain = 255 / whiteLevelReading[1];
+                bGain = 255 / whiteLevelReading[2];
+                const maxGain = Math.max(rGain, gGain, bGain);
+                rGain /= maxGain;
+                gGain /= maxGain;
+                bGain /= maxGain;
+            }
+
+            for (let b = 0; b < size; b++) {
+                for (let g = 0; g < size; g++) {
+                    for (let r = 0; r < size; r++) {
+                        let nr = r / (size - 1);
+                        let ng = g / (size - 1);
+                        let nb = b / (size - 1);
+
+                        let cr = Math.min(1.0, nr * rGain);
+                        let cg = Math.min(1.0, ng * gGain);
+                        let cb = Math.min(1.0, nb * bGain);
+
+                        lutContent += `${cr.toFixed(6)} ${cg.toFixed(6)} ${cb.toFixed(6)}\n`;
+                    }
+                }
+            }
+
+            const dataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(lutContent);
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `lordskamp_calibration_${currentSessionId.substring(0,5)}.cube`);
             document.body.appendChild(downloadAnchor);
             downloadAnchor.click();
             downloadAnchor.remove();
