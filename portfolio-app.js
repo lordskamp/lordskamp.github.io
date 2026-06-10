@@ -153,8 +153,8 @@
                 { name: 'Main Stage', dir: '1. Main_Stage', project: 'Main_Project.png', real: ['Main_RealPhoto_1.jpg', 'Main_RealPhoto_3.jpg', 'Main_RealPhoto_4.jpg', 'Main_RealPhoto_5.jpg', 'Main_RealPhoto_6.jpg', 'Main_RealPhoto_7.jpg', 'Main_RealPhoto_8.jpg', 'Main_RealPhoto_9.jpg'] },
                 { name: 'Rock Stage', dir: '2. Rock_Stage', project: 'Rock_Project.png', real: ['Rock_RealPhoto_1.jpg', 'Rock_RealPhoto_2.jpg'] },
                 { name: 'Love Stage', dir: '3. Love_Stage', project: 'Love_Project.png', real: ['Love_RealPhoto_1.jpg'] },
-                { name: 'Entry Banner', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg'] },
-                { name: 'T-Shirt', dir: '5.TShirt', project: 'TShirt_Project.png', real: ['TShirt_RealPhoto_1.jpg', 'TShirt_RealPhoto_2.jpg'] },
+                { name: 'Banners', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg'] },
+                { name: 'Merch', dir: '5.TShirt', project: 'TShirt_Project.png', real: ['TShirt_RealPhoto_1.jpg', 'TShirt_RealPhoto_2.jpg'] },
             ],
             stickers: { dir: '6. Telegram_StaticStickers', files: ['0.png', '1.png', '2.png', '3.png', '5.png', '6.png', '7.png', '8.png', '9.png'] }
         },
@@ -171,13 +171,13 @@
                 { name: 'Main Stage', dir: '1. Main_Stage', project: 'Main_Project.png', real: ['Main_RealPhoto_1.jpg', 'Main_RealPhoto_2.jpg', 'Main_RealPhoto_3.jpg', 'Main_RealPhoto_4.jpg', 'Main_RealPhoto_5.jpg', 'Main_RealPhoto_6.jpg', 'Main_RealPhoto_7.jpg', 'Main_RealPhoto_8.jpg'], realRowClass: 'main-stage-photos' },
                 { name: 'Rock Stage', dir: '2. Rock_Stage', project: 'Rock_Project.png', real: ['Rock_RealPhoto_1.jpg', 'Rock_RealPhoto_2.jpg'], realRowClass: 'rock-project-photos' },
                 { name: 'Love Stage', dir: '3. Love_Stage', project: 'Love_Projec1t.png', real: ['Love_RealPhoto_1.jpg'], realRowClass: 'love-project-photos' },
-                { name: 'Entry Banner', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg'], realRowClass: 'entry-project-photos' },
-                { name: 'T-Shirt', dir: '5.TShirt', project: 'TShirt_Project.png', real: ['TShirt_RealPhoto_1.jpg', 'TShirt_RealPhoto_2.jpg'], realRowClass: 'tshirt-project-photos' },
+                { name: 'Banners', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg'], realRowClass: 'entry-project-photos' },
+                { name: 'Merch', dir: '5.TShirt', project: 'TShirt_Project.png', real: ['TShirt_RealPhoto_1.jpg', 'TShirt_RealPhoto_2.jpg'], realRowClass: 'tshirt-project-photos' },
                 { name: 'Map', dir: '', project: 'Map_Project.jpg', real: ['Map_RealPhoto.jpg'], aspectRatio: '1544 / 976', realOverlay: true },
             ],
             stagePairs: [
                 { names: ['Rock Stage', 'Love Stage'], spans: [2, 1] },
-                { names: ['Entry Banner', 'T-Shirt'], spans: [1, 2] }
+                { names: ['Banners', 'Merch'], spans: [1, 2] }
             ],
             lottieStickers: { path: 'portfolio/Cases/2. Zaxidfest2020', dir: 'Telegram_AnimatedStickers(Lottie format)', files: ['0.json', '1.json', '2.json', '3.json', '4.json', '5.json'] },
             igGrid: {
@@ -431,8 +431,8 @@
         'Main Stage': 'main-stage-project',
         'Rock Stage': 'rock-project',
         'Love Stage': 'love-project',
-        'Entry Banner': 'entry-project',
-        'T-Shirt': 'tshirt-project',
+        'Banners': 'entry-project',
+        'Merch': 'tshirt-project',
         'Map': 'map-project'
     };
 
@@ -440,13 +440,13 @@
         'Main Stage': 'main-stage-photos',
         'Rock Stage': 'rock-project-photos',
         'Love Stage': 'love-project-photos',
-        'Entry Banner': 'entry-project-photos',
-        'T-Shirt': 'tshirt-project-photos'
+        'Banners': 'entry-project-photos',
+        'Merch': 'tshirt-project-photos'
     };
 
     const DEFAULT_ZAXID_STAGE_PAIRS = [
         { names: ['Rock Stage', 'Love Stage'], spans: [2, 1] },
-        { names: ['Entry Banner', 'T-Shirt'], spans: [1, 2] }
+        { names: ['Banners', 'Merch'], spans: [1, 2] }
     ];
 
     function isZaxidCase(caseItem) {
@@ -1156,12 +1156,6 @@
                 sg.style.paddingTop = '2rem'; // Space for badge
                 c.stickers.files.forEach(f => {
                     const si = el('div', 'sticker-item');
-                    if (c.id === 'zaxid2019' && f === '3.png') {
-                        si.classList.add('mobile-only-sticker');
-                    }
-                    if (c.id === 'zaxid2019' && f === '8.png') {
-                        si.classList.add('mobile-hidden-sticker');
-                    }
                     const img = document.createElement('img');
                     const src = `${c.path}/${c.stickers.dir}/${f}`;
                     setDeferredImageSource(img, src);

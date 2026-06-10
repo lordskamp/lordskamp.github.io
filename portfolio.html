@@ -566,6 +566,13 @@
                 border-radius:8px;
                 border-width:1px;
             }
+            .main-stage-photos {
+                grid-template-columns:repeat(3, minmax(0, 1fr));
+                gap:.45rem;
+            }
+            .main-stage-photos .real-photo-wrap:nth-child(n+7) {
+                display:none;
+            }
         }
         @media(max-width:420px){
             .project-media > .source-badge {
@@ -694,9 +701,6 @@
                 padding-inline:.35rem;
                 padding-bottom:.35rem;
             }
-            .mobile-hidden-sticker {
-                display:none;
-            }
             .static-stickers-grid,
             .lottie-stickers-grid {
                 grid-template-columns:repeat(3, minmax(0, 1fr));
@@ -706,16 +710,14 @@
             .stickers-grid {
                 grid-template-columns:repeat(4, minmax(0, 1fr));
             }
-            .mobile-only-sticker {
-                display:none;
-            }
+            .static-stickers-grid,
             .lottie-stickers-grid {
                 grid-template-columns:repeat(3, minmax(0, 1fr));
             }
         }
         @media(min-width:1024px){
             .static-stickers-grid {
-                grid-template-columns:repeat(4, minmax(0, 1fr));
+                grid-template-columns:repeat(3, minmax(0, 1fr));
             }
             .lottie-stickers-grid {
                 grid-template-columns:repeat(3, minmax(0, 1fr));
@@ -1289,7 +1291,7 @@
     <!-- Custom Cursor -->
     <div class="custom-cursor" id="customCursor"></div>
 
-    <script defer src="portfolio-app.js?v=20260610-aligned-photo-modules"></script>
+    <script defer src="portfolio-app.js?v=20260610-stickers-3x3"></script>
 
     <!-- ── Particles System (from index.html) ── -->
     <script>
