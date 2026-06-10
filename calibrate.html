@@ -609,7 +609,7 @@
                         <div class="flex flex-col md:flex-row gap-4 items-center justify-center">
                             <div class="relative w-full max-w-md rounded-xl overflow-hidden border border-white/10">
                                 <span class="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-xs font-bold text-white z-10">Before</span>
-                                <img id="previewBefore" src="portfolio/Cases/1. Zaxidfest2019/1. Main_Stage/Main_RealPhoto_1.jpg" alt="Before" class="w-full h-auto object-cover">
+                                <img id="previewBefore" src="portfolio/TEST.jpg" alt="Before" class="w-full h-auto object-cover">
                             </div>
                             <i class="fas fa-arrow-right text-2xl text-gray-600 hidden md:block"></i>
                             <i class="fas fa-arrow-down text-2xl text-gray-600 md:hidden"></i>
@@ -864,14 +864,18 @@
 
 
         // ── Color patches (24 standard patch set, ColorChecker inspired) ──
+        // ORDER MATTERS: White and Black are measured FIRST as calibration references,
+        // then grayscale ramp, then chromatic patches.
         const patches = [
-            // Grayscale
-            { name: "Black", rgb: [0, 0, 0] },
+            // Reference patches (measured first for normalization)
+            { name: "White", rgb: [255, 255, 255], isRef: true },
+            { name: "Black", rgb: [0, 0, 0], isRef: true },
+            
+            // Grayscale ramp
             { name: "Gray 20%", rgb: [51, 51, 51] },
             { name: "Gray 40%", rgb: [102, 102, 102] },
             { name: "Gray 60%", rgb: [153, 153, 153] },
             { name: "Gray 80%", rgb: [204, 204, 204] },
-            { name: "White", rgb: [255, 255, 255] },
             
             // Primary & Secondary
             { name: "Primary Red", rgb: [255, 0, 0] },
@@ -1147,17 +1151,38 @@
                 startSamplingLoop();
             } else if (cmd.type === 'measure_patch') {
                 phoneMeasurementStatus.textContent = t('measuring');
-                // Trigger sampling
-                setTimeout(() => {
-                    sampleCameraColor((avgRGB) => {
-                        phoneMeasurementStatus.textContent = t('holdSteady');
-                        measuredRGBLabel.textContent = `Measured: R${avgRGB[0]} G${avgRGB[1]} B${avgRGB[2]}`;
-                        dataConn.send({
-                            type: 'color_reading',
-                            rgb: avgRGB
-                        });
+                // Multi-sample: take 5 readings over ~800ms and average for noise reduction
+                const readings = [];
+                const SAMPLE_COUNT = 5;
+                const SAMPLE_INTERVAL = 160; // ms between samples
+                let samplesTaken = 0;
+
+                function takeSample() {
+                    sampleCameraColor((rgb) => {
+                        readings.push(rgb);
+                        samplesTaken++;
+                        if (samplesTaken < SAMPLE_COUNT) {
+                            setTimeout(takeSample, SAMPLE_INTERVAL);
+                        } else {
+                            // Average all readings
+                            let rSum = 0, gSum = 0, bSum = 0;
+                            readings.forEach(r => { rSum += r[0]; gSum += r[1]; bSum += r[2]; });
+                            const avgRGB = [
+                                Math.round(rSum / SAMPLE_COUNT),
+                                Math.round(gSum / SAMPLE_COUNT),
+                                Math.round(bSum / SAMPLE_COUNT)
+                            ];
+                            phoneMeasurementStatus.textContent = t('holdSteady');
+                            measuredRGBLabel.textContent = `Measured: R${avgRGB[0]} G${avgRGB[1]} B${avgRGB[2]}`;
+                            dataConn.send({
+                                type: 'color_reading',
+                                rgb: avgRGB
+                            });
+                        }
                     });
-                }, 400); // Small delay to let sensor adjust
+                }
+                // Initial delay to let camera auto-exposure settle after patch change
+                setTimeout(takeSample, 600);
             } else if (cmd.type === 'calibration_finished') {
                 stopCamera();
                 phoneCameraActiveArea.classList.add('hidden');
@@ -1302,32 +1327,33 @@
             blackLevelReading = null;
             whiteLevelReading = null;
 
-            // Update UI: show fullscreen patch overlay and alignment guide
+            // Update UI: show fullscreen patch overlay with alignment guide visible
             fullscreenPatch.style.display = 'flex';
             
-            // Send finish to mobile
+            // Inform phone to start calibration
             sendDesktopCommand({ type: 'start_calibration' });
 
-            // Small delay for alignment
-            setPatchColor([0,0,0]); // Start with black target alignment
+            // Show mid-gray for alignment so user can see the phone outline
+            setPatchColor([128, 128, 128]);
 
             setTimeout(() => {
-                // Fade out ONLY the text, keep the frame so camera auto-exposure has a reference
-                document.querySelector('.phone-silhouette-text').style.opacity = '0';
-                document.querySelector('.phone-dynamic-island').style.opacity = '0';
-                document.querySelector('.phone-camera-lens').style.opacity = '0';
-                document.querySelector('.alignment-instruction').style.opacity = '0';
+                // Fade out alignment guide decorations — the ENTIRE screen becomes the patch
+                document.getElementById('alignmentGuide').style.opacity = '0';
                 
                 setTimeout(() => {
+                    // Hide alignment guide completely so it's truly invisible
+                    document.getElementById('alignmentGuide').style.display = 'none';
                     runNextCalibrationPatch();
-                }, 400); // Wait for fade out transition
+                }, 500); // Wait for fade out transition
             }, 4000); // Give user 4 seconds to place the phone against the guide
         }
 
         function setPatchColor(rgb) {
-            const silhouette = document.querySelector('.phone-silhouette');
-            silhouette.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-            silhouette.style.borderColor = 'transparent'; // hide dashes during read
+            // Fill the ENTIRE screen with the patch color.
+            // This is critical: if only a small area is colored, the phone camera's
+            // auto-exposure reacts differently to each brightness level, destroying
+            // gray accuracy. A uniform full-screen fill stabilizes auto-exposure.
+            patchColorContainer.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
         }
 
         function runNextCalibrationPatch() {
@@ -1339,48 +1365,38 @@
             const targetPatch = patches[currentPatchIndex];
             setPatchColor(targetPatch.rgb);
             
-            fullscreenInstructionText.textContent = `${t('calibratingPatch').replace('{current}', currentPatchIndex + 1).replace('{total}', patches.length)}`;
+            // Use a longer settle time for reference patches (White/Black) since
+            // auto-exposure needs more time to stabilize on extreme brightness.
+            const isRefPatch = targetPatch.isRef;
+            const settleTime = isRefPatch ? 1800 : 1200;
 
-            // Give screen a moment to display and camera to settle, then request reading
+            // Give screen time to display and camera auto-exposure to settle,
+            // then request the phone to take its multi-sample reading
             setTimeout(() => {
                 sendDesktopCommand({ type: 'measure_patch', patchIndex: currentPatchIndex });
-            }, 600);
+            }, settleTime);
         }
 
         function handleColorReading(measuredRGB) {
             if (!isCalibrating) return;
 
-            const expectedRGB = patches[currentPatchIndex].rgb;
+            const patch = patches[currentPatchIndex];
 
-            // Capture initial reference readings
-            // First patch in list is Grayscale Black: [0,0,0]
-            // Sixth patch in list is Grayscale White: [255,255,255]
-            if (currentPatchIndex === 0) {
-                blackLevelReading = measuredRGB;
-            } else if (currentPatchIndex === 5) {
+            // Capture reference readings (White is index 0, Black is index 1)
+            if (patch.name === 'White') {
                 whiteLevelReading = measuredRGB;
+            } else if (patch.name === 'Black') {
+                blackLevelReading = measuredRGB;
             }
 
-            // Normalization algorithm (Software white balance, discarding unreliable black offsets due to auto-exposure)
-            let correctedRGB = [...measuredRGB];
-            if (whiteLevelReading) {
-                for (let c = 0; c < 3; c++) {
-                    // Normalize purely on white reading to counter tint
-                    let norm = measuredRGB[c] / Math.max(1, whiteLevelReading[c]);
-                    norm = Math.max(0, Math.min(1, norm)); // Clamp [0, 1]
-                    correctedRGB[c] = Math.round(norm * 255);
-                }
-            }
-
-            // Calculate Delta E (CIE76) between expected and corrected measured color
-            const deltaE = calculateDeltaE(expectedRGB, correctedRGB);
-
+            // Store RAW reading — normalization is done post-hoc after ALL patches
+            // are measured, so we always have both reference points available.
             calibrationResults.push({
-                name: patches[currentPatchIndex].name,
-                expected: expectedRGB,
+                name: patch.name,
+                expected: patch.rgb,
                 measuredRaw: measuredRGB,
-                measuredCorrected: correctedRGB,
-                deltaE: deltaE
+                measuredCorrected: null, // filled in during finishCalibration
+                deltaE: null             // filled in during finishCalibration
             });
 
             currentPatchIndex++;
@@ -1392,16 +1408,47 @@
             exitFullscreen();
             fullscreenPatch.style.display = 'none';
 
-            // Reset UI states for recalibration
-            document.querySelector('.phone-silhouette-text').style.opacity = '1';
-            document.querySelector('.phone-dynamic-island').style.opacity = '1';
-            document.querySelector('.phone-camera-lens').style.opacity = '1';
-            document.querySelector('.alignment-instruction').style.opacity = '1';
-            document.querySelector('.phone-silhouette').style.backgroundColor = 'rgba(0, 0, 0, 0.65)';
-            document.querySelector('.phone-silhouette').style.borderColor = 'rgba(255, 255, 255, 0.45)';
+            // Reset alignment guide UI for potential recalibration
+            const guide = document.getElementById('alignmentGuide');
+            guide.style.opacity = '1';
+            guide.style.display = '';
+            patchColorContainer.style.backgroundColor = '#000';
 
             // Send finish to mobile
             sendDesktopCommand({ type: 'calibration_finished' });
+
+            // ── POST-HOC NORMALIZATION ──
+            // Now that we have both White and Black reference readings, normalize
+            // ALL results consistently. This is the key to fixing gray accuracy:
+            // every patch (including grays measured before white in the old code)
+            // now gets the same normalization treatment.
+            if (whiteLevelReading && blackLevelReading) {
+                calibrationResults.forEach(res => {
+                    const corrected = [0, 0, 0];
+                    for (let c = 0; c < 3; c++) {
+                        const range = whiteLevelReading[c] - blackLevelReading[c];
+                        if (range > 5) {
+                            // Linear interpolation between black and white references
+                            let norm = (res.measuredRaw[c] - blackLevelReading[c]) / range;
+                            norm = Math.max(0, Math.min(1, norm));
+                            corrected[c] = Math.round(norm * 255);
+                        } else {
+                            // Fallback: normalize purely by white
+                            let norm = res.measuredRaw[c] / Math.max(1, whiteLevelReading[c]);
+                            norm = Math.max(0, Math.min(1, norm));
+                            corrected[c] = Math.round(norm * 255);
+                        }
+                    }
+                    res.measuredCorrected = corrected;
+                    res.deltaE = calculateDeltaE(res.expected, corrected);
+                });
+            } else {
+                // Fallback if references are missing: use raw values
+                calibrationResults.forEach(res => {
+                    res.measuredCorrected = [...res.measuredRaw];
+                    res.deltaE = calculateDeltaE(res.expected, res.measuredRaw);
+                });
+            }
 
             // Display results
             desktopSetupArea.classList.add('hidden');
@@ -1458,25 +1505,25 @@
 
 
         // ── FIT GAMMA CURVE (LOG REGRESSION) ──
-        function estimateGamma(grayscaleResults) {
-            // Fit: y = x^gamma where x is target luminance index, y is measured normalized luminance.
-            // Grayscale steps: index 0 (0%), 1 (20%), 2 (40%), 3 (60%), 4 (80%), 5 (100%)
-            // Filter middle values (x=0.2, 0.4, 0.6, 0.8) to do the logarithmic fitting
+        function estimateGamma(allResults) {
+            // Find grayscale results by name (order-independent)
+            const grayNames = ['Gray 20%', 'Gray 40%', 'Gray 60%', 'Gray 80%'];
             const xVals = [0.2, 0.4, 0.6, 0.8];
             const yVals = [];
 
-            // Get average corrected gray value for each step
-            for (let i = 1; i <= 4; i++) {
-                const res = grayscaleResults[i];
-                // Average intensity of R, G, B normalized to [0,1]
+            for (const name of grayNames) {
+                const res = allResults.find(r => r.name === name);
+                if (!res || !res.measuredCorrected) continue;
                 const avgVal = (res.measuredCorrected[0] + res.measuredCorrected[1] + res.measuredCorrected[2]) / 3 / 255;
-                yVals.push(Math.max(0.01, avgVal)); // clamp minimum to avoid log(0)
+                yVals.push(Math.max(0.01, avgVal));
             }
 
-            // ln(y) = gamma * ln(x) -> simple linear fit through origin: gamma = sum(ln(x)*ln(y)) / sum(ln(x)^2)
+            if (yVals.length < 2) return 2.2; // not enough data
+
+            // ln(y) = gamma * ln(x) -> simple linear fit through origin
             let sumXY = 0;
             let sumX2 = 0;
-            for (let i = 0; i < xVals.length; i++) {
+            for (let i = 0; i < yVals.length; i++) {
                 const lnX = Math.log(xVals[i]);
                 const lnY = Math.log(yVals[i]);
                 sumXY += lnX * lnY;
@@ -1499,8 +1546,8 @@
             });
             const avgDeltaE = Math.round((sumDeltaE / calibrationResults.length) * 100) / 100;
 
-            // Estimate Gamma from the first 6 grayscale patches
-            const estimatedGamma = estimateGamma(calibrationResults.slice(0, 6));
+            // Estimate Gamma from grayscale patches (found by name)
+            const estimatedGamma = estimateGamma(calibrationResults);
 
             // 2. Display Scores
             avgDeltaEDisplay.textContent = avgDeltaE;
@@ -1589,26 +1636,39 @@
                 const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imgData.data;
 
-                // Determine correction gains based on the measured white point
+                // Determine correction gains based on both black and white reference
                 let rGain = 1.0, gGain = 1.0, bGain = 1.0;
-                if (whiteLevelReading && whiteLevelReading[0] > 0) {
-                    // The monitor's measured white cast:
+                let rOff = 0, gOff = 0, bOff = 0;
+                if (whiteLevelReading && blackLevelReading) {
+                    // Compute per-channel gains using both references
+                    const rRange = whiteLevelReading[0] - blackLevelReading[0];
+                    const gRange = whiteLevelReading[1] - blackLevelReading[1];
+                    const bRange = whiteLevelReading[2] - blackLevelReading[2];
+                    const maxRange = Math.max(rRange, gRange, bRange, 1);
+                    rGain = maxRange / Math.max(rRange, 1);
+                    gGain = maxRange / Math.max(gRange, 1);
+                    bGain = maxRange / Math.max(bRange, 1);
+                    
+                    // Normalize gains so the strongest channel stays at 1.0
+                    const maxGain = Math.max(rGain, gGain, bGain);
+                    rGain /= maxGain;
+                    gGain /= maxGain;
+                    bGain /= maxGain;
+                } else if (whiteLevelReading && whiteLevelReading[0] > 0) {
                     rGain = 255 / whiteLevelReading[0];
                     gGain = 255 / whiteLevelReading[1];
                     bGain = 255 / whiteLevelReading[2];
-                    
-                    // Normalize gains so image brightness remains roughly similar
                     const maxGain = Math.max(rGain, gGain, bGain);
                     rGain /= maxGain;
                     gGain /= maxGain;
                     bGain /= maxGain;
                 }
 
-                // Apply simple linear color cast correction
+                // Apply color cast correction
                 for (let i = 0; i < data.length; i += 4) {
-                    data[i] = Math.min(255, data[i] * rGain);     // R
-                    data[i+1] = Math.min(255, data[i+1] * gGain); // G
-                    data[i+2] = Math.min(255, data[i+2] * bGain); // B
+                    data[i] = Math.min(255, Math.max(0, data[i] * rGain));     // R
+                    data[i+1] = Math.min(255, Math.max(0, data[i+1] * gGain)); // G
+                    data[i+2] = Math.min(255, Math.max(0, data[i+2] * bGain)); // B
                 }
                 ctx.putImageData(imgData, 0, 0);
             }
@@ -1641,11 +1701,20 @@
             }
             measuredCurvePath.setAttribute('d', dMeasured);
 
-            // 3. Measured Points (from first 6 gray patches)
+            // 3. Measured Points (grayscale patches found by name)
             measuredDotsGroup.innerHTML = '';
-            const grayPatches = calibrationResults.slice(0, 6);
-            grayPatches.forEach((res, index) => {
-                const targetX = index / 5;
+            const graySteps = [
+                { name: 'Black', x: 0 },
+                { name: 'Gray 20%', x: 0.2 },
+                { name: 'Gray 40%', x: 0.4 },
+                { name: 'Gray 60%', x: 0.6 },
+                { name: 'Gray 80%', x: 0.8 },
+                { name: 'White', x: 1.0 }
+            ];
+            graySteps.forEach(step => {
+                const res = calibrationResults.find(r => r.name === step.name);
+                if (!res || !res.measuredCorrected) return;
+                const targetX = step.x;
                 const avgVal = (res.measuredCorrected[0] + res.measuredCorrected[1] + res.measuredCorrected[2]) / 3 / 255;
                 
                 const cx = mapX(targetX);
@@ -1697,7 +1766,19 @@
             let lutContent = `TITLE "Lordskamp Calibration ${currentSessionId}"\nLUT_3D_SIZE ${size}\n\n`;
             
             let rGain = 1.0, gGain = 1.0, bGain = 1.0;
-            if (whiteLevelReading && whiteLevelReading[0] > 0) {
+            if (whiteLevelReading && blackLevelReading) {
+                const rRange = whiteLevelReading[0] - blackLevelReading[0];
+                const gRange = whiteLevelReading[1] - blackLevelReading[1];
+                const bRange = whiteLevelReading[2] - blackLevelReading[2];
+                const maxRange = Math.max(rRange, gRange, bRange, 1);
+                rGain = maxRange / Math.max(rRange, 1);
+                gGain = maxRange / Math.max(gRange, 1);
+                bGain = maxRange / Math.max(bRange, 1);
+                const maxGain = Math.max(rGain, gGain, bGain);
+                rGain /= maxGain;
+                gGain /= maxGain;
+                bGain /= maxGain;
+            } else if (whiteLevelReading && whiteLevelReading[0] > 0) {
                 rGain = 255 / whiteLevelReading[0];
                 gGain = 255 / whiteLevelReading[1];
                 bGain = 255 / whiteLevelReading[2];
