@@ -19,6 +19,10 @@
             secCases: "Кейси", secLogos: "Логотипи", secPosters: "Постери", secMotion: "Моушн-графіка",
             stickers: "Наліпки", animStickers: "Анімовані наліпки", igPosts: "Пости Instagram",
             igStories: "Сторіс Instagram", volunteer: "Волонтерські збори",
+            minecraft: "Minecraft",
+            ledgertechVideo1: "Ledgertech: відео 1",
+            ledgertechVideo2: "Ledgertech: відео 2",
+            zaxidSitePdf: "Мій варіант сайту Zaxidfest 2021",
             openTelegram: "Відкрити в Telegram",
             madeWith: 'Зроблено з допомогою ШІ',
             copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
@@ -35,6 +39,10 @@
             secCases: "Cases", secLogos: "Logos", secPosters: "Posters", secMotion: "Motion Graphics",
             stickers: "Stickers", animStickers: "Animated Stickers", igPosts: "Instagram Posts",
             igStories: "Instagram Stories", volunteer: "Volunteer Fundraisers",
+            minecraft: "Minecraft",
+            ledgertechVideo1: "Ledgertech: video 1",
+            ledgertechVideo2: "Ledgertech: video 2",
+            zaxidSitePdf: "My Zaxidfest 2021 site concept",
             openTelegram: "Open in Telegram",
             madeWith: 'Made with AI',
             copyright: 'Fork of <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">this repository</a>',
@@ -268,12 +276,22 @@
             igAnimStories: {
                 dir: 'Instagram_Stories',
                 videos: Array.from({ length: 13 }, (_, i) => `1 (${i + 1}).mp4`)
-            }
+            },
+            pdfEmbed: { src: 'portfolio/Cases/3. Zaxidfest2021/site.pdf', labelKey: 'zaxidSitePdf' }
         },
         {
             id: 'respublika', name: 'RespublicaFest 2021', icon: 'fa-music',
             path: 'portfolio/Cases/4. RespublicaFest2021',
-            igGrid: { dir: 'IG_Static_Post', files: Array.from({ length: 22 }, (_, i) => String(i + 1).padStart(2, '0') + '.jpg').concat(['89.jpg', '90.jpg', '91.jpg', '92.jpg', '93.jpg', '94.jpg', '95.jpg', '96.jpg', '97.jpg', '99.jpg']) }
+            igGrid: { dir: 'IG_Static_Post', files: Array.from({ length: 22 }, (_, i) => String(i + 1).padStart(2, '0') + '.jpg').concat(['89.jpg', '90.jpg', '91.jpg', '92.jpg', '93.jpg', '94.jpg', '95.jpg', '96.jpg', '97.jpg', '99.jpg']) },
+            imageGrid: { dir: 'Minecraft', labelKey: 'minecraft', files: ['1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg'] }
+        },
+        {
+            id: 'ledgertech', name: 'Ledgertech', icon: 'fa-wallet',
+            path: 'portfolio/Cases/6. Ledgertech',
+            youtubeVideos: [
+                { href: 'https://www.youtube.com/watch?v=GUE7cN8LalM', labelKey: 'ledgertechVideo1' },
+                { href: 'https://www.youtube.com/watch?v=DGGOhMfmc6c', labelKey: 'ledgertechVideo2' }
+            ]
         },
         {
             id: 'blockchain', name: 'BlockchainInUa', icon: 'fa-link',
@@ -303,7 +321,7 @@
             carouselFolders: [
                 { name: '#1', dir: '1', files: ['01.jpg', '02.jpg', '03.jpg', '04.jpg', '05.jpg', '06.jpg'] },
                 { name: '#2', dir: '2', files: ['01.jpg', '02.jpg', '03.jpg', '04.jpg', '05.jpg', '06.jpg', '07.jpg', '08.jpg'] },
-                { name: '#3', dir: '3', files: ['01.jpg', '02.jpg', '03.jpg'] },
+                { name: '#3', dir: '3', files: ['01.jpg', '02.jpg', '03.jpg', '04.jpg'] },
             ]
         }
     ];
@@ -886,6 +904,87 @@
         return card;
     }
 
+    function makeCaseImageGrid(caseItem, group) {
+        const container = el('div', 'img-wrap case-image-grid-wrap');
+        if (group.labelKey) {
+            const badge = el('span', 'source-badge', t(group.labelKey));
+            badge.dataset.i18n = group.labelKey;
+            container.appendChild(badge);
+        }
+
+        const grid = el('div', 'case-image-grid');
+        if (group.labelKey) grid.style.paddingTop = '2rem';
+        group.files.forEach(file => {
+            const src = `${caseItem.path}/${group.dir}/${file}`;
+            const item = el('div', 'case-image-grid-item');
+            const img = document.createElement('img');
+            setDeferredImageSource(img, src);
+            item.appendChild(img);
+            grid.appendChild(makeMediaOpenable(item, src));
+        });
+        container.appendChild(grid);
+        return container;
+    }
+
+    function getYoutubeEmbedSrc(href) {
+        try {
+            const url = new URL(href);
+            const id = url.searchParams.get('v') || url.pathname.split('/').filter(Boolean).pop();
+            return id ? `https://www.youtube.com/embed/${id}` : href;
+        } catch (_) {
+            return href;
+        }
+    }
+
+    function makeCaseVideoEmbeds(videos) {
+        const grid = el('div', 'case-embed-grid');
+        videos.forEach(video => {
+            const frame = el('div', 'case-video-embed');
+            const iframe = document.createElement('iframe');
+            iframe.src = getYoutubeEmbedSrc(video.href);
+            iframe.title = video.labelKey ? t(video.labelKey) : (video.label || 'Video');
+            iframe.loading = 'lazy';
+            iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+            iframe.allowFullscreen = true;
+            iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+            frame.appendChild(iframe);
+            grid.appendChild(frame);
+        });
+        return grid;
+    }
+
+    function makeCasePdfEmbed(pdf) {
+        const frame = el('div', 'case-pdf-embed');
+        if (pdf.labelKey) {
+            const badge = el('span', 'source-badge', t(pdf.labelKey));
+            badge.dataset.i18n = pdf.labelKey;
+            frame.appendChild(badge);
+        }
+        const iframe = document.createElement('iframe');
+        iframe.src = pdf.src;
+        iframe.title = pdf.labelKey ? t(pdf.labelKey) : 'PDF';
+        iframe.loading = 'lazy';
+        frame.appendChild(iframe);
+        return frame;
+    }
+
+    function makeCaseLinkGrid(links) {
+        const grid = el('div', 'case-link-grid');
+        links.forEach(link => {
+            const a = el('a', 'case-link-card');
+            a.href = link.href;
+            a.target = link.target || '_blank';
+            a.rel = link.rel || 'noopener noreferrer';
+            a.innerHTML = `<i class="${link.icon || 'fas fa-external-link-alt'}" aria-hidden="true"></i>`;
+
+            const label = el('span', '', link.labelKey ? t(link.labelKey) : (link.label || link.href));
+            if (link.labelKey) label.dataset.i18n = link.labelKey;
+            a.appendChild(label);
+            grid.appendChild(a);
+        });
+        return grid;
+    }
+
     function setupHorizontalStoriesScroller(scroller) {
         if (!scroller) return;
 
@@ -1222,6 +1321,10 @@
                 }
             }
 
+            if (c.pdfEmbed) {
+                body.appendChild(makeCasePdfEmbed(c.pdfEmbed));
+            }
+
             // Static stickers
             if (c.stickers) {
                 const container = el('div', 'img-wrap');
@@ -1260,6 +1363,10 @@
                     igg.appendChild(makeMediaOpenable(gi, src));
                 });
                 body.appendChild(igg);
+            }
+
+            if (c.imageGrid) {
+                body.appendChild(makeCaseImageGrid(c, c.imageGrid));
             }
 
             // IG Static Stories (horizontal scrollable) — no label
@@ -1351,6 +1458,10 @@
                     vg.appendChild(makeMediaOpenable(vi, src, 'video'));
                 });
                 body.appendChild(vg);
+            }
+
+            if (c.youtubeVideos) {
+                body.appendChild(makeCaseVideoEmbeds(c.youtubeVideos));
             }
 
             // Volunteer folders (click-to-shuffle)
@@ -1499,6 +1610,14 @@
                 body.appendChild(cGrid);
             }
 
+            const caseLinks = [
+                ...(c.links || []),
+                ...(c.fileLinks || [])
+            ];
+            if (caseLinks.length) {
+                body.appendChild(makeCaseLinkGrid(caseLinks));
+            }
+
             caseSection.shell.appendChild(body);
             casesGrid.appendChild(caseSection.island);
         });
@@ -1518,11 +1637,16 @@
             const cell = el('div', 'logo-cell fade-up');
             const img = document.createElement('img');
             const src = `portfolio/Logos/${logo.file}`;
+            const lightboxSrc = logo.lottie ? `portfolio/Logos/${logo.lottie}` : src;
+            const lightboxType = logo.lottie ? 'lottie' : 'logo';
             img.className = 'logo-svg';
             img.addEventListener('load', () => loadNormalizedLogoImg(logo, src, img), { once: true });
             setDeferredImageSource(img, src);
             cell.appendChild(img);
-            grid.appendChild(makeMediaOpenable(cell, src, 'logo'));
+            if (logo.lottie) {
+                cell.appendChild(el('span', 'logo-anim-badge', '<i class="fas fa-play" aria-hidden="true"></i>'));
+            }
+            grid.appendChild(makeMediaOpenable(cell, lightboxSrc, lightboxType));
         });
         section.shell.appendChild(grid);
         sec.appendChild(section.island);
