@@ -597,71 +597,41 @@
             min-height: 62px;
             justify-content: center;
             text-align: center;
-            isolation: isolate;
-            background:
-                linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)) padding-box,
-                linear-gradient(135deg, #ff4fd8, #7c3aed 45%, #22d3ee) border-box;
-            border: 1px solid transparent;
+            background: rgba(139, 92, 246, 0.5);
+            border: 1px solid rgba(139, 92, 246, 0.5);
             box-shadow:
-                0 18px 36px rgba(124, 58, 237, 0.28),
-                inset 0 1px 0 rgba(255, 255, 255, 0.25);
+                0 10px 24px rgba(76, 29, 149, 0.24),
+                inset 0 1px 0 rgba(255, 255, 255, 0.16);
         }
 
-        .portfolio-cta::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: -1;
-            background:
-                radial-gradient(circle at 20% 20%, rgba(255, 79, 216, 0.42), transparent 32%),
-                radial-gradient(circle at 85% 30%, rgba(34, 211, 238, 0.35), transparent 34%),
-                linear-gradient(135deg, rgba(124, 58, 237, 0.52), rgba(15, 23, 42, 0.18));
-            opacity: 0.9;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-        }
-
+        .portfolio-cta::before,
         .portfolio-cta::after {
-            content: "";
-            position: absolute;
-            top: -60%;
-            bottom: -60%;
-            left: -35%;
-            width: 30%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
-            transform: rotate(18deg) translateX(-180%);
-            transition: transform 0.7s ease;
-            pointer-events: none;
+            content: none;
         }
 
         .portfolio-cta:hover {
-            background:
-                linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.07)) padding-box,
-                linear-gradient(135deg, #ff7ae6, #8b5cf6 42%, #67e8f9) border-box !important;
-            border-color: transparent;
+            background: rgba(139, 92, 246, 0.62) !important;
+            border-color: rgba(167, 139, 250, 0.75);
             box-shadow:
-                0 22px 48px rgba(34, 211, 238, 0.2),
-                0 18px 42px rgba(255, 79, 216, 0.2),
-                inset 0 1px 0 rgba(255, 255, 255, 0.34);
-            transform: translateY(-3px) scale(1.01);
-        }
-
-        .portfolio-cta:hover::before {
-            opacity: 1;
-            transform: scale(1.04);
-        }
-
-        .portfolio-cta:hover::after {
-            transform: rotate(18deg) translateX(520%);
+                0 14px 30px rgba(76, 29, 149, 0.3),
+                0 0 18px rgba(139, 92, 246, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
         }
 
         .portfolio-cta span {
-            display: block;
-            width: 100%;
+            display: inline-block;
             margin: 0;
             color: #ffffff;
             font-weight: 800;
             letter-spacing: 0;
-            text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+            text-transform: uppercase;
+            text-shadow: 0 1px 10px rgba(0, 0, 0, 0.28);
+        }
+
+        :root.light-theme .portfolio-cta span {
+            color: #24103f;
+            text-shadow: none;
         }
 
         #profileImg {
@@ -902,6 +872,22 @@
         .link-item[data-brand="Behance"]:hover i,
         .link-item[data-brand="Behance"]:hover span {
             color: #0057ff !important;
+        }
+
+        /* Resume Hover (Purple) */
+        .link-item[data-brand="Resume"]:hover {
+            border-color: #8b5cf6 !important;
+            background: var(--glass-hover) !important;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.22);
+        }
+
+        .link-item[data-brand="Resume"] > a:hover {
+            background: rgba(139, 92, 246, 0.5);
+        }
+
+        .link-item[data-brand="Resume"] > a:hover i,
+        .link-item[data-brand="Resume"] > a:hover span {
+            color: #ffffff !important;
         }
 
         /* Instagram Portfolio Hover (Red) */
@@ -1261,7 +1247,7 @@
         /* Social icons hover adjustments for light theme - REMOVED per user request to keep them white */
     </style>
     <link rel="stylesheet" href="site-ui.css">
-    <script src="site-ui.js"></script>
+    <script src="site-ui.js?v=20260608-cursor-target-2"></script>
 </head>
 
 <body class="">
@@ -1397,7 +1383,7 @@
             <!-- Content & Work Section -->
             <div class="island mb-8">
                 <h2 class="text-xl font-semibold mb-4 text-center section-title">
-                    <i class="fas fa-pen-nib mr-2"></i><span data-i18n="contentWork">Content & Work</span>
+                    <i class="fas fa-pen-nib mr-2"></i><span data-i18n="contentWork">Work</span>
                 </h2>
                 <div class="space-y-3">
                     <div class="grid grid-cols-2 gap-3">
@@ -1423,17 +1409,16 @@
                         <span data-i18n="viewPortfolio">View Portfolio</span>
                     </a>
 
-                    <div class="link-item flex p-0 rounded-lg overflow-hidden" data-brand="Resume"
-                        style="background: rgba(139, 92, 246, 0.5); border: 1px solid rgba(139, 92, 246, 0.5);">
+                    <div class="link-item flex p-0 rounded-lg overflow-hidden" data-brand="Resume">
                         <!-- Main Link -->
                         <a id="cv-link-main" href="СV_Honcharenko_ENG.pdf" target="_blank"
-                            class="flex-grow flex items-center p-4 hover:bg-white/10 transition-colors">
+                            class="flex-grow flex items-center p-4 transition-colors">
                             <i class="fas fa-file-pdf text-white text-xl w-8"></i>
                             <span class="ml-3 font-medium text-white" data-i18n="viewCV">View CV</span>
                         </a>
                         <!-- Alt Download Link -->
                         <a id="cv-link-alt" href="СV_Honcharenko_UKR.pdf" target="_blank"
-                            class="flex items-center px-4 border-l border-white/20 hover:bg-white/10 transition-colors"
+                            class="flex items-center px-4 border-l border-white/20 transition-colors"
                             title="Open CV in other language">
                             <span class="text-xs font-bold text-white" id="alt-lang-label">UKR</span>
                             <i class="fas fa-download ml-2 text-white text-xs"></i>
@@ -1895,7 +1880,7 @@
 
                     social: "Соціальні мережі",
                     socialMedia: "Соціальні мережі та спільнота",
-                    contentWork: "Портфоліо",
+                    contentWork: "Роботи",
                     steamProfile: "Steam Профіль",
                     connectSupport: "Зв’язатись зі мною",
                     emailLabel: "Email",
@@ -1903,7 +1888,7 @@
                     email: "lordskamp@yahoo.com",
                     instagramPortfolio: "Instagram",
                     madeWith: 'Зроблено з допомогою ШІ',
-                    viewPortfolio: "Переглянути портфоліо",
+                    viewPortfolio: "ПЕРЕГЛЯНУТИ ПОРТФОЛІО",
                     viewCV: "Переглянути резюме",
                     copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
                     copied: "✔ Скопійовано!",
@@ -1944,7 +1929,7 @@
 
                     social: "Social",
                     socialMedia: "Social Media & Community",
-                    contentWork: "Portfolio",
+                    contentWork: "Work",
                     steamProfile: "Steam Profile",
                     connectSupport: "Contact Me",
                     emailLabel: "Email",
@@ -1952,7 +1937,7 @@
                     email: "lordskamp@yahoo.com",
                     instagramPortfolio: "Instagram",
                     madeWith: 'Made with AI',
-                    viewPortfolio: "View Portfolio",
+                    viewPortfolio: "VIEW PORTFOLIO",
                     viewCV: "View CV",
                     copyright: 'Fork of <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">this repository</a>',
                     copied: "✔ Copied!",
@@ -2066,14 +2051,14 @@
             });
 
             /* ==== 3-D Tilt Cards (glare disabled for perf) ==== */
-            VanillaTilt.init($$('.link-item'), {
+            VanillaTilt.init($$('.link-item:not(.portfolio-cta)'), {
                 max: 5,
                 speed: 600,
                 glare: false
             });
 
             /* ==== Ripple Click ==== */
-            $$('.link-item').forEach((btn) => {
+            $$('.link-item:not(.portfolio-cta)').forEach((btn) => {
                 btn.addEventListener('click', (e) => {
                     const span = document.createElement('span');
                     const size = Math.max(btn.clientWidth, btn.clientHeight);

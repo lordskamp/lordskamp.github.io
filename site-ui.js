@@ -360,14 +360,14 @@
     function initCursor() {
         if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return;
 
+        window.customCursorPos = window.customCursorPos || { x: 0, y: 0, color: null };
+
         const cursor = document.getElementById('customCursor') || document.createElement('div');
         if (cursor.dataset.siteUiReady) return;
         cursor.id = 'customCursor';
         cursor.classList.add('custom-cursor');
         document.body.appendChild(cursor);
         cursor.dataset.siteUiReady = 'true';
-
-        window.customCursorPos = window.customCursorPos || { x: 0, y: 0, color: null };
 
         const selector = [
             'a',
@@ -378,7 +378,6 @@
             '[role="button"]',
             '.link-item',
             '.social-icon',
-            '.island',
             '.case-card',
             '.logo-cell',
             '.poster-item',
@@ -394,21 +393,12 @@
             '.video-item'
         ].join(',');
         const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
-        let mouseX = 0;
-        let mouseY = 0;
-        let cursorX = 0;
-        let cursorY = 0;
-        let rafId = 0;
         let hasMoved = false;
-        const lerp = 0.18;
 
-        function tick() {
-            cursorX += (mouseX - cursorX) * lerp;
-            cursorY += (mouseY - cursorY) * lerp;
-            cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`;
-            window.customCursorPos.x = cursorX;
-            window.customCursorPos.y = cursorY;
-            rafId = requestAnimationFrame(tick);
+        function moveCursor(x, y) {
+            cursor.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+            window.customCursorPos.x = x;
+            window.customCursorPos.y = y;
         }
 
         function resetBrand() {
@@ -418,49 +408,54 @@
             window.customCursorPos.color = null;
         }
 
-        document.addEventListener(moveEvent, e => {
-            if (e.pointerType && e.pointerType !== 'mouse') return;
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-            if (!hasMoved) {
-                hasMoved = true;
-                document.body.classList.add('custom-cursor-active');
-                cursor.style.opacity = '1';
-                rafId = requestAnimationFrame(tick);
-            }
-        }, { passive: true });
-
-        document.addEventListener('mouseover', e => {
-            if (!e.target.closest) return;
-            const match = e.target.closest(selector);
-            if (!match) return;
-            cursor.classList.add('cursor-hover');
-
-            const brand = match.dataset?.brand || match.closest('[data-brand]')?.dataset?.brand || match.getAttribute('title');
-            const color = brandColors[brand];
-            if (!color) return;
+        function applyBrandColor(color) {
             window.customCursorPos.color = color;
             cursor.style.backgroundColor = color === '#ffffff' ? 'rgba(255, 255, 255, 0.32)' : hexToRgba(color, 0.32);
             cursor.style.boxShadow = color === '#ffffff'
                 ? '0 0 18px rgba(255,255,255,0.62), 0 0 38px rgba(255,255,255,0.28)'
                 : `0 0 20px ${hexToRgba(color, 0.62)}, 0 0 42px ${hexToRgba(color, 0.28)}`;
-        }, { passive: true });
+        }
 
-        document.addEventListener('mouseout', e => {
-            if (!e.target.closest) return;
-            const from = e.target.closest(selector);
-            if (!from) return;
-            const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest(selector) : null;
-            if (to) return;
-            cursor.classList.remove('cursor-hover');
-            resetBrand();
+        function updateCursorTarget(x, y) {
+            const target = document.elementFromPoint(x, y);
+            if (!target || !target.closest) {
+                cursor.classList.remove('cursor-hover');
+                resetBrand();
+                return;
+            }
+
+            const match = target.closest(selector);
+            cursor.classList.toggle('cursor-hover', Boolean(match));
+
+            if (!match) {
+                resetBrand();
+                return;
+            }
+
+            const brand = target.closest('[data-brand]')?.dataset?.brand || match.getAttribute('title');
+            const color = brandColors[brand];
+            if (!color) {
+                resetBrand();
+                return;
+            }
+            applyBrandColor(color);
+        }
+
+        document.addEventListener(moveEvent, e => {
+            if (e.pointerType && e.pointerType !== 'mouse') return;
+            moveCursor(e.clientX, e.clientY);
+            updateCursorTarget(e.clientX, e.clientY);
+            if (!hasMoved) {
+                hasMoved = true;
+                document.body.classList.add('custom-cursor-active');
+                cursor.style.opacity = '1';
+            }
         }, { passive: true });
 
         document.addEventListener('mousedown', () => cursor.classList.add('cursor-click'));
         document.addEventListener('mouseup', () => cursor.classList.remove('cursor-click'));
         document.addEventListener('mouseleave', () => { cursor.style.opacity = '0'; });
         document.addEventListener('mouseenter', () => { if (hasMoved) cursor.style.opacity = '1'; });
-        window.addEventListener('beforeunload', () => { if (rafId) cancelAnimationFrame(rafId); });
     }
 
     function createLazyVideoCard(src, options = {}) {
@@ -481,7 +476,7 @@
         if (previewSrc) {
             const poster = document.createElement('img');
             poster.className = 'lazy-video-poster';
-            poster.src = previewSrc;
+            poster.src = getImagePreviewSrc(previewSrc);
             poster.alt = '';
             poster.loading = 'lazy';
             poster.decoding = 'async';
@@ -506,6 +501,12 @@
 
     function getVideoPreviewSrc(src) {
         return String(src || '').replace(/\.(mp4|mov)$/i, '.jpg');
+    }
+
+    function getImagePreviewSrc(src) {
+        const value = String(src || '');
+        if (!/^portfolio\//.test(value) || !/\.(png|jpe?g)$/i.test(value)) return value;
+        return value.replace(/^portfolio\//, 'portfolio/thumbs/') + '.webp';
     }
 
     function hydrateLazyVideo(card) {

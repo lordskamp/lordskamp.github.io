@@ -44,6 +44,68 @@
         ? window.LordskampUI.getLanguage()
         : ((navigator.language || '').startsWith('uk') ? 'uk' : 'en');
     const t = k => (i18n[lang] && i18n[lang][k]) || (i18n.en[k]) || k;
+    const deferredSectionBuilders = new Map();
+    const builtSections = new Set();
+    const runWhenIdle = window.requestIdleCallback
+        ? callback => window.requestIdleCallback(callback, { timeout: 1800 })
+        : callback => window.setTimeout(callback, 250);
+    const lazyImageObserver = 'IntersectionObserver' in window
+        ? new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                revealDeferredImage(entry.target);
+                lazyImageObserver.unobserve(entry.target);
+            });
+        }, { rootMargin: '900px 0px', threshold: 0.01 })
+        : null;
+
+    function setImageSource(img, src, options = {}) {
+        if (!img || !src) return img;
+        const displaySrc = options.previewSrc || getImagePreviewSrc(src);
+        img.alt = options.alt || '';
+        img.loading = options.eager ? 'eager' : 'lazy';
+        img.decoding = options.decoding || 'async';
+        if (options.fetchPriority) {
+            img.fetchPriority = options.fetchPriority;
+        } else if (!options.eager) {
+            img.fetchPriority = 'low';
+        }
+        img.src = displaySrc;
+        return img;
+    }
+
+    function setDeferredImageSource(img, src, options = {}) {
+        if (!img || !src) return img;
+        const displaySrc = options.previewSrc || getImagePreviewSrc(src);
+        img.alt = options.alt || '';
+        img.loading = 'lazy';
+        img.decoding = options.decoding || 'async';
+        img.fetchPriority = options.fetchPriority || 'low';
+
+        if (!lazyImageObserver || options.eager) {
+            img.src = displaySrc;
+            return img;
+        }
+
+        img.dataset.src = displaySrc;
+        img.classList.add('lazy-media-pending');
+        lazyImageObserver.observe(img);
+        return img;
+    }
+
+    function revealDeferredImage(img) {
+        const src = img && img.dataset && img.dataset.src;
+        if (!src) return;
+        img.src = src;
+        delete img.dataset.src;
+        img.classList.remove('lazy-media-pending');
+    }
+
+    function getImagePreviewSrc(src) {
+        const value = String(src || '');
+        if (!/^portfolio\//.test(value) || !/\.(png|jpe?g)$/i.test(value)) return value;
+        return value.replace(/^portfolio\//, 'portfolio/thumbs/') + '.webp';
+    }
 
     function applyI18n() {
         document.documentElement.lang = lang;
@@ -51,6 +113,11 @@
             const key = el.dataset.i18n;
             const label = el.dataset.i18nLabel;
             const value = label ? `${t(key)} • ${label}` : t(key);
+            if (el.classList.contains('project-icon-badge')) {
+                el.setAttribute('aria-label', value);
+                el.title = value;
+                return;
+            }
             if (key === 'madeWith' || key === 'copyright') {
                 el.innerHTML = value;
             } else {
@@ -106,7 +173,7 @@
                 { name: 'Love Stage', dir: '3. Love_Stage', project: 'Love_Projec1t.png', real: ['Love_RealPhoto_1.jpg'], realRowClass: 'love-project-photos' },
                 { name: 'Entry Banner', dir: '4. Entry_Banner', project: 'Entry_Project.png', real: ['Entry_RealPhoto.jpg'], realRowClass: 'entry-project-photos' },
                 { name: 'T-Shirt', dir: '5.TShirt', project: 'TShirt_Project.png', real: ['TShirt_RealPhoto_1.jpg', 'TShirt_RealPhoto_2.jpg'], realRowClass: 'tshirt-project-photos' },
-                { name: 'Map', dir: '', project: 'Map_Project.jpg', real: ['Map_RealPhoto.jpg'], aspectRatio: '1544 / 976' },
+                { name: 'Map', dir: '', project: 'Map_Project.jpg', real: ['Map_RealPhoto.jpg'], aspectRatio: '1544 / 976', realOverlay: true },
             ],
             stagePairs: [
                 { names: ['Rock Stage', 'Love Stage'], columns: '2fr 1fr' },
@@ -636,16 +703,17 @@
         const syncImage = (nextSrc, meta = {}) => {
             window.clearTimeout(fadeTimer);
             card.dataset.lightboxSrc = nextSrc;
+            const displaySrc = options.inLightbox ? nextSrc : getImagePreviewSrc(nextSrc);
 
-            if (meta.immediate || img.src.endsWith(encodeURI(nextSrc))) {
-                img.src = nextSrc;
+            if (meta.immediate || img.src.endsWith(encodeURI(displaySrc))) {
+                img.src = displaySrc;
                 img.style.opacity = '1';
                 return;
             }
 
             img.style.opacity = '0';
             fadeTimer = window.setTimeout(() => {
-                img.src = nextSrc;
+                img.src = displaySrc;
                 img.style.opacity = '1';
             }, VOLUNTEER_FADE_MS);
         };
@@ -712,7 +780,7 @@
             w.appendChild(b);
         }
         const img = document.createElement('img');
-        img.src = src; img.alt = ''; img.loading = 'lazy';
+        setImageSource(img, src);
         w.appendChild(img);
         return makeMediaOpenable(w, src);
     }
@@ -812,14 +880,24 @@
     function makeProjectZoom(src, extraClass = '', options = {}) {
         const w = el('div', `img-wrap project-media${extraClass ? ` ${extraClass}` : ''}`);
         if (options.aspectRatio) w.style.aspectRatio = options.aspectRatio;
-        const badge = el('span', 'source-badge', t('projectLabel'));
+        const badge = el('span', 'source-badge project-icon-badge', '<i class="fas fa-pen-ruler" aria-hidden="true"></i>');
         badge.dataset.i18n = 'projectLabel';
+        badge.setAttribute('aria-label', t('projectLabel'));
+        badge.title = t('projectLabel');
         badge.style.background = 'rgba(72,0,255,.85)';
         w.appendChild(badge);
         const img = document.createElement('img');
-        img.src = src; img.alt = ''; img.loading = 'lazy';
+        setImageSource(img, src);
         w.appendChild(img);
         return makeMediaOpenable(w, src);
+    }
+
+    function makeRealPhotoOverlay(src) {
+        const overlay = el('div', 'map-real-photo-overlay');
+        const img = document.createElement('img');
+        setImageSource(img, src);
+        overlay.appendChild(img);
+        return makeMediaOpenable(overlay, src);
     }
 
     function makeLazyVideo(src, options = {}) {
@@ -835,10 +913,7 @@
         const preview = el('div', 'lazy-video-preview');
         const poster = document.createElement('img');
         poster.className = 'lazy-video-poster';
-        poster.src = options.previewSrc || getVideoPreviewSrc(src);
-        poster.alt = '';
-        poster.loading = 'lazy';
-        poster.decoding = 'async';
+        setDeferredImageSource(poster, options.previewSrc || getVideoPreviewSrc(src));
         if (options.autoRatio) {
             poster.addEventListener('load', () => {
                 if (poster.naturalWidth && poster.naturalHeight) {
@@ -966,7 +1041,7 @@
             // Sub-cases (Project + Real photos)
             if (c.subs) {
                 const renderSubCase = (target, sub) => {
-                    const subTitle = el('div', '', '');
+                    const subTitle = el('div', 'subcase-title', '');
                     subTitle.style.cssText = 'font-size:.75rem;font-weight:700;color:var(--text-muted);margin:.75rem 0 .4rem;text-transform:uppercase;letter-spacing:.06em;';
                     subTitle.textContent = sub.name;
                     target.appendChild(subTitle);
@@ -981,14 +1056,23 @@
                     }
 
                     // Project with zoom
-                    target.appendChild(makeProjectZoom(caseAssetPath(c, sub, sub.project), projectClass, { aspectRatio: sub.aspectRatio }));
+                    const projectNode = makeProjectZoom(caseAssetPath(c, sub, sub.project), projectClass, { aspectRatio: sub.aspectRatio });
+
+                    if (sub.realOverlay && sub.real && sub.real.length) {
+                        projectNode.classList.add('has-real-overlay');
+                        projectNode.appendChild(makeRealPhotoOverlay(caseAssetPath(c, sub, sub.real[0])));
+                        target.appendChild(projectNode);
+                        return;
+                    }
+
+                    target.appendChild(projectNode);
 
                     // Real photos
                     if (sub.real && sub.real.length) {
                         const realRow = el('div', 'real-photos-row' + realRowClass);
                         realRow.style.marginTop = '.5rem';
                         sub.real.forEach(r => {
-                            realRow.appendChild(makeImgWrap(caseAssetPath(c, sub, r), 'real-photo-wrap', { cls: 'real-label', text: '<i class="fas fa-camera"></i>' }));
+                            realRow.appendChild(makeImgWrap(caseAssetPath(c, sub, r), 'real-photo-wrap'));
                         });
                         target.appendChild(realRow);
                     }
@@ -1054,10 +1138,14 @@
                     if (c.id === 'zaxid2019' && f === '3.png') {
                         si.classList.add('mobile-only-sticker');
                     }
+                    if (c.id === 'zaxid2019' && f === '8.png') {
+                        si.classList.add('mobile-hidden-sticker');
+                    }
                     const img = document.createElement('img');
-                    img.src = `${c.path}/${c.stickers.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
+                    const src = `${c.path}/${c.stickers.dir}/${f}`;
+                    setDeferredImageSource(img, src);
                     si.appendChild(img);
-                    sg.appendChild(makeMediaOpenable(si, img.src));
+                    sg.appendChild(makeMediaOpenable(si, src));
                 });
                 container.appendChild(sg);
                 container.appendChild(makeTelegramStickerLink(TELEGRAM_STICKER_LINKS.static));
@@ -1074,9 +1162,10 @@
                 c.igGrid.files.forEach(f => {
                     const gi = el('div', 'ig-grid-item');
                     const img = document.createElement('img');
-                    img.src = `${c.path}/${c.igGrid.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
+                    const src = `${c.path}/${c.igGrid.dir}/${f}`;
+                    setDeferredImageSource(img, src);
                     gi.appendChild(img);
-                    igg.appendChild(makeMediaOpenable(gi, img.src));
+                    igg.appendChild(makeMediaOpenable(gi, src));
                 });
                 body.appendChild(igg);
             }
@@ -1091,10 +1180,11 @@
                     const gi = el('div', '');
                     gi.style.cssText = 'flex: 0 0 calc((100% - (var(--inner-gap) * 2)) / 3); aspect-ratio: 9/16; scroll-snap-align: start; border-radius: 12px; overflow: hidden; position: relative;';
                     const img = document.createElement('img');
-                    img.src = `${c.path}/${c.igStaticStories.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
+                    const src = `${c.path}/${c.igStaticStories.dir}/${f}`;
+                    setDeferredImageSource(img, src);
                     img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
                     gi.appendChild(img);
-                    isg.appendChild(makeMediaOpenable(gi, img.src));
+                    isg.appendChild(makeMediaOpenable(gi, src));
                 });
                 body.appendChild(isg);
             }
@@ -1128,9 +1218,10 @@
                     c.igGrid.files.forEach(f => {
                         const gi = el('div', 'ig-grid-item');
                         const img = document.createElement('img');
-                        img.src = `${c.path}/${c.igGrid.dir}/${f}`; img.alt = ''; img.loading = 'lazy';
+                        const src = `${c.path}/${c.igGrid.dir}/${f}`;
+                        setDeferredImageSource(img, src);
                         gi.appendChild(img);
-                        igPostsMixed.appendChild(makeMediaOpenable(gi, img.src));
+                        igPostsMixed.appendChild(makeMediaOpenable(gi, src));
                     });
                 }
 
@@ -1188,25 +1279,25 @@
                     const carouselMask = el('div', 'carousel-mask');
                     const carousel = el('div', 'insta-carousel');
                     const carouselSources = folder.files.map(file => `${c.path}/${folder.dir}/${file}`);
+                    carousel.scrollLeft = 0;
                     
                     folder.files.forEach(f => {
                         const slide = el('div', 'carousel-slide');
                         const img = document.createElement('img');
-                        img.src = `${c.path}/${folder.dir}/${f}`;
-                        img.alt = ''; img.loading = 'lazy';
-                        img.decoding = 'async';
+                        const src = `${c.path}/${folder.dir}/${f}`;
+                        setImageSource(img, src);
                         img.style.cssText = 'width:100%;height:auto;display:block;border-radius:0;filter:none;box-shadow:none;';
                         img.draggable = false; // Disable native browser drag
                         
                         // Equalize heights by setting flex-grow based on aspect ratio
                         if (f === folder.files[0]) {
-                            const tempImg = new Image();
-                            tempImg.src = img.src;
-                            tempImg.onload = () => {
-                                const ar = tempImg.naturalWidth / tempImg.naturalHeight;
+                            img.addEventListener('load', () => {
+                                const ar = img.naturalWidth / img.naturalHeight;
                                 // In a flex row, setting flex: [aspect-ratio] ensures items have the same height
-                                cWrapper.style.flex = `${ar} ${ar} 0px`;
-                            };
+                                if (Number.isFinite(ar) && ar > 0) {
+                                    cWrapper.style.flex = `${ar} ${ar} 0px`;
+                                }
+                            }, { once: true });
                         }
 
                         let isDragging = false;
@@ -1217,7 +1308,7 @@
                             e.preventDefault(); // Stop native ghost drag
                         });
                         img.addEventListener('mousemove', e => { if (Math.abs(e.pageX - startX) > 5) isDragging = true; });
-                        makeMediaOpenable(img, img.src, 'carousel', {
+                        makeMediaOpenable(img, src, 'carousel', {
                             shouldOpen: () => !isDragging,
                             items: carouselSources
                         });
@@ -1228,6 +1319,9 @@
                     cWrapper.style.flex = '1'; // Default fallback until image loads
                     carouselMask.appendChild(carousel);
                     cWrapper.appendChild(carouselMask);
+                    requestAnimationFrame(() => {
+                        carousel.scrollTo({ left: 0, behavior: 'auto' });
+                    });
 
                     if (folder.files.length > 1) {
                         const dots = el('div', 'carousel-dots');
@@ -1332,10 +1426,10 @@
             const cell = el('div', 'logo-cell fade-up');
             const img = document.createElement('img');
             const src = `portfolio/Logos/${logo.file}`;
-            img.src = src; img.alt = ''; img.loading = 'lazy';
             img.className = 'logo-svg';
+            img.addEventListener('load', () => loadNormalizedLogoImg(logo, src, img), { once: true });
+            setDeferredImageSource(img, src);
             cell.appendChild(img);
-            loadNormalizedLogoImg(logo, src, img);
             grid.appendChild(makeMediaOpenable(cell, src, 'logo'));
         });
         section.shell.appendChild(grid);
@@ -1352,9 +1446,10 @@
         POSTERS.forEach(p => {
             const item = el('div', 'poster-item fade-up');
             const img = document.createElement('img');
-            img.src = `portfolio/Posters/${p}`; img.alt = ''; img.loading = 'lazy';
+            const src = `portfolio/Posters/${p}`;
+            setDeferredImageSource(img, src);
             item.appendChild(img);
-            grid.appendChild(makeMediaOpenable(item, img.src));
+            grid.appendChild(makeMediaOpenable(item, src));
         });
         section.shell.appendChild(grid);
         sec.appendChild(section.island);
@@ -1371,7 +1466,7 @@
         // Lottie animations
         MOTION.lottie.forEach(f => {
             const item = el('div', 'lottie-item fade-up');
-            item.style.aspectRatio = '1'; item.style.minHeight = '150px';
+            item.style.aspectRatio = '1';
             const src = `${MOTION.path}/${f}`;
             item.dataset.lottieSrc = src;
             grid.appendChild(makeMediaOpenable(item, src, 'lottie'));
@@ -1404,8 +1499,8 @@
     }
 
     /* ── Init Lottie animations (IntersectionObserver lazy-load) ── */
-    function initLottie() {
-        const items = document.querySelectorAll('[data-lottie-src]');
+    function initLottie(rootNode = document) {
+        const items = rootNode.querySelectorAll('[data-lottie-src]');
         if (typeof lottie === 'undefined') {
             items.forEach(el => el.classList.add('is-lottie-error'));
             return;
@@ -1456,23 +1551,71 @@
     }
 
     /* ── Scroll-triggered fade-up ── */
-    function initScrollAnimations() {
+    function initScrollAnimations(rootNode = document) {
+        if (!('IntersectionObserver' in window)) {
+            rootNode.querySelectorAll('.fade-up').forEach(el => {
+                el.style.animationPlayState = 'running';
+                el.dataset.scrollAnimationReady = 'true';
+            });
+            return;
+        }
+
         const obs = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     entry.target.style.animationPlayState = 'running';
+                    entry.target.dataset.scrollAnimationReady = 'true';
                     obs.unobserve(entry.target);
                 }
             });
         }, { rootMargin: '50px', threshold: 0.1 });
 
-        document.querySelectorAll('.fade-up').forEach(el => {
+        rootNode.querySelectorAll('.fade-up').forEach(el => {
+            if (el.dataset.scrollAnimationReady) return;
+            el.dataset.scrollAnimationReady = 'observing';
             el.style.animationPlayState = 'paused';
             obs.observe(el);
         });
     }
 
     /* ── Category Filtering ── */
+    function buildSectionOnce(id, builder) {
+        if (!id || typeof builder !== 'function' || builtSections.has(id)) return;
+        builder();
+        builtSections.add(id);
+
+        const section = document.getElementById(id);
+        if (section) {
+            requestAnimationFrame(() => {
+                initLottie(section);
+                initScrollAnimations(section);
+            });
+        }
+    }
+
+    function ensureFilterSections(filter) {
+        if (filter === 'all') {
+            deferredSectionBuilders.forEach((builder, id) => buildSectionOnce(id, builder));
+            return;
+        }
+
+        const id = `sec-${filter}`;
+        const builder = deferredSectionBuilders.get(id);
+        if (builder) buildSectionOnce(id, builder);
+    }
+
+    function scheduleDeferredSections() {
+        [
+            ['sec-logos', 900],
+            ['sec-posters', 1600],
+            ['sec-motion', 2300]
+        ].forEach(([id, delay]) => {
+            const builder = deferredSectionBuilders.get(id);
+            if (!builder) return;
+            window.setTimeout(() => runWhenIdle(() => buildSectionOnce(id, builder)), delay);
+        });
+    }
+
     function initFilters() {
         const tabs = document.querySelectorAll('.cat-tab');
         const sections = document.querySelectorAll('.portfolio-section');
@@ -1482,6 +1625,7 @@
                 tabs.forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 const filter = tab.dataset.filter;
+                ensureFilterSections(filter);
                 sections.forEach(sec => {
                     if (filter === 'all' || sec.dataset.category === filter) {
                         sec.style.display = '';
@@ -1524,16 +1668,14 @@
     /* ── Boot ── */
     function init() {
         applyI18n();
-        buildCases();
-        buildLogos();
-        buildPosters();
-        buildMotion();
+        deferredSectionBuilders.set('sec-logos', buildLogos);
+        deferredSectionBuilders.set('sec-posters', buildPosters);
+        deferredSectionBuilders.set('sec-motion', buildMotion);
+        buildSectionOnce('sec-cases', buildCases);
         initFilters();
         initControls();
-        requestAnimationFrame(() => {
-            initLottie();
-            initScrollAnimations();
-        });
+        requestAnimationFrame(() => initScrollAnimations(document));
+        scheduleDeferredSections();
     }
 
     /* ── Disable Image Dragging ── */
