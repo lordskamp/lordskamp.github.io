@@ -123,7 +123,22 @@ html[lang="en"] .site-lang-option[data-lang-option="en"] {
 :root.light-theme .site-header__brand,
 :root.light-theme .site-header__back,
 :root.light-theme .site-control {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.68);
+    border-color: rgba(15, 23, 42, 0.14);
     box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+:root.light-theme .site-lang-option,
+:root.light-theme .site-lang-divider {
+    color: #334155;
+    opacity: 0.86;
+}
+
+html.light-theme[lang="uk"] .site-lang-option[data-lang-option="uk"],
+html.light-theme[lang="en"] .site-lang-option[data-lang-option="en"] {
+    color: #0f172a;
+    opacity: 1;
 }
 
 body.site-page-home .content-wrapper {
@@ -181,6 +196,15 @@ body.profile-card-open {
     outline: none;
 }
 
+:root.light-theme .profile-card-modal__panel {
+    color: #0f172a;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.82));
+    border-color: rgba(15, 23, 42, 0.16);
+    box-shadow:
+        0 24px 70px rgba(15, 23, 42, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
 .profile-card-modal.is-open .profile-card-modal__panel {
     transform: translateY(0) scale(1);
 }
@@ -208,6 +232,12 @@ body.profile-card-open {
     border-color: var(--border-hover);
 }
 
+:root.light-theme .profile-card-modal__close {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(15, 23, 42, 0.18);
+}
+
 .profile-card-modal__identity {
     display: grid;
     grid-template-columns: 74px 1fr;
@@ -231,6 +261,12 @@ body.profile-card-open {
     color: var(--text-muted);
 }
 
+:root.light-theme .profile-card-modal__kicker,
+:root.light-theme .profile-card-modal__identity p,
+:root.light-theme .profile-card-modal__bio {
+    color: #334155;
+}
+
 .profile-card-modal__kicker {
     margin: 0 0 0.15rem;
     font-size: 0.72rem;
@@ -245,6 +281,10 @@ body.profile-card-open {
     line-height: 1.05;
     font-weight: 900;
     letter-spacing: 0;
+}
+
+:root.light-theme .profile-card-modal__identity h2 {
+    color: #0f172a;
 }
 
 .profile-card-modal__identity p {
@@ -290,6 +330,18 @@ body.profile-card-open {
     transform: translateY(-2px);
     background: var(--glass-hover);
     border-color: var(--border-hover);
+}
+
+:root.light-theme .profile-card-action {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(15, 23, 42, 0.18);
+}
+
+:root.light-theme .profile-card-action:hover {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.86);
+    border-color: rgba(15, 23, 42, 0.28);
 }
 
 .profile-card-action--copy::after {

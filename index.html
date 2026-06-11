@@ -666,6 +666,43 @@
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
         }
 
+        .profile-headline {
+            --profile-text-grid-shift-y: 0px;
+            height: var(--grid-size);
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            line-height: 1 !important;
+            transform: translate3d(0, var(--profile-text-grid-shift-y), 0);
+        }
+
+        .profile-subline {
+            --profile-text-grid-shift-y: 0px;
+            height: var(--grid-size);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: calc(var(--grid-size) * 0.08);
+            transform: translate3d(0, var(--profile-text-grid-shift-y), 0);
+        }
+
+        .profile-role,
+        .profile-status {
+            margin: 0;
+            line-height: 1.05 !important;
+        }
+
+        .profile-role {
+            min-height: 0;
+        }
+
+        .profile-status {
+            min-height: 1.05em;
+        }
+
         .island {
             background: var(--island-bg);
             border: 1px solid var(--island-border);
@@ -1133,6 +1170,16 @@
             color: #6b7280 !important;
         }
 
+        :root.light-theme [data-i18n="madeWith"],
+        :root.light-theme [data-i18n="copyright"] {
+            color: #334155 !important;
+        }
+
+        :root.light-theme [data-i18n="copyright"] a {
+            color: #4c1d95 !important;
+            font-weight: 700;
+        }
+
         /* Background utilities adaptation */
         :root.light-theme .bg-white\/5 {
             background-color: rgba(0, 0, 0, 0.05) !important;
@@ -1370,7 +1417,7 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="site-ui.css">
+    <link rel="stylesheet" href="site-ui.css?v=20260611-light-contrast">
     <script src="site-ui.js?v=20260611-about-link"></script>
 </head>
 
@@ -1459,10 +1506,12 @@
                     <img id="profileImg" src="profile00.jpeg" alt="Profile"
                         class="w-32 h-32 rounded-full mx-auto border-4 border-violet-500 object-cover glow-effect">
                 </div>
-                <h1 class="text-3xl font-bold mb-2" data-i18n="name">YURII HONCHARENKO</h1>
-                <p id="tagline" class="text-gray-300 text-lg min-h-[1.75rem]" data-i18n="role">Graphic \ Motion Designer
-                </p>
-                <p class="text-gray-400 mt-2" data-i18n="status">Looking for job</p>
+                <h1 class="profile-headline text-3xl font-bold" data-i18n="name">YURII HONCHARENKO</h1>
+                <div class="profile-subline">
+                    <p id="tagline" class="profile-role text-gray-300 text-lg" data-i18n="role">Graphic \ Motion Designer
+                    </p>
+                    <p class="profile-status text-gray-400" data-i18n="status">Looking for job</p>
+                </div>
 
                 <div id="social-icons" class="mt-6">
                     <a href="https://www.instagram.com/lordskamp/" target="_blank" class="social-icon"
@@ -2492,6 +2541,8 @@
                 const socialIcons = document.getElementById('social-icons');
                 const wishlistPillRow = document.getElementById('wishlist-pill-row');
                 const wishlistPill = document.getElementById('wishlist-pill');
+                const profileHeadline = document.querySelector('.profile-headline');
+                const profileSubline = document.querySelector('.profile-subline');
                 const gridOverlay = document.querySelector('.grid-overlay');
                 if (!socialIcons) return;
 
@@ -2510,6 +2561,8 @@
                     // Measure from the neutral state so offsets do not accumulate.
                     socialIcons.style.setProperty('--social-grid-shift-x', '0px');
                     socialIcons.style.setProperty('--social-grid-shift-y', '0px');
+                    profileHeadline?.style.setProperty('--profile-text-grid-shift-y', '0px');
+                    profileSubline?.style.setProperty('--profile-text-grid-shift-y', '0px');
 
                     const rect = socialIcons.getBoundingClientRect();
                     if (rect.width <= 0 || rect.height <= 0) return;
@@ -2531,6 +2584,18 @@
 
                     socialIcons.style.setProperty('--social-grid-shift-x', `${shiftX.toFixed(2)}px`);
                     socialIcons.style.setProperty('--social-grid-shift-y', `${shiftY.toFixed(2)}px`);
+
+                    if (profileHeadline && profileSubline) {
+                        const sublineRect = profileSubline.getBoundingClientRect();
+                        if (sublineRect.height > 0) {
+                            const snappedSocialTop = rect.top + shiftY;
+                            const targetSublineTop = snappedSocialTop - gridSize;
+                            const textShiftY = targetSublineTop - sublineRect.top;
+                            const value = `${textShiftY.toFixed(2)}px`;
+                            profileHeadline.style.setProperty('--profile-text-grid-shift-y', value);
+                            profileSubline.style.setProperty('--profile-text-grid-shift-y', value);
+                        }
+                    }
 
                     if (wishlistPillRow && wishlistPill) {
                         wishlistPillRow.style.setProperty('--wishlist-grid-shift-x', `${shiftX.toFixed(2)}px`);

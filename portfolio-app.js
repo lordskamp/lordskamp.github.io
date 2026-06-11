@@ -187,6 +187,15 @@
         requestAnimationFrame(() => requestAnimationFrame(snapPortfolioHeaderToGrid));
     }
 
+    function scheduleInitialPortfolioSnaps() {
+        schedulePortfolioTitleSnap();
+        setTimeout(schedulePortfolioTitleSnap, 850);
+        setTimeout(schedulePortfolioTitleSnap, 1300);
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(schedulePortfolioTitleSnap).catch(() => { });
+        }
+    }
+
     function applyI18n() {
         document.documentElement.lang = lang;
         document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -277,7 +286,7 @@
                 dir: 'Instagram_Stories',
                 videos: Array.from({ length: 13 }, (_, i) => `1 (${i + 1}).mp4`)
             },
-            pdfEmbed: { src: 'portfolio/Cases/3. Zaxidfest2021/site.pdf', labelKey: 'zaxidSitePdf' }
+            pdfLink: { href: 'portfolio/Cases/3. Zaxidfest2021/site.pdf', labelKey: 'zaxidSitePdf' }
         },
         {
             id: 'respublika', name: 'RespublicaFest 2021', icon: 'fa-music',
@@ -291,7 +300,8 @@
             youtubeVideos: [
                 { href: 'https://www.youtube.com/watch?v=GUE7cN8LalM', labelKey: 'ledgertechVideo1' },
                 { href: 'https://www.youtube.com/watch?v=DGGOhMfmc6c', labelKey: 'ledgertechVideo2' }
-            ]
+            ],
+            videoLayout: 'stacked'
         },
         {
             id: 'blockchain', name: 'BlockchainInUa', icon: 'fa-link',
@@ -936,8 +946,9 @@
         }
     }
 
-    function makeCaseVideoEmbeds(videos) {
+    function makeCaseVideoEmbeds(videos, options = {}) {
         const grid = el('div', 'case-embed-grid');
+        if (options.layout === 'stacked') grid.classList.add('case-embed-grid--stacked');
         videos.forEach(video => {
             const frame = el('div', 'case-video-embed');
             const iframe = document.createElement('iframe');
@@ -966,6 +977,27 @@
         iframe.loading = 'lazy';
         frame.appendChild(iframe);
         return frame;
+    }
+
+    function makeCasePdfLink(pdf) {
+        const a = el('a', 'case-link-card case-link-card--wide case-pdf-link');
+        a.href = pdf.href || pdf.src;
+        a.target = pdf.target || '_blank';
+        a.rel = 'noopener';
+
+        const icon = el('i', 'fas fa-file-pdf');
+        icon.setAttribute('aria-hidden', 'true');
+        a.appendChild(icon);
+
+        const span = el('span', '', pdf.labelKey ? t(pdf.labelKey) : (pdf.label || 'PDF'));
+        if (pdf.labelKey) span.dataset.i18n = pdf.labelKey;
+        a.appendChild(span);
+
+        const externalIcon = el('i', 'fas fa-external-link-alt case-link-card__external');
+        externalIcon.setAttribute('aria-hidden', 'true');
+        a.appendChild(externalIcon);
+
+        return a;
     }
 
     function makeCaseLinkGrid(links) {
@@ -1325,6 +1357,10 @@
                 body.appendChild(makeCasePdfEmbed(c.pdfEmbed));
             }
 
+            if (c.pdfLink) {
+                body.appendChild(makeCasePdfLink(c.pdfLink));
+            }
+
             // Static stickers
             if (c.stickers) {
                 const container = el('div', 'img-wrap');
@@ -1461,7 +1497,7 @@
             }
 
             if (c.youtubeVideos) {
-                body.appendChild(makeCaseVideoEmbeds(c.youtubeVideos));
+                body.appendChild(makeCaseVideoEmbeds(c.youtubeVideos, { layout: c.videoLayout }));
             }
 
             // Volunteer folders (click-to-shuffle)
@@ -1863,14 +1899,7 @@
         initControls();
         scheduleDeferredSections();
         portfolioGridSnapReady = true;
-        schedulePortfolioTitleSnap();
-        setTimeout(schedulePortfolioTitleSnap, 850);
-        setTimeout(schedulePortfolioTitleSnap, 1300);
-        window.addEventListener('resize', schedulePortfolioTitleSnap, { passive: true });
-        window.addEventListener('orientationchange', schedulePortfolioTitleSnap, { passive: true });
-        if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(schedulePortfolioTitleSnap).catch(() => { });
-        }
+        scheduleInitialPortfolioSnaps();
     }
 
     /* ── Disable Image Dragging ── */

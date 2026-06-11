@@ -293,7 +293,26 @@
             color:#0f172a;
             text-shadow:0 1px 10px rgba(255,255,255,.55);
         }
-        .hero p { color:var(--text-muted);font-size:1.05rem;margin-top:.75rem;max-width:500px;margin-inline:auto; }
+        .hero p {
+            --hero-sub-shift-y:-3px;
+            height:var(--grid-size);
+            max-width:min(calc(var(--grid-size) * 9),calc(100vw - 1rem));
+            margin:0 auto;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:rgba(255,255,255,.76);
+            font-size:clamp(.75rem,calc(var(--grid-size) * .34),1.05rem);
+            line-height:1.18;
+            font-weight:400;
+            text-align:center;
+            transform:translateY(var(--hero-sub-shift-y));
+        }
+        :root.light-theme .hero p {
+            color:#1e293b;
+            font-weight:500;
+            text-shadow:0 1px 12px rgba(255,255,255,.7);
+        }
 
         /* ── Category Tabs ── */
         .category-tabs {
@@ -974,6 +993,9 @@
             grid-template-columns:1fr;
             gap:var(--inner-gap);
         }
+        .case-embed-grid--stacked {
+            grid-template-columns:1fr !important;
+        }
         .case-video-embed,
         .case-pdf-embed {
             position:relative;
@@ -1040,6 +1062,27 @@
         }
         .case-link-card .fa-file-pdf {
             color:#f87171;
+        }
+        .case-link-card--wide {
+            width:100%;
+            min-height:58px;
+            margin-top:var(--inner-gap);
+            justify-content:flex-start;
+            padding:0 1rem;
+        }
+        .case-link-card--wide span {
+            flex:1;
+            min-width:0;
+            text-align:left;
+        }
+        .case-link-card__external {
+            margin-left:auto;
+            color:var(--text-muted) !important;
+            font-size:.9rem !important;
+        }
+        .case-pdf-link {
+            text-transform:uppercase;
+            letter-spacing:0;
         }
         :root.light-theme .case-link-card {
             background:rgba(255,255,255,.52);
@@ -1512,7 +1555,7 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="site-ui.css">
+    <link rel="stylesheet" href="site-ui.css?v=20260611-light-contrast">
     <script defer src="site-ui.js?v=20260611-about-link"></script>
 </head>
 <body>
@@ -1580,7 +1623,7 @@
     <!-- Custom Cursor -->
     <div class="custom-cursor" id="customCursor"></div>
 
-    <script defer src="portfolio-app.js?v=20260611-about-link"></script>
+    <script defer src="portfolio-app.js?v=20260611-hero-subtitle-cell"></script>
 
     <!-- ── Particles System (from index.html) ── -->
     <script>
