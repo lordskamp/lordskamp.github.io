@@ -9,7 +9,7 @@
     const THEMES = ['light', 'dark'];
     const labels = {
         uk: {
-            back: 'Назад',
+            back: 'Про мене',
             brand: 'Lordskamp',
             language: 'Мова',
             themeLight: 'Світла тема',
@@ -22,7 +22,7 @@
             close: 'Закрити'
         },
         en: {
-            back: 'Back',
+            back: 'About me',
             brand: 'Lordskamp',
             language: 'Language',
             themeLight: 'Light theme',

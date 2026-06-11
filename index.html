@@ -1234,6 +1234,24 @@
             color: #2563eb !important;
         }
 
+        /* Keep light-theme text stable on hover. */
+        :root.light-theme a[title]:hover,
+        :root.light-theme a[data-brand="Wishlist"]:hover,
+        :root.light-theme a[data-brand="Wishlist"]:hover i,
+        :root.light-theme a[data-brand="Wishlist"]:hover span,
+        :root.light-theme #langBtn[data-brand="Language"]:hover,
+        :root.light-theme .link-item:hover,
+        :root.light-theme .link-item:hover i,
+        :root.light-theme .link-item:hover span,
+        :root.light-theme .link-item[data-brand="Resume"] > a:hover,
+        :root.light-theme .link-item[data-brand="Resume"] > a:hover i,
+        :root.light-theme .link-item[data-brand="Resume"] > a:hover span,
+        :root.light-theme .group:hover .group-hover\:text-yellow-500,
+        :root.light-theme .group:hover .group-hover\:text-blue-300 {
+            color: var(--text-color) !important;
+            text-shadow: none !important;
+        }
+
         /* Icon boxes in awards */
         :root.light-theme .bg-zinc-900 {
             background-color: #f3f4f6 !important;
@@ -1353,7 +1371,7 @@
         }
     </style>
     <link rel="stylesheet" href="site-ui.css">
-    <script src="site-ui.js?v=20260610-mobile-cursor-off"></script>
+    <script src="site-ui.js?v=20260611-about-link"></script>
 </head>
 
 <body class="">
@@ -1518,19 +1536,25 @@
                         <span data-i18n="viewPortfolio">View Portfolio</span>
                     </a>
 
-                    <div class="link-item flex p-0 rounded-lg overflow-hidden" data-brand="Resume">
+                    <div class="link-item resume-links flex p-0 rounded-lg overflow-hidden" data-brand="Resume">
                         <!-- Main Link -->
-                        <a id="cv-link-main" href="СV_Honcharenko_ENG.pdf" target="_blank"
-                            class="flex-grow flex items-center p-4 transition-colors">
+                        <a id="cv-link-main" href="CV_Honcharenko_ATS.pdf" target="_blank"
+                            class="flex min-w-0 flex-1 items-center p-4 transition-colors" data-i18n-title="cvMainTitle"
+                            title="Open ATS-Friendly CV">
                             <i class="fas fa-file-pdf text-white text-xl w-8"></i>
-                            <span class="ml-3 font-medium text-white" data-i18n="viewCV">View CV</span>
+                            <span class="ml-3 truncate font-medium text-white" data-i18n="viewCV">View CV</span>
                         </a>
-                        <!-- Alt Download Link -->
-                        <a id="cv-link-alt" href="СV_Honcharenko_UKR.pdf" target="_blank"
-                            class="flex items-center px-4 border-l border-white/20 transition-colors"
-                            title="Open CV in other language">
+                        <!-- Alternate ATS Language Link -->
+                        <a id="cv-link-alt" href="CV_Honcharenko_ATS_UKR.pdf" target="_blank"
+                            class="flex shrink-0 items-center justify-center border-l border-white/20 px-4 py-4 transition-colors"
+                            data-i18n-title="cvAltTitle" title="Open ATS-Friendly CV in other language">
                             <span class="text-xs font-bold text-white" id="alt-lang-label">UKR</span>
-                            <i class="fas fa-download ml-2 text-white text-xs"></i>
+                        </a>
+                        <!-- Creative CV Link -->
+                        <a id="cv-link-creative" href="СV_Honcharenko_Creative_ENG.pdf" target="_blank"
+                            class="flex min-w-0 shrink-0 items-center justify-center border-l border-white/20 px-4 py-4 transition-colors"
+                            data-i18n-title="cvCreativeTitle" title="Open creative CV">
+                            <span class="truncate text-xs font-bold text-white" data-i18n="creativeCV">Creative</span>
                         </a>
                     </div>
                 </div>
@@ -1636,8 +1660,8 @@
                         <div class="flex-grow">
                             <div class="flex items-center gap-2 mb-1">
                                 <span class="award-badge badge-silver" data-i18n="winnerBadge">Winner</span>
-                                <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">3
-                                    Times</span>
+                                <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest"
+                                    data-i18n="threeTimes">3 Times</span>
                             </div>
                             <h3 class="font-bold text-lg leading-tight group-hover:text-blue-300 transition-colors"
                                 data-i18n="metaAward">Meta AR Hackathon</h3>
@@ -1672,7 +1696,7 @@
                         <div class="grid grid-cols-3 gap-2">
                             <div
                                 class="text-center p-2 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
-                                <div id="stat-followers" class="text-lg font-bold text-white tabular-nums">68.6K</div>
+                                <div id="stat-followers" class="text-lg font-bold text-white tabular-nums">69.1K</div>
                                 <div class="text-[9px] text-white uppercase font-medium" data-i18n="followers">
                                     Followers</div>
                             </div>
@@ -2006,6 +2030,10 @@
                     madeWith: 'Зроблено з допомогою ШІ',
                     viewPortfolio: "ПЕРЕГЛЯНУТИ ПОРТФОЛІО",
                     viewCV: "Переглянути резюме",
+                    creativeCV: "Креативне",
+                    cvMainTitle: "Відкрити ATS-Friendly резюме",
+                    cvAltTitle: "Відкрити ATS-Friendly резюме іншою мовою",
+                    cvCreativeTitle: "Відкрити креативне резюме",
                     copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
                     copied: "✔ Скопійовано!",
                     tinder: "Тіндер",
@@ -2035,6 +2063,7 @@
                     metaAward: "Meta AR Hackathon",
                     secondPlace: "2 місце",
                     winnerBadge: "Фіналіст",
+                    threeTimes: "ТРИЧІ",
                     audienceStats: "Аудиторія та охоплення",
                     followers: "Підписники",
                     likes: "Лайки",
@@ -2055,6 +2084,10 @@
                     madeWith: 'Made with AI',
                     viewPortfolio: "VIEW PORTFOLIO",
                     viewCV: "View CV",
+                    creativeCV: "Creative",
+                    cvMainTitle: "Open ATS-Friendly CV",
+                    cvAltTitle: "Open ATS-Friendly CV in the other language",
+                    cvCreativeTitle: "Open creative CV",
                     copyright: 'Fork of <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">this repository</a>',
                     copied: "✔ Copied!",
                     tinder: "Tinder",
@@ -2084,6 +2117,7 @@
                     metaAward: "Meta AR Hackathon",
                     secondPlace: "2nd Place",
                     winnerBadge: "Finalist",
+                    threeTimes: "3 Times",
                     audienceStats: "Audience & Reach",
                     followers: "Followers",
                     likes: "Likes",
@@ -2093,6 +2127,16 @@
             };
 
             let currentLang = 'en';
+            const cvFiles = {
+                uk: {
+                    ats: 'CV_Honcharenko_ATS_UKR.pdf',
+                    creative: 'СV_Honcharenko_Creative_UKR.pdf'
+                },
+                en: {
+                    ats: 'CV_Honcharenko_ATS.pdf',
+                    creative: 'СV_Honcharenko_Creative_ENG.pdf'
+                }
+            };
 
             function detectLanguage() {
                 if (window.LordskampUI) return window.LordskampUI.getLanguage();
@@ -2114,20 +2158,30 @@
                     }
                 });
 
+                document.querySelectorAll('[data-i18n-title]').forEach(el => {
+                    const key = el.getAttribute('data-i18n-title');
+                    const label = t(key);
+                    el.title = label;
+                    el.setAttribute('aria-label', label);
+                });
+
                 const cvLinkMain = document.getElementById('cv-link-main');
                 const cvLinkAlt = document.getElementById('cv-link-alt');
+                const cvLinkCreative = document.getElementById('cv-link-creative');
                 const altLangLabel = document.getElementById('alt-lang-label');
 
-                if (cvLinkMain && cvLinkAlt && altLangLabel) {
-                    if (currentLang === 'uk') {
-                        cvLinkMain.href = 'СV_Honcharenko_UKR.pdf';
-                        cvLinkAlt.href = 'СV_Honcharenko_ENG.pdf';
-                        altLangLabel.textContent = 'ENG';
-                    } else {
-                        cvLinkMain.href = 'СV_Honcharenko_ENG.pdf';
-                        cvLinkAlt.href = 'СV_Honcharenko_UKR.pdf';
-                        altLangLabel.textContent = 'UKR';
-                    }
+                if (cvLinkMain && cvLinkAlt && cvLinkCreative && altLangLabel) {
+                    const activeLang = currentLang === 'uk' ? 'uk' : 'en';
+                    const alternateLang = activeLang === 'uk' ? 'en' : 'uk';
+
+                    cvLinkMain.href = cvFiles[activeLang].ats;
+                    cvLinkAlt.href = cvFiles[alternateLang].ats;
+                    cvLinkCreative.href = cvFiles[activeLang].creative;
+                    altLangLabel.textContent = alternateLang === 'uk' ? 'UKR' : 'ENG';
+                }
+
+                if (window.updateSocialStats) {
+                    window.updateSocialStats();
                 }
             }
 
@@ -2518,10 +2572,15 @@
         <script>
             (() => {
                 const statsConfig = {
-                    followers: { id: 'stat-followers', base: 68600, display: (v) => (v / 1000).toFixed(1) + 'K' },
-                    likes: { id: 'stat-likes', base: 1000000, display: (v) => (v / 1000000).toFixed(1) + 'M' },
-                    views: { id: 'stat-views', base: 3000000, display: (v) => (v / 1000000).toFixed(1) + 'M' }
+                    followers: { id: 'stat-followers', base: 69100, display: (v) => formatStatNumber(v / 1000) + 'K' },
+                    likes: { id: 'stat-likes', base: 1000000, display: (v) => formatStatNumber(v / 1000000) + 'M' },
+                    views: { id: 'stat-views', base: 3000000, display: (v) => formatStatNumber(v / 1000000) + 'M' }
                 };
+
+                function formatStatNumber(value) {
+                    const formatted = value.toFixed(1);
+                    return currentLang === 'uk' ? formatted.replace('.', ',') : formatted;
+                }
 
                 function updateStats() {
                     const now = Date.now();
@@ -2540,6 +2599,8 @@
                         el.textContent = conf.display(current);
                     });
                 }
+
+                window.updateSocialStats = updateStats;
 
                 function animateValue(id, start, end, duration, displayFn) {
                     const obj = document.getElementById(id);

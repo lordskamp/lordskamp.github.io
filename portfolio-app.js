@@ -8,7 +8,7 @@
     /* ── i18n ── */
     const i18n = {
         uk: {
-            back: "Назад", heroTitle: "ПОРТФОЛІО",
+            back: "Про мене", heroTitle: "ПОРТФОЛІО",
             heroSub: "Добірка проєктів з брендингу, моушн-дизайну та креативних робіт.",
             tabAll: "Усе", tabCases: "Кейси", tabLogos: "Лого", tabPosters: "Постери", tabMotion: "Моушн",
             sourceLabel: "ІЛЮСТРАЦІЯ ВІД ХУДОЖНИКА", projectLabel: "ДИЗАЙН-ПРОЄКТ", realLabel: "РЕАЛЬНЕ ФОТО",
@@ -28,7 +28,7 @@
             copyright: 'Форк <a href="https://github.com/iammuhammadnoumankhan/linktree" target="_blank" class="text-violet-400 transition-colors">цього репозиторію</a>',
         },
         en: {
-            back: "Back", heroTitle: "PORTFOLIO",
+            back: "About me", heroTitle: "PORTFOLIO",
             heroSub: "A curated selection of branding, motion design, and creative projects.",
             tabAll: "All", tabCases: "Cases", tabLogos: "Logos", tabPosters: "Posters", tabMotion: "Motion",
             sourceLabel: "ARTIST ILLUSTRATION", projectLabel: "DESIGN PROJECT", realLabel: "REAL PHOTO",
