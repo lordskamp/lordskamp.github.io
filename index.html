@@ -861,6 +861,17 @@
             transform: scale(1.05);
         }
 
+        .link-item[data-brand="BeatSaber"] {
+            border-color: rgba(0, 213, 255, 0.42);
+            background: linear-gradient(90deg, rgba(0, 213, 255, 0.12), rgba(255, 47, 134, 0.10)) !important;
+        }
+
+        .link-item[data-brand="BeatSaber"]:hover {
+            border-color: #00d5ff !important;
+            background: linear-gradient(90deg, rgba(0, 213, 255, 0.24), rgba(255, 47, 134, 0.18)) !important;
+            box-shadow: 0 0 24px rgba(0, 213, 255, 0.26);
+        }
+
 
         /* Connect & Support - Colored Borders */
         .link-item[data-brand="Telegram"] {
@@ -1615,6 +1626,13 @@
                     <i class="fas fa-users mr-2"></i><span data-i18n="sideProjects">Side Projects</span>
                 </h2>
                 <div class="space-y-3">
+                    <a href="projects/beat-saber/" data-brand="BeatSaber"
+                        class="link-item flex items-center p-4 rounded-lg">
+                        <i class="fa-solid fa-vr-cardboard text-white text-xl w-8"></i>
+                        <span class="ml-3 font-medium" data-i18n="saberProject">Saber Pad</span>
+                        <i class="fas fa-arrow-right ml-auto text-gray-400 text-sm"></i>
+                    </a>
+
                     <a href="https://t.me/enko_translation" target="_blank"
                         class="link-item flex items-center p-4 rounded-lg">
                         <i class="fa-solid fa-gamepad text-white text-xl w-8"></i>
@@ -2101,6 +2119,7 @@
                     name: "ЮРІЙ ГОНЧАРЕНКО",
                     role: "Графічний / Моушн-дизайнер",
                     status: "У пошуку роботи",
+                    saberProject: "Saber Pad",
                     local: "Локалізація ігор",
                     parallel: "Паралельний Всесвіт",
                     sideProjects: "Сторонні проєкти",
@@ -2155,6 +2174,7 @@
                     name: "YURII HONCHARENKO",
                     role: "Graphic / Motion Designer",
                     status: "Looking for job",
+                    saberProject: "Saber Pad",
                     local: "Localization game",
                     parallel: "Parallel University",
                     sideProjects: "Side Projects",

@@ -56,6 +56,7 @@
         'Instagram-Portfolio': '#ff306c',
         Resume: '#8b5cf6',
         Portfolio: '#8c3dc1',
+        BeatSaber: '#00d5ff',
         Lordskamp: '#8c3dc1'
     };
 

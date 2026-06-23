@@ -1,0 +1,31 @@
+{
+  "_version": "2.1.0",
+  "_songName": "Grid Runner",
+  "_songSubName": "Training map",
+  "_songAuthorName": "Lordskamp Lab",
+  "_levelAuthorName": "Codex",
+  "_beatsPerMinute": 128,
+  "_shuffle": 0,
+  "_shufflePeriod": 0.5,
+  "_previewStartTime": 4,
+  "_previewDuration": 12,
+  "_songFilename": "song.wav",
+  "_coverImageFilename": "cover.svg",
+  "_environmentName": "DefaultEnvironment",
+  "_allDirectionsEnvironmentName": "GlassDesertEnvironment",
+  "_songTimeOffset": 0,
+  "_difficultyBeatmapSets": [
+    {
+      "_beatmapCharacteristicName": "Standard",
+      "_difficultyBeatmaps": [
+        {
+          "_difficulty": "Hard",
+          "_difficultyRank": 5,
+          "_beatmapFilename": "StandardHard.dat",
+          "_noteJumpMovementSpeed": 15,
+          "_noteJumpStartBeatOffset": 0
+        }
+      ]
+    }
+  ]
+}
