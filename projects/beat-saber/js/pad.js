@@ -10,7 +10,7 @@ const ui = {
     connect: document.getElementById('connectButton'),
     calibrate: document.getElementById('calibrateButton'),
     handButtons: document.querySelectorAll('[data-hand]'),
-    reticle: document.getElementById('padReticle'),
+    saberPreview: document.getElementById('padSaberPreview'),
     score: document.getElementById('padScore'),
     combo: document.getElementById('padCombo')
 };
@@ -46,11 +46,14 @@ function setHand(hand) {
     state.controller?.setHand(state.hand);
 }
 
-function moveReticle(pose) {
-    const x = ((pose.x + 1) / 2) * 100;
-    const y = (1 - ((pose.y + 1) / 2)) * 100;
-    ui.reticle.style.left = `${x}%`;
-    ui.reticle.style.top = `${y}%`;
+function moveSaberPreview(pose) {
+    const vector = pose.bladeVector || pose.vector || { x: 0, y: 1 };
+    const angle = Math.atan2(vector.x, vector.y) * (180 / Math.PI);
+    const depth = pose.blade?.axis3D ? Math.max(-1, Math.min(1, -pose.blade.axis3D.z)) : 0.7;
+    const twist = pose.blade?.rollRad ? pose.blade.rollRad * (180 / Math.PI) : 0;
+    ui.saberPreview.style.setProperty('--pad-saber-tilt', `${angle}deg`);
+    ui.saberPreview.style.setProperty('--pad-saber-depth', `${0.82 + depth * 0.2}`);
+    ui.saberPreview.style.setProperty('--pad-saber-twist', `${Math.max(-62, Math.min(62, twist))}deg`);
 }
 
 function feedback(type) {
@@ -99,7 +102,7 @@ async function calibrate() {
             state.controller = new MotionPadController({
                 sendPose: data => state.transport?.sendPose(data),
                 sendSwing: data => state.transport?.sendSwing(data),
-                onPose: moveReticle,
+                onPose: moveSaberPreview,
                 onSwing: () => feedback('swing'),
                 onStatus: message => setStatus(message, 'online')
             });

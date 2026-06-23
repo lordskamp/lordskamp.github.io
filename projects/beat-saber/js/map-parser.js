@@ -162,6 +162,92 @@ export function normalizeBeatmapNotes(beatmap, bpm) {
         .sort((a, b) => a.timeSec - b.timeSec || a.index - b.index);
 }
 
+function lightColorFromValue(value, fallback = 'blue') {
+    const normalized = Math.round(asNumber(value, 0));
+    if (normalized === 0) return 'off';
+    if (normalized >= 5 && normalized <= 8) return 'red';
+    if (normalized >= 1 && normalized <= 4) return 'blue';
+    return fallback;
+}
+
+function targetFromEventType(type) {
+    const normalized = Math.round(asNumber(type, 0));
+    if (normalized === 2 || normalized === 6 || normalized === 10) return 'left';
+    if (normalized === 3 || normalized === 7 || normalized === 11) return 'right';
+    if (normalized === 0 || normalized === 4 || normalized === 8) return 'back';
+    return 'center';
+}
+
+export function normalizeLightshowEvents(beatmap, bpm) {
+    const events = [];
+
+    asArray(beatmap.basicBeatmapEvents).forEach((event, index) => {
+        const beat = asNumber(event.b, NaN);
+        if (!Number.isFinite(beat)) return;
+        const color = lightColorFromValue(event.i);
+        events.push({
+            id: `light-basic-${index}`,
+            beat,
+            timeSec: beatToSeconds(beat, bpm),
+            target: targetFromEventType(event.et),
+            color,
+            intensity: color === 'off' ? 0 : Math.max(0.35, asNumber(event.f, 1)),
+            source: 'basicBeatmapEvents'
+        });
+    });
+
+    asArray(beatmap._events).forEach((event, index) => {
+        const beat = asNumber(event._time, NaN);
+        if (!Number.isFinite(beat)) return;
+        const color = lightColorFromValue(event._value);
+        events.push({
+            id: `light-v2-${index}`,
+            beat,
+            timeSec: beatToSeconds(beat, bpm),
+            target: targetFromEventType(event._type),
+            color,
+            intensity: color === 'off' ? 0 : Math.max(0.35, asNumber(event._floatValue, 1)),
+            source: '_events'
+        });
+    });
+
+    asArray(beatmap.colorBoostBeatmapEvents).forEach((event, index) => {
+        const beat = asNumber(event.b, NaN);
+        if (!Number.isFinite(beat)) return;
+        events.push({
+            id: `light-boost-${index}`,
+            beat,
+            timeSec: beatToSeconds(beat, bpm),
+            target: 'boost',
+            color: event.o ? 'boost' : 'off',
+            intensity: event.o ? 1.35 : 0.25,
+            source: 'colorBoostBeatmapEvents'
+        });
+    });
+
+    asArray(beatmap.lightColorEventBoxGroups).forEach((group, groupIndex) => {
+        const groupBeat = asNumber(group.b, NaN);
+        if (!Number.isFinite(groupBeat)) return;
+        asArray(group.e).forEach((box, boxIndex) => {
+            asArray(box.e).forEach((event, eventIndex) => {
+                const beat = groupBeat + asNumber(event.b, 0);
+                const color = event.c === 0 ? 'red' : event.c === 1 ? 'blue' : 'white';
+                events.push({
+                    id: `light-box-${groupIndex}-${boxIndex}-${eventIndex}`,
+                    beat,
+                    timeSec: beatToSeconds(beat, bpm),
+                    target: group.g % 2 ? 'right' : 'left',
+                    color,
+                    intensity: Math.max(0.2, asNumber(event.s, 1)),
+                    source: 'lightColorEventBoxGroups'
+                });
+            });
+        });
+    });
+
+    return events.sort((a, b) => a.timeSec - b.timeSec);
+}
+
 export function selectDefaultDifficulty(difficulties) {
     if (!difficulties.length) return null;
     for (const name of DIFFICULTY_ORDER) {
@@ -199,8 +285,9 @@ export async function loadStaticTrack(track) {
             if (!beatmapResponse.ok) throw new Error(`Could not load ${difficulty.filename}`);
             const beatmap = parseJsonText(await beatmapResponse.text(), difficulty.filename);
             const notes = normalizeBeatmapNotes(beatmap, info.bpm);
-            console.info('[Beat Saber parser]', difficulty.label, notes);
-            return { beatmap, difficulty, notes, travelTime: travelTimeForDifficulty(difficulty) };
+            const lights = normalizeLightshowEvents(beatmap, info.bpm);
+            console.info('[Beat Saber parser]', difficulty.label, { notes, lights });
+            return { beatmap, difficulty, notes, lights, travelTime: travelTimeForDifficulty(difficulty) };
         }
     };
 }
@@ -272,8 +359,9 @@ export async function loadZipTrack(file) {
             if (!entry) throw new Error(`No ${difficulty.filename} found in this archive.`);
             const beatmap = parseJsonText(await entry.async('string'), difficulty.filename);
             const notes = normalizeBeatmapNotes(beatmap, info.bpm);
-            console.info('[Beat Saber parser]', difficulty.label, notes);
-            return { beatmap, difficulty, notes, travelTime: travelTimeForDifficulty(difficulty) };
+            const lights = normalizeLightshowEvents(beatmap, info.bpm);
+            console.info('[Beat Saber parser]', difficulty.label, { notes, lights });
+            return { beatmap, difficulty, notes, lights, travelTime: travelTimeForDifficulty(difficulty) };
         }
     };
 }

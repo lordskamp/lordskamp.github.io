@@ -16,7 +16,23 @@ const state = {
     roomId: getRoomFromUrl() || createRoomCode(),
     playing: false,
     connected: false,
-    saber: { x: 0, y: 0, vector: { x: 0, y: 1 }, hand: 'right' },
+    saber: {
+        x: 0.48,
+        y: 0.72,
+        vector: { x: 0.08, y: 1 },
+        bladeVector: { x: 0.08, y: 1 },
+        swingVector: { x: 0, y: 1 },
+        blade: {
+            base: { x: 0.34, y: -0.82 },
+            tip: { x: 0.48, y: 0.72 },
+            base3D: { x: 0.34, y: -0.82, z: 1.08 },
+            tip3D: { x: 0.48, y: 0.72, z: -0.55 },
+            axis3D: { x: 0.08, y: 0.74, z: -0.67 },
+            twistRad: 0,
+            rollRad: 0
+        },
+        hand: 'right'
+    },
     lastHudUpdate: 0,
     lastPadState: 0,
     pointer: { x: 0, y: 0, t: performance.now() }
@@ -262,7 +278,12 @@ function handleSwing(swing) {
         ...swing,
         x: Number.isFinite(swing.x) ? swing.x : state.saber.x,
         y: Number.isFinite(swing.y) ? swing.y : state.saber.y,
-        vector: swing.vector || state.saber.vector,
+        vector: swing.vector || swing.bladeVector || state.saber.bladeVector || state.saber.vector,
+        bladeVector: swing.bladeVector || state.saber.bladeVector,
+        swingVector: swing.swingVector || swing.vector || state.saber.swingVector || state.saber.vector,
+        directionCandidates: Array.isArray(swing.directionCandidates) ? swing.directionCandidates : [],
+        blade: swing.blade || state.saber.blade,
+        source: swing.source || 'desktop',
         time: state.audio?.currentTime || 0
     };
 
@@ -287,6 +308,24 @@ function handleSwing(swing) {
 }
 
 function setupPointerFallback() {
+    const makeBladeFromPointer = (x, y) => {
+        const base = { x: state.saber.hand === 'left' ? -0.34 : 0.34, y: -0.82 };
+        const tip = { x: Math.max(-1.12, Math.min(1.12, x)), y: Math.max(-1, Math.min(1.08, y)) };
+        const dx = tip.x - base.x;
+        const dy = tip.y - base.y;
+        const length = Math.hypot(dx, dy) || 1;
+        return {
+            base,
+            tip,
+            base3D: { x: base.x, y: base.y, z: 1.08 },
+            tip3D: { x: tip.x, y: tip.y, z: -0.55 },
+            axis3D: { x: dx / length, y: dy / length, z: -0.72 },
+            vector: { x: dx / length, y: dy / length },
+            twistRad: 0,
+            rollRad: 0
+        };
+    };
+
     ui.scene.addEventListener('pointermove', event => {
         const rect = ui.scene.getBoundingClientRect();
         const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -298,11 +337,15 @@ function setupPointerFallback() {
             y: (y - state.pointer.y) / dt
         };
         const length = Math.hypot(vector.x, vector.y) || 1;
+        const blade = makeBladeFromPointer(x, y);
         state.saber = {
             ...state.saber,
-            x: Math.max(-1, Math.min(1, x)),
-            y: Math.max(-1, Math.min(1, y)),
-            vector: { x: vector.x / length, y: vector.y / length }
+            x: blade.tip.x,
+            y: blade.tip.y,
+            vector: blade.vector,
+            bladeVector: blade.vector,
+            swingVector: { x: vector.x / length, y: vector.y / length },
+            blade
         };
         state.pointer = { x, y, t: now };
     });
@@ -360,7 +403,10 @@ async function setupTransport() {
                 ...state.saber,
                 x: Math.max(-1, Math.min(1, Number(data.x) || 0)),
                 y: Math.max(-1, Math.min(1, Number(data.y) || 0)),
-                vector: data.vector || state.saber.vector,
+                vector: data.bladeVector || data.vector || state.saber.vector,
+                bladeVector: data.bladeVector || data.vector || state.saber.bladeVector,
+                swingVector: data.swingVector || state.saber.swingVector,
+                blade: data.blade || state.saber.blade,
                 hand: data.hand || state.saber.hand
             };
         },
@@ -370,7 +416,12 @@ async function setupTransport() {
                 x: Number(data.x),
                 y: Number(data.y),
                 vector: data.vector,
+                bladeVector: data.bladeVector,
+                swingVector: data.swingVector || data.vector,
+                directionCandidates: data.directionCandidates,
+                blade: data.blade,
                 power: Number(data.power) || 0.8,
+                source: data.source || 'motion-pad',
                 hand: data.hand || state.saber.hand
             });
         }
@@ -422,6 +473,7 @@ async function init() {
         });
         state.renderer.updateFrame({
             notes: state.simulation.notes,
+            lightEvents: state.difficultyData?.lights || [],
             currentTime,
             travelTime: state.simulation.travelTime,
             saber: state.saber

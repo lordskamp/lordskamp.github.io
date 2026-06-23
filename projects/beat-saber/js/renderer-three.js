@@ -5,7 +5,8 @@ const COLORS = {
     blue: 0x00d5ff,
     green: 0xb8ff5c,
     amber: 0xffd166,
-    white: 0xffffff
+    white: 0xffffff,
+    violet: 0x9d7cff
 };
 
 function clamp(value, min, max) {
@@ -67,6 +68,14 @@ function drawArrowTexture(THREE, direction, color) {
     return texture;
 }
 
+function colorHexFromName(name, fallback = COLORS.blue) {
+    if (name === 'red') return COLORS.red;
+    if (name === 'blue') return COLORS.blue;
+    if (name === 'boost') return COLORS.green;
+    if (name === 'white') return COLORS.white;
+    return fallback;
+}
+
 export class BeatSaberRenderer {
     constructor() {
         this.THREE = null;
@@ -86,9 +95,21 @@ export class BeatSaberRenderer {
         this.laneSpacing = 1.35;
         this.rowSpacing = 1.05;
         this.rowBase = 1.05;
-        this.saberLine = null;
-        this.saberTip = null;
+        this.saberGroup = null;
+        this.saberCore = null;
+        this.saberGlowBlade = null;
+        this.saberHilt = null;
+        this.saberGuard = null;
         this.saberGlow = null;
+        this.tunnelMaterial = null;
+        this.lightRig = null;
+        this.lightState = {
+            left: { color: COLORS.blue, intensity: 0.2 },
+            right: { color: COLORS.red, intensity: 0.2 },
+            back: { color: COLORS.violet, intensity: 0.2 },
+            center: { color: COLORS.blue, intensity: 0.2 },
+            boost: { color: COLORS.green, intensity: 0 }
+        };
         this.onFrame = null;
     }
 
@@ -117,6 +138,7 @@ export class BeatSaberRenderer {
 
         this.addLights();
         this.addTunnel();
+        this.addLightshowRig();
         this.addHitGrid();
         this.addSaber();
         this.resize();
@@ -172,9 +194,67 @@ export class BeatSaberRenderer {
 
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-        const material = new THREE.LineBasicMaterial({ color: 0x2ee9ff, transparent: true, opacity: 0.28 });
-        const tunnel = new THREE.LineSegments(geometry, material);
+        this.tunnelMaterial = new THREE.LineBasicMaterial({ color: 0x2ee9ff, transparent: true, opacity: 0.24 });
+        const tunnel = new THREE.LineSegments(geometry, this.tunnelMaterial);
         this.scene.add(tunnel);
+    }
+
+    addLightshowRig() {
+        const THREE = this.THREE;
+        const makeBeam = (target, index, color, xSign) => {
+            const y = 0.55 + (index * 0.68);
+            const zNear = 3.1 - (index * 0.08);
+            const zFar = -34 + (index * 0.9);
+            const startX = xSign * 3.42;
+            const endX = xSign * (0.35 + (index % 2) * 0.9);
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+                startX, y, zNear,
+                endX, 1.4 + ((index % 3) * 0.5), zFar
+            ], 3));
+            const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.16 });
+            const line = new THREE.Line(geometry, material);
+            this.scene.add(line);
+            this.lightRig[target].materials.push(material);
+        };
+
+        this.lightRig = {
+            left: { materials: [], lights: [] },
+            right: { materials: [], lights: [] },
+            back: { materials: [], lights: [] },
+            center: { materials: [], lights: [] }
+        };
+
+        for (let i = 0; i < 9; i += 1) {
+            makeBeam('left', i, COLORS.blue, -1);
+            makeBeam('right', i, COLORS.red, 1);
+        }
+
+        for (let i = 0; i < 8; i += 1) {
+            const geometry = new THREE.RingGeometry(2.1 + i * 0.36, 2.13 + i * 0.36, 80);
+            const material = new THREE.MeshBasicMaterial({
+                color: i % 2 ? COLORS.violet : COLORS.blue,
+                transparent: true,
+                opacity: 0.045,
+                side: THREE.DoubleSide
+            });
+            const ring = new THREE.Mesh(geometry, material);
+            ring.position.set(0, 2.1, -6 - i * 3.15);
+            ring.rotation.x = Math.PI / 2;
+            this.scene.add(ring);
+            this.lightRig.back.materials.push(material);
+        }
+
+        const leftLight = new THREE.PointLight(COLORS.blue, 0.8, 26, 2);
+        leftLight.position.set(-3.4, 2.6, -8);
+        const rightLight = new THREE.PointLight(COLORS.red, 0.8, 26, 2);
+        rightLight.position.set(3.4, 2.6, -8);
+        const backLight = new THREE.PointLight(COLORS.violet, 0.8, 34, 2);
+        backLight.position.set(0, 3.4, -18);
+        this.scene.add(leftLight, rightLight, backLight);
+        this.lightRig.left.lights.push(leftLight);
+        this.lightRig.right.lights.push(rightLight);
+        this.lightRig.back.lights.push(backLight);
     }
 
     addHitGrid() {
@@ -202,21 +282,45 @@ export class BeatSaberRenderer {
 
     addSaber() {
         const THREE = this.THREE;
-        const positions = new Float32Array(6);
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const material = new THREE.LineBasicMaterial({ color: COLORS.blue, linewidth: 4, transparent: true, opacity: 0.96 });
-        this.saberLine = new THREE.Line(geometry, material);
-        this.scene.add(this.saberLine);
+        this.saberGroup = new THREE.Group();
 
-        this.saberTip = new THREE.Mesh(
-            new THREE.SphereGeometry(0.09, 20, 20),
+        this.saberCore = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.035, 0.045, 1, 24, 1, true),
+            new THREE.MeshBasicMaterial({ color: COLORS.blue, transparent: true, opacity: 0.98 })
+        );
+        this.saberGlowBlade = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.15, 0.2, 1, 32, 1, true),
+            new THREE.MeshBasicMaterial({
+                color: COLORS.blue,
+                transparent: true,
+                opacity: 0.24,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            })
+        );
+        this.saberHilt = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.09, 0.12, 0.48, 20),
+            new THREE.MeshStandardMaterial({ color: 0x111923, metalness: 0.65, roughness: 0.3 })
+        );
+        this.saberGuard = new THREE.Mesh(
+            new THREE.SphereGeometry(0.12, 18, 18),
             new THREE.MeshBasicMaterial({ color: COLORS.blue })
         );
-        this.scene.add(this.saberTip);
+        this.saberCrossGuard = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.028, 0.035, 0.58, 16),
+            new THREE.MeshBasicMaterial({ color: COLORS.blue, transparent: true, opacity: 0.92 })
+        );
 
         this.saberGlow = new THREE.PointLight(COLORS.blue, 3, 5, 2);
-        this.scene.add(this.saberGlow);
+        this.saberGroup.add(
+            this.saberGlowBlade,
+            this.saberCore,
+            this.saberHilt,
+            this.saberGuard,
+            this.saberCrossGuard,
+            this.saberGlow
+        );
+        this.scene.add(this.saberGroup);
     }
 
     start(onFrame) {
@@ -259,12 +363,21 @@ export class BeatSaberRenderer {
         };
     }
 
-    updateFrame({ notes, currentTime, travelTime, saber }) {
+    normalizedToWorld3(pose) {
+        return new this.THREE.Vector3(
+            clamp(Number(pose?.x) || 0, -1.2, 1.2) * 2.35,
+            1.95 + (clamp(Number(pose?.y) || 0, -1.1, 1.1) * 1.35),
+            this.hitZ + (clamp(Number(pose?.z) || 0, -1.15, 1.15) * 1.45)
+        );
+    }
+
+    updateFrame({ notes, lightEvents, currentTime, travelTime, saber }) {
         const active = new Set();
+        const exitZ = this.hitZ + 3.2;
 
         notes.forEach(note => {
             const isPending = note.state === 'pending';
-            const inWindow = currentTime >= note.timeSec - travelTime && currentTime <= note.timeSec + 0.42;
+            const inWindow = currentTime >= note.timeSec - travelTime && currentTime <= note.timeSec + 0.36;
             if (!isPending || !inWindow) return;
 
             active.add(note.runtimeId);
@@ -276,14 +389,19 @@ export class BeatSaberRenderer {
             }
 
             const remaining = note.timeSec - currentTime;
-            const progress = clamp(1 - (remaining / travelTime), 0, 1);
-            const eased = progress * progress * (3 - (2 * progress));
+            const progress = 1 - (remaining / travelTime);
+            const approachProgress = clamp(progress, 0, 1);
+            const eased = approachProgress * approachProgress * (3 - (2 * approachProgress));
+            const postProgress = clamp((currentTime - note.timeSec) / 0.36, 0, 1);
+            const z = currentTime <= note.timeSec
+                ? this.spawnZ + ((this.hitZ - this.spawnZ) * eased)
+                : this.hitZ + ((exitZ - this.hitZ) * (postProgress * postProgress));
             group.position.set(
                 this.gridX(note.x),
                 this.gridY(note.y),
-                this.spawnZ + ((this.hitZ - this.spawnZ) * eased)
+                z
             );
-            const scale = 0.74 + (progress * 0.16);
+            const scale = 0.74 + (approachProgress * 0.16) + (postProgress * 0.18);
             group.scale.setScalar(scale);
             group.rotation.z = note.angleOffset * Math.PI / 180;
         });
@@ -296,6 +414,7 @@ export class BeatSaberRenderer {
         });
 
         this.updateSaber(saber);
+        this.updateLightshow(currentTime, lightEvents, notes);
     }
 
     createNoteMesh(note) {
@@ -338,27 +457,128 @@ export class BeatSaberRenderer {
     }
 
     updateSaber(saber) {
-        if (!this.saberLine || !this.saberTip) return;
+        if (!this.saberCore || !this.saberGlowBlade || !this.saberHilt) return;
         const THREE = this.THREE;
-        const point = this.normalizedToWorld(saber);
-        const vector = saber?.vector || { x: 0, y: 1 };
+        const vector = saber?.bladeVector || saber?.vector || { x: 0, y: 1 };
+        const fallbackPoint = this.normalizedToWorld(saber);
+        const fallbackBase = { x: (saber?.hand === 'left' ? -0.34 : 0.34), y: -0.82 };
+        const fallbackTip = {
+            x: clamp(fallbackBase.x + (vector.x * 1.55), -1.12, 1.12),
+            y: clamp(fallbackBase.y + (vector.y * 1.55), -1, 1.08)
+        };
+        const blade = saber?.blade || { base: fallbackBase, tip: fallbackTip };
         const color = saber?.hand === 'left' ? COLORS.red : COLORS.blue;
-        const positions = this.saberLine.geometry.attributes.position.array;
-        const vx = clamp(Number(vector.x) || 0, -1, 1);
-        const vy = clamp(Number(vector.y) || 1, -1, 1);
+        const base = this.normalizedToWorld(blade.base || fallbackBase);
+        const tip = this.normalizedToWorld(blade.tip || fallbackTip);
+        const base3 = blade.base3D
+            ? this.normalizedToWorld3(blade.base3D)
+            : new THREE.Vector3(base.x, base.y, this.hitZ + 1.85);
+        const tip3 = blade.tip3D
+            ? this.normalizedToWorld3(blade.tip3D)
+            : new THREE.Vector3(tip.x, tip.y, this.hitZ - 0.45);
+        const direction = new THREE.Vector3().subVectors(tip3, base3);
+        const length = Math.max(direction.length(), 0.001);
+        const bladeUnit = direction.clone().normalize();
+        const mid = new THREE.Vector3().addVectors(base3, tip3).multiplyScalar(0.5);
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            bladeUnit
+        );
+        const hiltEnd = base3.clone().add(bladeUnit.clone().multiplyScalar(-0.52));
+        const hiltMid = new THREE.Vector3().addVectors(base3, hiltEnd).multiplyScalar(0.5);
+        const hiltDirection = new THREE.Vector3().subVectors(base3, hiltEnd);
+        const hiltQuaternion = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            hiltDirection.clone().normalize()
+        );
+        const twist = Number(blade.twistRad || blade.rollRad || 0);
+        const twistQuaternion = new THREE.Quaternion().setFromAxisAngle(bladeUnit, twist);
+        let crossAxis = new THREE.Vector3().crossVectors(bladeUnit, new THREE.Vector3(0, 0, 1));
+        if (crossAxis.lengthSq() < 0.001) {
+            crossAxis = new THREE.Vector3().crossVectors(bladeUnit, new THREE.Vector3(1, 0, 0));
+        }
+        crossAxis.normalize().applyQuaternion(twistQuaternion);
+        const crossQuaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), crossAxis);
 
-        positions[0] = point.x - (vx * 0.48);
-        positions[1] = point.y - (vy * 0.48);
-        positions[2] = this.hitZ + 1.2;
-        positions[3] = point.x + (vx * 0.92);
-        positions[4] = point.y + (vy * 0.92);
-        positions[5] = this.hitZ - 0.42;
-        this.saberLine.geometry.attributes.position.needsUpdate = true;
-        this.saberLine.material.color.setHex(color);
-        this.saberTip.position.set(point.x, point.y, this.hitZ + 0.18);
-        this.saberTip.material.color.setHex(color);
+        this.saberCore.position.copy(mid);
+        this.saberCore.quaternion.copy(quaternion);
+        this.saberCore.scale.set(1, length, 1);
+        this.saberGlowBlade.position.copy(mid);
+        this.saberGlowBlade.quaternion.copy(quaternion);
+        this.saberGlowBlade.scale.set(1, length, 1);
+        this.saberHilt.position.copy(hiltMid);
+        this.saberHilt.quaternion.copy(hiltQuaternion).multiply(twistQuaternion);
+        this.saberGuard.position.copy(base3);
+        this.saberCrossGuard.position.copy(base3.clone().add(bladeUnit.clone().multiplyScalar(-0.06)));
+        this.saberCrossGuard.quaternion.copy(crossQuaternion);
+
+        this.saberCore.material.color.setHex(color);
+        this.saberGlowBlade.material.color.setHex(color);
+        this.saberGuard.material.color.setHex(color);
+        this.saberCrossGuard.material.color.setHex(color);
         this.saberGlow.color.setHex(color);
-        this.saberGlow.position.copy(this.saberTip.position);
+        this.saberGlow.position.copy(tip3);
+
+        if (!saber?.blade) {
+            this.saberGroup.position.x = fallbackPoint.x * 0.02;
+        }
+    }
+
+    updateLightshow(currentTime, lightEvents = [], notes = []) {
+        if (!this.lightRig) return;
+        Object.values(this.lightState).forEach(state => {
+            state.intensity *= 0.9;
+            if (state.intensity < 0.04) state.intensity = 0.04;
+        });
+
+        if (lightEvents.length) {
+            lightEvents.forEach(event => {
+                const age = currentTime - event.timeSec;
+                if (age < 0 || age > 0.18) return;
+                const target = this.lightState[event.target] ? event.target : 'center';
+                this.lightState[target].color = colorHexFromName(event.color, this.lightState[target].color);
+                this.lightState[target].intensity = Math.max(this.lightState[target].intensity, event.intensity || 0.9);
+                if (event.target === 'boost') {
+                    this.lightState.left.intensity = Math.max(this.lightState.left.intensity, 1.1);
+                    this.lightState.right.intensity = Math.max(this.lightState.right.intensity, 1.1);
+                    this.lightState.back.color = COLORS.green;
+                }
+            });
+        } else {
+            notes.forEach(note => {
+                const age = currentTime - note.timeSec;
+                if (age < 0 || age > 0.105) return;
+                const target = note.x < 2 ? 'left' : 'right';
+                this.lightState[target].color = note.color === 0 ? COLORS.red : COLORS.blue;
+                this.lightState[target].intensity = Math.max(this.lightState[target].intensity, 1.25);
+                this.lightState.back.color = note.color === 0 ? COLORS.red : COLORS.blue;
+                this.lightState.back.intensity = Math.max(this.lightState.back.intensity, 0.75);
+            });
+        }
+
+        this.applyLightTarget('left');
+        this.applyLightTarget('right');
+        this.applyLightTarget('back');
+        const tunnelColor = this.lightState.back.intensity > 0.35 ? this.lightState.back.color : COLORS.blue;
+        this.tunnelMaterial?.color.setHex(tunnelColor);
+        if (this.tunnelMaterial) this.tunnelMaterial.opacity = 0.18 + Math.min(this.lightState.back.intensity, 1.2) * 0.16;
+    }
+
+    applyLightTarget(target) {
+        const rig = this.lightRig[target];
+        const state = this.lightState[target];
+        if (!rig || !state) return;
+        const opacity = target === 'back'
+            ? 0.035 + Math.min(state.intensity, 1.45) * 0.12
+            : 0.08 + Math.min(state.intensity, 1.45) * 0.32;
+        rig.materials.forEach(material => {
+            material.color.setHex(state.color);
+            material.opacity = opacity;
+        });
+        rig.lights.forEach(light => {
+            light.color.setHex(state.color);
+            light.intensity = 0.55 + Math.min(state.intensity, 1.6) * 7;
+        });
     }
 
     pulseNote(note, type = 'hit') {

@@ -19,11 +19,26 @@ export function noteToNormalized(note) {
     };
 }
 
+function distanceToSegment(point, a, b) {
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const apx = point.x - a.x;
+    const apy = point.y - a.y;
+    const lengthSq = (abx * abx) + (aby * aby);
+    if (lengthSq <= 0.0001) return Math.hypot(apx, apy);
+    const t = clamp(((apx * abx) + (apy * aby)) / lengthSq, 0, 1);
+    return Math.hypot(point.x - (a.x + abx * t), point.y - (a.y + aby * t));
+}
+
 export function directionMatches(requiredDirection, swingVector) {
     if (requiredDirection === 8) return true;
     const required = CUT_DIRECTIONS[requiredDirection] || CUT_DIRECTIONS[8];
     const swing = normalizeVector(swingVector);
     return ((required.x * swing.x) + (required.y * swing.y)) >= 0.25;
+}
+
+function directionMatchesAny(requiredDirection, candidates) {
+    return candidates.some(candidate => candidate && directionMatches(requiredDirection, candidate));
 }
 
 export class BeatSaberSimulation {
@@ -37,9 +52,9 @@ export class BeatSaberSimulation {
         this.misses = 0;
         this.currentTime = 0;
         this.travelTime = 2.2;
-        this.hitWindow = 0.28;
+        this.hitWindow = 0.34;
         this.missWindow = 0.36;
-        this.hitRadius = 0.42;
+        this.hitRadius = 0.46;
     }
 
     loadNotes(notes, options = {}) {
@@ -93,9 +108,25 @@ export class BeatSaberSimulation {
             x: clamp(Number(swing?.x) || 0, -1, 1),
             y: clamp(Number(swing?.y) || 0, -1, 1)
         };
-        const vector = normalizeVector(swing?.vector);
+        const directionCandidates = [
+            swing?.swingVector,
+            swing?.vector,
+            ...(Array.isArray(swing?.directionCandidates) ? swing.directionCandidates : [])
+        ];
         const power = clamp(Number(swing?.power) || 0.65, 0, 1.5);
         const radius = this.hitRadius + (power > 0.95 ? 0.08 : 0);
+        const blade = swing?.blade && swing.blade.base && swing.blade.tip
+            ? {
+                base: {
+                    x: clamp(Number(swing.blade.base.x) || 0, -1.2, 1.2),
+                    y: clamp(Number(swing.blade.base.y) || 0, -1.1, 1.1)
+                },
+                tip: {
+                    x: clamp(Number(swing.blade.tip.x) || 0, -1.2, 1.2),
+                    y: clamp(Number(swing.blade.tip.y) || 0, -1.1, 1.1)
+                }
+            }
+            : null;
         const candidates = [];
 
         this.notes.forEach(note => {
@@ -103,7 +134,9 @@ export class BeatSaberSimulation {
             const dt = Math.abs(note.timeSec - time);
             if (dt > this.hitWindow) return;
             const notePoint = noteToNormalized(note);
-            const distance = Math.hypot(notePoint.x - point.x, notePoint.y - point.y);
+            const distance = blade
+                ? distanceToSegment(notePoint, blade.base, blade.tip)
+                : Math.hypot(notePoint.x - point.x, notePoint.y - point.y);
             if (distance > radius) return;
             candidates.push({ note, dt, distance });
         });
@@ -115,16 +148,18 @@ export class BeatSaberSimulation {
             const { note, dt, distance } = candidate;
             if (note.state !== 'pending') return;
 
-            const goodDirection = directionMatches(note.direction, vector);
+            const goodDirection = directionMatchesAny(note.direction, directionCandidates);
+            const mobileAssist = swing?.source === 'motion-pad' && power >= 0.45 && distance <= radius * 0.78;
             note.hitAt = time;
 
-            if (goodDirection) {
+            if (goodDirection || mobileAssist) {
                 note.state = 'hit';
                 this.combo += 1;
                 this.maxCombo = Math.max(this.maxCombo, this.combo);
                 this.hits += 1;
-                this.score += Math.round(80 + (this.combo * 3) + ((this.hitWindow - dt) / this.hitWindow) * 35 + (1 - distance / radius) * 20);
-                events.push({ type: 'hit', note, combo: this.combo, score: this.score });
+                const directionBonus = goodDirection ? 20 : 8;
+                this.score += Math.round(72 + directionBonus + (this.combo * 3) + ((this.hitWindow - dt) / this.hitWindow) * 35 + (1 - distance / radius) * 20);
+                events.push({ type: 'hit', note, combo: this.combo, score: this.score, assisted: !goodDirection });
             } else {
                 note.state = 'bad';
                 this.combo = 0;
