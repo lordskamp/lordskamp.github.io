@@ -1,51 +1,61 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="uk">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#000000">
-    <title>Saber Pad</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <meta name="theme-color" content="#02040a">
+    <title>OneSaber Controller</title>
     <link rel="icon" href="../../../fav/favicon.ico">
-    <link rel="stylesheet" href="../css/beat-saber.css">
-    <script type="module" src="../js/pad.js"></script>
+    <link rel="stylesheet" href="pad.css">
+    <script type="module" src="webxr-saber-pad.js"></script>
 </head>
 
-<body class="bs-pad-body">
-    <main class="bs-pad-page">
-        <section class="bs-pad-stage" aria-label="Saber pad">
-            <div class="bs-pad-saber-preview" id="padSaberPreview">
-                <span class="bs-pad-saber-preview__blade"></span>
-                <span class="bs-pad-saber-preview__hilt"></span>
-            </div>
-            <div class="bs-pad-grid"></div>
+<body>
+    <main class="pad-shell">
+        <section class="pad-saber" aria-hidden="true">
+            <div class="pad-saber__blade"></div>
+            <div class="pad-saber__guard"></div>
+            <div class="pad-saber__hilt"></div>
         </section>
 
-        <section class="bs-pad-ui">
-            <div class="bs-pad-topline">
-                <span id="padStatus" data-mode="idle">Waiting</span>
-                <strong id="padRoomCode">----</strong>
+        <section class="pad-ui" aria-label="OneSaber controller">
+            <div class="pad-status">
+                <span id="trackingState">Очікування</span>
+                <strong id="roomLabel">----</strong>
             </div>
 
-            <form class="bs-pad-code" id="codeForm">
-                <input id="roomInput" inputmode="numeric" autocomplete="one-time-code" maxlength="4" placeholder="0000">
-                <button id="connectButton" type="submit">Connect</button>
-            </form>
+            <label class="pad-field">
+                <span>Кімната</span>
+                <input id="roomInput" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="0000">
+            </label>
 
-            <div class="bs-pad-hands" role="group" aria-label="Hand">
-                <button type="button" data-hand="left">Left</button>
-                <button type="button" data-hand="right">Right</button>
-            </div>
+            <label class="pad-field">
+                <span>Канал</span>
+                <input id="serverInput" inputmode="url" autocomplete="url" placeholder="wss://localhost:3001 або https://server">
+            </label>
 
-            <button class="bs-pad-calibrate" id="calibrateButton" type="button">
-                Calibrate
-            </button>
+            <button class="pad-start" id="startSaberButton" type="button">Запустити меч</button>
+            <button class="pad-stop" id="stopSaberButton" type="button" disabled>Зупинити</button>
 
-            <div class="bs-pad-stats">
-                <span>Score <strong id="padScore">0</strong></span>
-                <span>Combo <strong id="padCombo">0x</strong></span>
-            </div>
+            <dl class="pad-readout">
+                <div>
+                    <dt>X</dt>
+                    <dd id="posX">0.00</dd>
+                </div>
+                <div>
+                    <dt>Y</dt>
+                    <dd id="posY">0.00</dd>
+                </div>
+                <div>
+                    <dt>Z</dt>
+                    <dd id="posZ">0.00</dd>
+                </div>
+                <div>
+                    <dt>Hz</dt>
+                    <dd id="frameRate">0</dd>
+                </div>
+            </dl>
         </section>
     </main>
 </body>
