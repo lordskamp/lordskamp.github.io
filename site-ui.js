@@ -1,6 +1,25 @@
 (() => {
     'use strict';
 
+    function normalizeCleanUrl() {
+        if (!window.history || typeof window.history.replaceState !== 'function') return;
+
+        const { pathname, search, hash } = window.location;
+        let cleanPath = pathname;
+
+        if (/\/index\.html$/i.test(cleanPath)) {
+            cleanPath = cleanPath.replace(/index\.html$/i, '') || '/';
+        } else if (/\.html$/i.test(cleanPath)) {
+            cleanPath = cleanPath.replace(/\.html$/i, '');
+        }
+
+        if (cleanPath !== pathname) {
+            window.history.replaceState(null, document.title, `${cleanPath}${search}${hash}`);
+        }
+    }
+
+    normalizeCleanUrl();
+
     const STORAGE = {
         theme: 'lordskamp:theme',
         language: 'lordskamp:language'
@@ -10,6 +29,7 @@
     const labels = {
         uk: {
             back: 'Про мене',
+            author: 'Про автора',
             brand: 'Lordskamp',
             language: 'Мова',
             themeLight: 'Світла тема',
@@ -23,6 +43,7 @@
         },
         en: {
             back: 'About me',
+            author: 'Про автора',
             brand: 'Lordskamp',
             language: 'Language',
             themeLight: 'Light theme',
@@ -56,6 +77,7 @@
         'Instagram-Portfolio': '#ff306c',
         Resume: '#8b5cf6',
         Portfolio: '#8c3dc1',
+        KobzaReverse: '#72bf6a',
         Lordskamp: '#8c3dc1'
     };
 
@@ -187,34 +209,40 @@
         const mount = document.getElementById('siteHeaderMount');
         if (!mount || mount.dataset.siteUiReady) return;
 
+        const forcedLanguage = mount.dataset.forceLanguage;
+        if (LANGS.includes(forcedLanguage)) state.language = forcedLanguage;
+
         const page = mount.dataset.sitePage || (location.pathname.includes('portfolio') ? 'portfolio' : 'home');
         document.body.classList.add('has-site-header', `site-page-${page}`);
 
-        const primary = page === 'portfolio'
-            ? `<a class="site-header__back" id="backBtn" href="index.html" data-brand="Portfolio">
+        const isBackPage = page === 'portfolio' || page === 'unwordle';
+        const primary = isBackPage
+            ? `<a class="site-header__back" id="backBtn" href="/" data-brand="Portfolio">
                     <i class="fas fa-arrow-left" aria-hidden="true"></i>
-                    <span data-ui-i18n="back">Back</span>
+                    <span data-ui-i18n="${page === 'unwordle' ? 'author' : 'back'}">${page === 'unwordle' ? 'Про автора' : 'Back'}</span>
                </a>`
             : `<button class="site-header__brand" id="brandProfileBtn" type="button" data-brand="Lordskamp" aria-haspopup="dialog" aria-controls="lordskampCardModal" aria-label="Lordskamp">
                     <i class="fas fa-palette" aria-hidden="true"></i>
                     <span data-ui-i18n="brand">Lordskamp</span>
                </button>`;
 
+        const actions = page === 'unwordle'
+            ? `<button class="site-control site-control--theme" id="themeBtn" type="button" data-brand="Theme"></button>`
+            : `<button class="site-control site-control--language" id="langBtn" type="button" data-brand="Language">
+                    <i class="fas fa-globe" aria-hidden="true"></i>
+                    <span class="site-lang-options" aria-hidden="true">
+                        <span class="site-lang-option" data-lang-option="uk">Укр</span>
+                        <span class="site-lang-divider">/</span>
+                        <span class="site-lang-option" data-lang-option="en">Eng</span>
+                    </span>
+                </button>
+                <button class="site-control site-control--theme" id="themeBtn" type="button" data-brand="Theme"></button>`;
+
         mount.innerHTML = `
             <header class="site-header site-header--${escapeHtml(page)}">
                 <div class="site-header__inner">
                     <div class="site-header__primary">${primary}</div>
-                    <div class="site-header__actions">
-                        <button class="site-control site-control--language" id="langBtn" type="button" data-brand="Language">
-                            <i class="fas fa-globe" aria-hidden="true"></i>
-                            <span class="site-lang-options" aria-hidden="true">
-                                <span class="site-lang-option" data-lang-option="uk">Укр</span>
-                                <span class="site-lang-divider">/</span>
-                                <span class="site-lang-option" data-lang-option="en">Eng</span>
-                            </span>
-                        </button>
-                        <button class="site-control site-control--theme" id="themeBtn" type="button" data-brand="Theme"></button>
-                    </div>
+                    <div class="site-header__actions">${actions}</div>
                 </div>
             </header>
         `;
@@ -260,7 +288,7 @@
                             <i class="fas fa-copy" aria-hidden="true"></i>
                             <span data-ui-i18n="copyNick">Copy nickname</span>
                         </button>
-                        <a class="profile-card-action" href="portfolio.html" data-brand="Portfolio">
+                        <a class="profile-card-action" href="/portfolio" data-brand="Portfolio">
                             <i class="fas fa-palette" aria-hidden="true"></i>
                             <span data-ui-i18n="openPortfolio">Portfolio</span>
                         </a>
