@@ -11,6 +11,8 @@
     const RECENT_TARGET_LIMIT = 240;
     const DAILY_TARGET_ATTEMPT_LIMIT = 240;
     const UNLIMITED_TARGET_ATTEMPT_LIMIT = 480;
+    const VARIETY_RE = /^\d{8,18}$/;
+    const SHARE_FEEDBACK_MS = 1800;
     const UA_WORD_RE = /^[а-щьюяєіїґ]{5}$/u;
     const UA_LETTER_RE = /^[а-щьюяєіїґ]$/u;
     const DIFFICULTIES = {
@@ -77,10 +79,14 @@
         solvedRecorded: false,
         dailyRecord: null,
         pendingDailyEntry: null,
+        pendingUnlimitedEntry: null,
+        lastUnlimitedEntry: null,
         dailyRankLoading: false,
         dailyRankRequested: false,
+        varietyId: '',
         helpSlide: 0,
         activeModal: null,
+        nameDialogKind: 'daily',
         dictionaryFallback: false,
         recentTargets: []
     };
@@ -196,6 +202,56 @@
             : '';
         const metaEndpoint = document.querySelector('meta[name="kobza-leaderboard-endpoint"]')?.content || '';
         return String(globalEndpoint || metaEndpoint).trim().replace(/\/$/, '');
+    }
+
+    function readUrlVariation() {
+        const params = new URLSearchParams(window.location.search);
+        const value = String(params.get('variety') || '').trim();
+        return VARIETY_RE.test(value) ? value : '';
+    }
+
+    function readUrlDifficulty() {
+        const params = new URLSearchParams(window.location.search);
+        const value = String(params.get('difficulty') || '').trim();
+        return DIFFICULTIES[value] ? value : 'normal';
+    }
+
+    function consumeDailyResetFlag() {
+        try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.get('resetDaily') !== '1') return;
+            window.localStorage.removeItem(DAILY_STATE_KEY);
+            url.searchParams.delete('resetDaily');
+            window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+        } catch (_) {
+            /* Reset links are only a local testing helper. */
+        }
+    }
+
+    function makeVarietyId() {
+        const randomPart = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+        return `${Date.now()}${randomPart}`.slice(0, 18);
+    }
+
+    function gameUrl({ mode = state.mode, varietyId = state.varietyId, difficulty = state.difficulty } = {}) {
+        const url = new URL(window.location.href);
+        url.hash = '';
+        url.search = '';
+        url.pathname = url.pathname.replace(/unwordle\.html$/i, 'unwordle');
+
+        if (mode === 'unlimited') {
+            url.searchParams.set('variety', varietyId || makeVarietyId());
+            if (difficulty !== 'normal') url.searchParams.set('difficulty', difficulty);
+        }
+
+        return url.toString();
+    }
+
+    function syncUrlToMode() {
+        const nextUrl = gameUrl();
+        if (nextUrl !== window.location.href) {
+            window.history.replaceState(null, '', nextUrl);
+        }
     }
 
     function normalizeWord(value) {
@@ -373,7 +429,7 @@
 
     function targetCandidatePools(rng) {
         const basePool = targetPool();
-        if (state.mode === 'daily') return [shuffleCopy(basePool, rng)];
+        if (state.mode === 'daily' || state.varietyId) return [shuffleCopy(basePool, rng)];
 
         const recentLimit = Math.min(RECENT_TARGET_LIMIT, Math.max(0, basePool.length - 1));
         const recent = new Set(state.recentTargets.slice(-recentLimit));
@@ -392,13 +448,18 @@
         if (state.mode === 'daily') {
             state.difficulty = 'normal';
             state.puzzleNumber = 0;
+            state.varietyId = '';
+        } else if (!state.varietyId) {
+            state.varietyId = makeVarietyId();
         }
         state.dailyRankLoading = false;
         state.dailyRankRequested = false;
 
         const rowCount = DIFFICULTIES[state.difficulty].clueRows;
-        const seedBase = `${state.mode}:${state.difficulty}:${todayKey()}:${state.puzzleNumber}`;
-        const rng = state.mode === 'daily' ? mulberry32(hashString(seedBase)) : Math.random;
+        const seedBase = state.mode === 'daily'
+            ? `${state.mode}:${state.difficulty}:${todayKey()}:${state.puzzleNumber}`
+            : `${state.mode}:${state.difficulty}:${state.varietyId}`;
+        const rng = mulberry32(hashString(seedBase));
         const attemptLimit = state.mode === 'daily' ? DAILY_TARGET_ATTEMPT_LIMIT : UNLIMITED_TARGET_ATTEMPT_LIMIT;
         const pools = targetCandidatePools(rng);
 
@@ -415,9 +476,12 @@
                 state.locked = false;
                 state.revealed = false;
                 state.invalidRow = null;
-                state.startedAt = Date.now();
+                state.startedAt = state.mode === 'daily' ? Date.now() : null;
                 state.solvedRecorded = false;
+                state.pendingUnlimitedEntry = null;
+                state.lastUnlimitedEntry = null;
                 rememberTarget(target, targetPool().length);
+                syncUrlToMode();
 
                 if (state.mode === 'daily') hydrateDailyRecord();
                 else state.dailyRecord = null;
@@ -430,7 +494,7 @@
                     : readyStatus);
                 render();
                 if (state.mode === 'daily' && state.dailyRecord?.solved && !state.dailyRecord.nameSubmitted) {
-                    openNameDialog();
+                    openNameDialog('daily');
                 } else if (state.mode === 'daily' && state.dailyRecord?.solved) {
                     refreshDailyRank();
                 }
@@ -492,14 +556,14 @@
             target: state.target,
             difficulty: 'normal',
             elapsedMs: 0,
-            running: true,
-            paused: false,
+            running: false,
+            paused: true,
             solved: false,
             nameSubmitted: false,
             entryId: '',
             playerName: '',
             rank: null,
-            lastStartedAt: Date.now(),
+            lastStartedAt: null,
             rows: state.rows.map(row => ({ letters: row.letters.slice(), locked: row.locked }))
         };
     }
@@ -510,6 +574,19 @@
             difficulty: 'normal',
             dateKey: todayKey(),
             target: state.target,
+            variation: '',
+            seconds,
+            solvedAt: new Date().toISOString()
+        };
+    }
+
+    function makePendingUnlimitedEntry(seconds) {
+        return {
+            mode: 'unlimited',
+            difficulty: state.difficulty,
+            dateKey: todayKey(),
+            target: state.target,
+            variation: state.varietyId,
             seconds,
             solvedAt: new Date().toISOString()
         };
@@ -671,11 +748,14 @@
 
         els.difficultyTabs.hidden = state.mode === 'daily';
         els.solveButton.hidden = state.mode === 'daily';
+        els.solveButton.disabled = state.mode !== 'unlimited' || state.locked || state.rows.every(row => row.locked);
+        els.solveButton.setAttribute('aria-label', 'Підказати один рядок');
         els.newPuzzleButton.hidden = state.mode === 'daily';
         els.dailyTimer.hidden = state.mode !== 'daily';
         els.nextPuzzleCountdown.hidden = state.mode !== 'daily';
         els.card.classList.toggle('is-paused', isDailyPaused());
-        els.leaderboardButton.setAttribute('aria-label', state.mode === 'daily' ? 'Рейтинг' : 'Досягнення');
+        els.shareButton.setAttribute('aria-label', state.mode === 'daily' ? 'Поділитися словом дня' : 'Поділитися варіацією');
+        els.leaderboardButton.setAttribute('aria-label', state.mode === 'daily' ? 'Рейтинг' : 'Рейтинг нескінченної');
         updateTimerDisplay();
         updateNextPuzzleCountdown();
     }
@@ -754,9 +834,15 @@
         const next = state.rows.findIndex(item => !item.locked);
         if (next === -1) {
             state.locked = true;
-            if (state.mode === 'daily') completeDailyPuzzle();
-            else recordUnlimitedSolve();
-            setStatus('Готово. Завдання розв’язано.');
+            if (state.mode === 'daily') {
+                completeDailyPuzzle();
+                setStatus('Готово. Завдання розв’язано.');
+            } else {
+                const recorded = recordUnlimitedSolve();
+                setStatus(recorded
+                    ? 'Готово. Завдання розв’язано.'
+                    : 'Готово. Після підказки результат не йде в рейтинг.');
+            }
         } else {
             state.activeRow = next;
             state.activeCol = 0;
@@ -775,6 +861,9 @@
         const row = state.rows[state.activeRow];
         if (!row || row.locked) return;
 
+        if (state.mode === 'unlimited' && !state.startedAt) {
+            state.startedAt = Date.now();
+        }
         row.letters[state.activeCol] = letter;
         const rowIndex = state.activeRow;
         const isComplete = row.letters.every(Boolean);
@@ -806,15 +895,25 @@
         render();
     }
 
-    function revealSolution() {
-        if (state.mode === 'daily') return;
-        state.rows.forEach(row => {
-            row.letters = Array.from(row.solution);
-            row.locked = true;
-        });
-        state.locked = true;
+    function showHint() {
+        if (state.mode === 'daily' || state.locked) return;
+        const rowIndex = state.rows.findIndex(row => !row.locked);
+        const row = state.rows[rowIndex];
+        if (!row) return;
+
+        row.letters = Array.from(row.solution);
+        row.locked = true;
         state.revealed = true;
-        setStatus('Розв’язок показано.');
+
+        const next = state.rows.findIndex(item => !item.locked);
+        if (next === -1) {
+            state.locked = true;
+            setStatus('Підказка відкрила останній рядок. Результат не йде в рейтинг.');
+        } else {
+            state.activeRow = next;
+            state.activeCol = 0;
+            setStatus('Підказка відкрила один рядок. Результат не піде в рейтинг.');
+        }
         render();
     }
 
@@ -886,6 +985,7 @@
             difficulty: item?.difficulty || 'normal',
             dateKey: String(item?.dateKey || todayKey()),
             target: normalizeWord(item?.target || state.target),
+            variation: String(item?.variation || ''),
             name: String(item?.name || 'Гравець').trim().slice(0, 24) || 'Гравець',
             seconds: Math.max(1, Math.round(seconds)),
             solvedAt: item?.solvedAt || new Date().toISOString()
@@ -899,6 +999,66 @@
             .filter(item => item.mode === 'daily' && item.dateKey === todayKey() && item.target === state.target)
             .sort((a, b) => a.seconds - b.seconds || String(a.solvedAt).localeCompare(String(b.solvedAt)))
             .slice(0, 10);
+    }
+
+    function uniqueUnlimitedEntries(entries) {
+        const unique = new Map();
+        entries
+            .map(normalizeLeaderboardEntry)
+            .filter(Boolean)
+            .filter(item => item.mode === 'unlimited' && item.variation)
+            .forEach(item => {
+                const key = `${item.name.toLocaleLowerCase('uk-UA')}|${item.difficulty}|${item.variation}`;
+                const current = unique.get(key);
+                if (!current || String(item.solvedAt).localeCompare(String(current.solvedAt)) < 0) {
+                    unique.set(key, item);
+                }
+            });
+        return Array.from(unique.values());
+    }
+
+    function aggregateUnlimitedScores(entries, sinceMs = 0) {
+        const players = new Map();
+        uniqueUnlimitedEntries(entries).forEach(item => {
+            const solvedAt = new Date(item.solvedAt).getTime();
+            if (sinceMs && (!Number.isFinite(solvedAt) || solvedAt < sinceMs)) return;
+
+            const key = item.name.toLocaleLowerCase('uk-UA');
+            const player = players.get(key) || {
+                name: item.name || 'Гравець',
+                total: 0,
+                easy: 0,
+                normal: 0,
+                hard: 0,
+                latestSolvedAt: ''
+            };
+            player.total += 1;
+            player[item.difficulty] = (player[item.difficulty] || 0) + 1;
+            if (!player.latestSolvedAt || String(item.solvedAt).localeCompare(player.latestSolvedAt) > 0) {
+                player.latestSolvedAt = item.solvedAt;
+            }
+            players.set(key, player);
+        });
+
+        return Array.from(players.values())
+            .sort((a, b) => (
+                b.total - a.total
+                || b.hard - a.hard
+                || b.normal - a.normal
+                || String(a.latestSolvedAt).localeCompare(String(b.latestSolvedAt))
+                || a.name.localeCompare(b.name, 'uk-UA')
+            ))
+            .slice(0, 3);
+    }
+
+    function localUnlimitedRankings(entries = readLeaderboard()) {
+        const weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        return {
+            source: 'local',
+            weekly: aggregateUnlimitedScores(entries, weekAgo),
+            allTime: aggregateUnlimitedScores(entries),
+            error: false
+        };
     }
 
     function findDailyRank(entries, reference) {
@@ -961,6 +1121,7 @@
         const url = leaderboardUrl();
         if (!url) return { source: 'local', entries: localDailyLeaderboard(), error: false };
 
+        url.searchParams.set('mode', 'daily');
         url.searchParams.set('dateKey', todayKey());
         url.searchParams.set('target', state.target);
         if (entryId) url.searchParams.set('entryId', entryId);
@@ -986,7 +1147,40 @@
         };
     }
 
-    async function writeRemoteDailyLeaderboard(entry) {
+    function normalizeUnlimitedScore(item) {
+        const total = Number(item?.total);
+        if (!Number.isFinite(total) || total <= 0) return null;
+        return {
+            name: String(item?.name || 'Гравець').trim().slice(0, 24) || 'Гравець',
+            total: Math.max(0, Math.round(total)),
+            easy: Math.max(0, Math.round(Number(item?.easy) || 0)),
+            normal: Math.max(0, Math.round(Number(item?.normal) || 0)),
+            hard: Math.max(0, Math.round(Number(item?.hard) || 0))
+        };
+    }
+
+    async function readRemoteUnlimitedLeaderboard() {
+        const url = leaderboardUrl();
+        if (!url) return localUnlimitedRankings();
+
+        url.searchParams.set('mode', 'unlimited');
+        const response = await fetchWithTimeout(url.toString(), {
+            headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) throw new Error(`Leaderboard read failed: ${response.status}`);
+
+        const payload = await response.json();
+        const weekly = Array.isArray(payload?.weekly) ? payload.weekly : [];
+        const allTime = Array.isArray(payload?.allTime) ? payload.allTime : [];
+        return {
+            source: 'remote',
+            weekly: weekly.map(normalizeUnlimitedScore).filter(Boolean).slice(0, 3),
+            allTime: allTime.map(normalizeUnlimitedScore).filter(Boolean).slice(0, 3),
+            error: false
+        };
+    }
+
+    async function writeRemoteLeaderboard(entry) {
         const url = leaderboardUrl();
         if (!url) return { ok: false, skipped: true };
         try {
@@ -997,9 +1191,11 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    mode: 'daily',
+                    mode: entry.mode,
+                    difficulty: entry.difficulty,
                     dateKey: entry.dateKey,
                     target: entry.target,
+                    variation: entry.variation,
                     name: entry.name,
                     seconds: entry.seconds,
                     solvedAt: entry.solvedAt
@@ -1032,7 +1228,7 @@
         }
 
         updateTimerDisplay();
-        if (!state.dailyRecord?.nameSubmitted) openNameDialog();
+        if (!state.dailyRecord?.nameSubmitted) openNameDialog('daily');
     }
 
     async function recordDailyName(name) {
@@ -1046,7 +1242,7 @@
         const entries = readLeaderboard();
         entries.push(entry);
         writeLeaderboard(entries);
-        const remoteResult = await writeRemoteDailyLeaderboard(entry);
+        const remoteResult = await writeRemoteLeaderboard(entry);
         const savedEntry = remoteResult.entry || entry;
 
         if (state.dailyRecord) {
@@ -1070,21 +1266,35 @@
     }
 
     function recordUnlimitedSolve() {
-        if (state.revealed || state.solvedRecorded || !state.startedAt) return;
+        if (state.revealed || state.solvedRecorded || !state.startedAt) return false;
         const seconds = Math.max(1, Math.round((Date.now() - state.startedAt) / 1000));
-        const entries = readLeaderboard();
-        entries.push({
-            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            mode: 'unlimited',
-            difficulty: state.difficulty,
-            dateKey: todayKey(),
-            target: state.target,
-            name: 'Гравець',
-            seconds,
-            solvedAt: new Date().toISOString()
-        });
-        writeLeaderboard(entries.slice(-250));
+        state.pendingUnlimitedEntry = makePendingUnlimitedEntry(seconds);
         state.solvedRecorded = true;
+        openNameDialog('unlimited');
+        return true;
+    }
+
+    async function recordUnlimitedName(name) {
+        if (!state.pendingUnlimitedEntry) return;
+        const cleanName = String(name || '').trim().slice(0, 24) || 'Гравець';
+        const entry = {
+            ...state.pendingUnlimitedEntry,
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            name: cleanName
+        };
+        const entries = readLeaderboard();
+        entries.push(entry);
+        writeLeaderboard(entries.slice(-250));
+        const remoteResult = await writeRemoteLeaderboard(entry);
+        state.lastUnlimitedEntry = remoteResult.entry || entry;
+        state.pendingUnlimitedEntry = null;
+        closeModal();
+        const message = remoteResult.ok
+            ? 'Результат додано в рейтинг варіації.'
+            : (remoteResult.skipped
+                ? 'Результат збережено на цьому пристрої. Глобальний рейтинг ще не підключено.'
+                : 'Результат збережено локально. Глобальний рейтинг зараз недоступний.');
+        setStatus(message);
     }
 
     async function refreshDailyRank(force = false) {
@@ -1170,11 +1380,14 @@
         if (solved) {
             const rank = Number(state.dailyRecord.rank);
             const hasRank = Number.isFinite(rank) && rank > 0;
-            const rankLabel = state.dailyRankLoading ? '...' : (hasRank ? `#${rank}` : '—');
-            els.dailyTimerLabel.textContent = state.dailyRecord.nameSubmitted ? 'Місце' : 'Результат';
-            els.dailyTimerValue.textContent = state.dailyRecord.nameSubmitted
-                ? `${rankLabel} · ${formatClock(elapsedSeconds)}`
-                : formatClock(elapsedSeconds);
+            if (state.dailyRecord.nameSubmitted && hasRank) {
+                const rankLabel = `#${rank}`;
+                els.dailyTimerLabel.textContent = 'Місце';
+                els.dailyTimerValue.textContent = `${rankLabel} · ${formatClock(elapsedSeconds)}`;
+            } else {
+                els.dailyTimerLabel.textContent = 'Час';
+                els.dailyTimerValue.textContent = formatClock(elapsedSeconds);
+            }
             els.pauseTimerButton.hidden = true;
             els.pauseTimerButton.innerHTML = '';
             return;
@@ -1213,15 +1426,110 @@
         return date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
     }
 
+    function renderLeaderboardList(entries, emptyMessage) {
+        return entries.length
+            ? `<div class="leaderboard-list">
+                ${entries.map((item, index) => `
+                    <div class="leaderboard-row">
+                        <span class="leaderboard-rank">${index + 1}</span>
+                        <span class="leaderboard-main">
+                            <strong>${escapeHtml(item.name || 'Гравець')}</strong>
+                        </span>
+                        <span class="leaderboard-time">
+                            <strong>${formatClock(Number(item.seconds) || 0)}</strong>
+                            <span>час</span>
+                        </span>
+                    </div>
+                `).join('')}
+            </div>`
+            : `<p class="leaderboard-empty">${escapeHtml(emptyMessage)}</p>`;
+    }
+
+    function difficultyCountValue(item, key) {
+        return Math.max(0, Math.round(Number(item?.[key]) || 0));
+    }
+
+    function renderDifficultyCounts(item) {
+        const easy = difficultyCountValue(item, 'easy');
+        const normal = difficultyCountValue(item, 'normal');
+        const hard = difficultyCountValue(item, 'hard');
+        const label = `Легкі ${easy}, звичайні ${normal}, складні ${hard}`;
+        const items = [
+            ['fa-play', 'Легкі', easy],
+            ['fa-square', 'Звичайні', normal],
+            ['fa-cube', 'Складні', hard]
+        ];
+
+        return `
+            <span class="difficulty-counts" aria-label="${escapeHtml(label)}">
+                ${items.map(([icon, title, value]) => `
+                    <span class="difficulty-count" title="${escapeHtml(title)}">
+                        <i class="fas ${icon}" aria-hidden="true"></i>
+                        <strong>${value}</strong>
+                    </span>
+                `).join('')}
+            </span>
+        `;
+    }
+
+    function renderUnlimitedRankSection(title, players, emptyMessage) {
+        const list = players.length
+            ? `<div class="leaderboard-list">
+                ${players.map((item, index) => `
+                    <div class="leaderboard-row">
+                        <span class="leaderboard-rank">${index + 1}</span>
+                        <span class="leaderboard-main">
+                            <strong>${escapeHtml(item.name || 'Гравець')}</strong>
+                            <span class="leaderboard-breakdown">${renderDifficultyCounts(item)}</span>
+                        </span>
+                        <span class="leaderboard-time">
+                            <strong>${Number(item.total) || 0}</strong>
+                            <span>пазлів</span>
+                        </span>
+                    </div>
+                `).join('')}
+            </div>`
+            : `<p class="leaderboard-empty">${escapeHtml(emptyMessage)}</p>`;
+
+        return `
+            <div class="leaderboard-section-title">${escapeHtml(title)}</div>
+            ${list}
+        `;
+    }
+
     async function renderLeaderboard() {
         const entries = readLeaderboard();
         els.clearLeaderboardButton.hidden = entries.length === 0;
         els.clearLeaderboardButton.textContent = 'Очистити статистику';
 
         if (state.mode !== 'daily') {
-            els.leaderboardTitle.textContent = 'Особисті досягнення';
-            els.leaderboardNote.textContent = 'Нескінченний режим рахує тільки твою особисту статистику на цьому пристрої.';
-            els.leaderboardContent.innerHTML = renderStats(entries);
+            els.leaderboardTitle.textContent = 'Рейтинг нескінченної';
+            els.leaderboardNote.textContent = REMOTE_LEADERBOARD_ENDPOINT
+                ? 'Топ за кількістю розв’язаних пазлів.'
+                : 'Глобальний рейтинг ще не підключено. Поки показано результати цього браузера.';
+            els.leaderboardContent.innerHTML = `
+                <p class="leaderboard-empty">Завантаження рейтингу...</p>
+                ${renderStats(entries)}
+            `;
+
+            let result;
+            try {
+                result = await readRemoteUnlimitedLeaderboard();
+            } catch (_) {
+                result = { ...localUnlimitedRankings(entries), error: true };
+            }
+
+            if (result.error) {
+                els.leaderboardNote.textContent = 'Глобальний рейтинг зараз недоступний. Показано результати цього браузера.';
+            } else if (result.source === 'local') {
+                els.leaderboardNote.textContent = 'Глобальний рейтинг ще не підключено. Поки показано результати цього браузера.';
+            }
+
+            els.leaderboardContent.innerHTML = `
+                ${renderUnlimitedRankSection('Топ тижня', result.weekly || [], 'За останні 7 днів ще немає результатів.')}
+                ${renderUnlimitedRankSection('Топ за весь час', result.allTime || [], 'У нескінченному режимі ще немає результатів.')}
+                ${renderStats(entries)}
+            `;
             return;
         }
 
@@ -1247,26 +1555,8 @@
             els.leaderboardNote.textContent = 'Глобальний рейтинг ще не підключено. Поки показано результати цього браузера.';
         }
 
-        const listHtml = result.entries.length
-            ? `<div class="leaderboard-list">
-                ${result.entries.map((item, index) => `
-                    <div class="leaderboard-row">
-                        <span class="leaderboard-rank">${index + 1}</span>
-                        <span class="leaderboard-main">
-                            <strong>${escapeHtml(item.name || 'Гравець')}</strong>
-                            <span>Сьогодні</span>
-                        </span>
-                        <span class="leaderboard-time">
-                            <strong>${formatClock(Number(item.seconds) || 0)}</strong>
-                            <span>час</span>
-                        </span>
-                    </div>
-                `).join('')}
-            </div>`
-            : '<p class="leaderboard-empty">Сьогодні ще немає результатів. Розв’яжи щоденний пазл і додай своє ім’я.</p>';
-
         els.leaderboardContent.innerHTML = `
-            ${listHtml}
+            ${renderLeaderboardList(result.entries, 'Сьогодні ще немає результатів. Розв’яжи щоденний пазл і додай своє ім’я.')}
             ${renderStats(entries)}
         `;
     }
@@ -1285,21 +1575,23 @@
                 ${renderStatRow('fa-sun', 'Щоденних розв’язань', dailyEntries.length)}
                 ${renderStatRow('fa-wand-magic-sparkles', 'Найшвидше', fastest ? formatDuration(fastest) : '0с')}
             </div>
-            <div class="leaderboard-section-title">Інші пазли</div>
+            <div class="leaderboard-section-title">Нескінченні пазли</div>
             <div class="stats-list">
-                ${renderStatRow('fa-play', 'Легких розв’язань', countUnlimited(entries, 'easy'))}
-                ${renderStatRow('fa-square', 'Звичайних розв’язань', countUnlimited(entries, 'normal'))}
-                ${renderStatRow('fa-cube', 'Складних розв’язань', countUnlimited(entries, 'hard'))}
+                ${renderStatRow('fa-layer-group', 'Нескінченні', renderDifficultyCounts({
+                    easy: countUnlimited(entries, 'easy'),
+                    normal: countUnlimited(entries, 'normal'),
+                    hard: countUnlimited(entries, 'hard')
+                }), true)}
             </div>
         `;
     }
 
-    function renderStatRow(icon, label, value) {
+    function renderStatRow(icon, label, value, valueIsHtml = false) {
         return `
             <div class="stats-row">
                 <i class="fas ${icon}" aria-hidden="true"></i>
                 <strong>${escapeHtml(label)}</strong>
-                <span>${escapeHtml(value)}</span>
+                <span>${valueIsHtml ? value : escapeHtml(value)}</span>
             </div>
         `;
     }
@@ -1358,10 +1650,61 @@
         state.activeModal = null;
     }
 
-    function openNameDialog() {
+    function openNameDialog(kind = 'daily') {
+        state.nameDialogKind = kind;
         els.playerName.value = '';
+        els.nameDialogNote.textContent = kind === 'unlimited'
+            ? 'Введи ім’я для рейтингу цієї варіації.'
+            : 'Введи ім’я для щоденного рейтингу.';
         openModal(els.nameDialog);
         requestAnimationFrame(() => els.playerName.focus({ preventScroll: true }));
+    }
+
+    function currentShareText() {
+        if (state.mode === 'daily') {
+            const url = gameUrl({ mode: 'daily' });
+            if (state.dailyRecord?.solved) {
+                const seconds = Math.max(1, Math.round(currentDailyElapsedMs() / 1000));
+                return `Я розв’язав слово дня за ${formatClock(seconds)}, зможеш краще? ${url}`;
+            }
+            return `Спробуй слово дня в КОБЗА-НАВПАКИ: ${url}`;
+        }
+
+        const url = gameUrl({ mode: 'unlimited' });
+        const seconds = Number(state.lastUnlimitedEntry?.seconds || state.pendingUnlimitedEntry?.seconds || 0);
+        if (state.locked && seconds > 0) {
+            return `Я розв’язав варіацію КОБЗА-НАВПАКИ за ${formatClock(seconds)}, зможеш краще? ${url}`;
+        }
+        return `Спробуй цю варіацію КОБЗА-НАВПАКИ: ${url}`;
+    }
+
+    async function copyText(text) {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+
+        const field = document.createElement('textarea');
+        field.value = text;
+        field.setAttribute('readonly', '');
+        field.style.position = 'fixed';
+        field.style.opacity = '0';
+        document.body.appendChild(field);
+        field.select();
+        document.execCommand('copy');
+        field.remove();
+    }
+
+    async function shareCurrentPuzzle() {
+        try {
+            await copyText(currentShareText());
+            setStatus('Текст для поширення скопійовано.');
+            window.setTimeout(() => {
+                if (els.status?.textContent === 'Текст для поширення скопійовано.') setStatus('');
+            }, SHARE_FEEDBACK_MS);
+        } catch (_) {
+            setStatus('Не вдалося скопіювати. Спробуй ще раз.');
+        }
     }
 
     function bindEvents() {
@@ -1385,17 +1728,20 @@
 
         document.addEventListener('keydown', handlePhysicalKey);
 
-        els.solveButton.addEventListener('click', revealSolution);
+        els.solveButton.addEventListener('click', showHint);
         els.newPuzzleButton.addEventListener('click', () => {
             state.puzzleNumber += 1;
+            state.varietyId = makeVarietyId();
             generatePuzzle();
         });
         els.pauseTimerButton.addEventListener('click', toggleDailyPause);
 
         document.querySelectorAll('.mode-tab').forEach(button => {
             button.addEventListener('click', () => {
+                if (state.mode === button.dataset.mode) return;
                 if (state.mode === 'daily') persistDailyRecord(true);
                 state.mode = button.dataset.mode;
+                if (state.mode === 'unlimited') state.varietyId = state.varietyId || makeVarietyId();
                 generatePuzzle();
             });
         });
@@ -1404,6 +1750,7 @@
             button.addEventListener('click', () => {
                 if (state.mode === 'daily') return;
                 state.difficulty = button.dataset.difficulty;
+                state.varietyId = makeVarietyId();
                 generatePuzzle();
             });
         });
@@ -1413,6 +1760,8 @@
             renderHelp();
             openModal(els.helpDialog);
         });
+
+        els.shareButton.addEventListener('click', shareCurrentPuzzle);
 
         els.leaderboardButton.addEventListener('click', () => {
             renderLeaderboard();
@@ -1442,11 +1791,13 @@
 
         els.nameForm.addEventListener('submit', event => {
             event.preventDefault();
-            recordDailyName(els.playerName.value);
+            if (state.nameDialogKind === 'unlimited') recordUnlimitedName(els.playerName.value);
+            else recordDailyName(els.playerName.value);
         });
 
         els.skipNameButton.addEventListener('click', () => {
-            recordDailyName('Гравець');
+            if (state.nameDialogKind === 'unlimited') recordUnlimitedName('Гравець');
+            else recordDailyName('Гравець');
         });
 
         window.addEventListener('beforeunload', () => persistDailyRecord(true));
@@ -1466,6 +1817,7 @@
         els.pauseTimerButton = document.getElementById('pauseTimerButton');
         els.nextPuzzleCountdown = document.getElementById('nextPuzzleCountdown');
         els.helpButton = document.getElementById('helpButton');
+        els.shareButton = document.getElementById('shareButton');
         els.leaderboardButton = document.getElementById('leaderboardButton');
         els.helpDialog = document.getElementById('helpDialog');
         els.helpContent = document.getElementById('helpContent');
@@ -1476,6 +1828,7 @@
         els.leaderboardContent = document.getElementById('leaderboardContent');
         els.clearLeaderboardButton = document.getElementById('clearLeaderboardButton');
         els.nameDialog = document.getElementById('nameDialog');
+        els.nameDialogNote = document.getElementById('nameDialogNote');
         els.nameForm = document.getElementById('nameForm');
         els.playerName = document.getElementById('playerName');
         els.skipNameButton = document.getElementById('skipNameButton');
@@ -1493,7 +1846,25 @@
         bindEvents();
         renderKeyboard();
         await loadWords();
+
+        consumeDailyResetFlag();
+        const sharedVariety = readUrlVariation();
+        if (sharedVariety) {
+            state.mode = 'unlimited';
+            state.difficulty = readUrlDifficulty();
+            state.varietyId = sharedVariety;
+            generatePuzzle();
+            startIntervals();
+            return;
+        }
+
         generatePuzzle();
+        if (state.dailyRecord?.solved) {
+            if (state.activeModal === els.nameDialog) closeModal();
+            state.mode = 'unlimited';
+            state.varietyId = makeVarietyId();
+            generatePuzzle();
+        }
         startIntervals();
     }
 

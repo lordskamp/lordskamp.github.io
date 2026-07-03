@@ -32,6 +32,12 @@
     --wordle-present: #dfbc3f;
     --wordle-correct: #72bf6a;
     --wordle-ink: #ffffff;
+    --modal-bg: rgba(12, 12, 14, 0.96);
+    --modal-text: #f8fafc;
+    --modal-body: #e5e7eb;
+    --modal-muted: #a7b0c0;
+    --modal-border: rgba(255, 255, 255, 0.12);
+    --modal-soft: rgba(255, 255, 255, 0.08);
 }
 
 :root.light-theme {
@@ -49,6 +55,12 @@
     --island-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.1), 0 0 20px rgba(255, 255, 255, 0.5) inset;
     --island-shadow-hover: 0 18px 48px rgba(0, 0, 0, 0.08), 0 0 30px rgba(255, 255, 255, 0.6) inset;
     --particle-color: #8c3dc1;
+    --modal-bg: rgba(255, 255, 255, 0.96);
+    --modal-text: #1d1d22;
+    --modal-body: #28282e;
+    --modal-muted: #64748b;
+    --modal-border: rgba(15, 23, 42, 0.12);
+    --modal-soft: rgba(148, 163, 184, 0.16);
 }
 
 @supports (-webkit-touch-callout: none) {
@@ -95,6 +107,22 @@ body {
     background-color: var(--bg);
     font-family: 'Inter', sans-serif;
     transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+body.site-page-unwordle .custom-cursor,
+body.site-page-unwordle .custom-cursor.cursor-hover,
+body.site-page-unwordle .custom-cursor.cursor-click {
+    width: 20px !important;
+    height: 20px !important;
+    background-color: rgba(255, 255, 255, 0.56) !important;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.5) !important;
+}
+
+:root.light-theme body.site-page-unwordle .custom-cursor,
+:root.light-theme body.site-page-unwordle .custom-cursor.cursor-hover,
+:root.light-theme body.site-page-unwordle .custom-cursor.cursor-click {
+    background-color: rgba(15, 23, 42, 0.32) !important;
+    box-shadow: 0 0 12px rgba(15, 23, 42, 0.14) !important;
 }
 
 button,
@@ -636,6 +664,8 @@ button {
     display: grid;
     gap: 6px;
     margin: 0.75rem auto 0;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .keyboard-row {
@@ -660,6 +690,8 @@ button {
     line-height: 1;
     text-transform: uppercase;
     cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
     transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -749,9 +781,9 @@ button {
     width: min(100%, 458px);
     max-height: min(88vh, 720px);
     overflow: auto;
-    color: #1d1d22;
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid rgba(15, 23, 42, 0.12);
+    color: var(--modal-text);
+    background: var(--modal-bg);
+    border: 1px solid var(--modal-border);
     border-radius: 8px;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
     padding: 1rem 0.9rem 1.1rem;
@@ -774,19 +806,19 @@ button {
     background: transparent;
     border: 0;
     border-radius: 999px;
-    color: #1d1d22;
+    color: var(--modal-text);
     font-size: 1.1rem;
     cursor: pointer;
 }
 
 .unwordle-modal__close:hover {
-    background: rgba(15, 23, 42, 0.08);
+    background: var(--modal-soft);
 }
 
 .help-content h2,
 .unwordle-modal__panel--leaderboard h2 {
     margin: 0 2.2rem 1rem;
-    color: #1d1d22;
+    color: var(--modal-text);
     font-size: 1.55rem;
     line-height: 1.15;
     font-weight: 900;
@@ -796,7 +828,7 @@ button {
 .help-content p,
 .leaderboard-note {
     margin: 0 0 1.25rem;
-    color: #28282e;
+    color: var(--modal-body);
     font-size: 1.02rem;
     line-height: 1.38;
 }
@@ -805,7 +837,7 @@ button {
     display: block;
     margin: 1rem 0 0;
     padding: 0 0 0 1rem;
-    color: #94a0b3;
+    color: var(--modal-muted);
     border-left: 7px solid rgba(148, 160, 179, 0.38);
     font-size: 1.02rem;
     font-weight: 600;
@@ -867,7 +899,7 @@ button {
     align-items: center;
     gap: 1rem;
     margin: 1rem 0;
-    color: #28282e;
+    color: var(--modal-body);
     font-size: 1rem;
     line-height: 1.38;
 }
@@ -891,7 +923,7 @@ button {
 
 .help-label {
     margin: 1rem 0 0.5rem;
-    color: #28282e;
+    color: var(--modal-body);
     font-weight: 700;
 }
 
@@ -906,13 +938,13 @@ button {
     justify-content: center;
     gap: 0.45rem;
     margin-top: 1.25rem;
-    color: #1d1d22;
+    color: var(--modal-text);
     font-size: 1rem;
 }
 
 .modal-link {
     padding: 0;
-    color: #1d1d22;
+    color: var(--modal-text);
     background: transparent;
     border: 0;
     font-size: 1rem;
@@ -923,14 +955,14 @@ button {
 }
 
 .modal-link--muted {
-    color: #8b8f98;
+    color: var(--modal-muted);
     font-weight: 500;
     text-decoration: none;
 }
 
 .leaderboard-note {
     margin-top: -0.4rem;
-    color: #6b7280;
+    color: var(--modal-muted);
     font-size: 0.9rem;
     text-align: center;
 }
@@ -946,8 +978,8 @@ button {
     align-items: center;
     gap: 0.75rem;
     padding: 0.72rem 0.8rem;
-    background: rgba(148, 163, 184, 0.16);
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: var(--modal-soft);
+    border: 1px solid var(--modal-border);
     border-radius: 8px;
 }
 
@@ -970,15 +1002,48 @@ button {
 }
 
 .leaderboard-main strong {
-    color: #1d1d22;
+    color: var(--modal-text);
     font-size: 0.98rem;
 }
 
 .leaderboard-main span,
 .leaderboard-time span {
-    color: #64748b;
+    color: var(--modal-muted);
     font-size: 0.76rem;
     font-weight: 700;
+}
+
+.leaderboard-breakdown {
+    display: block;
+    line-height: 1.35;
+}
+
+.difficulty-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+    color: var(--modal-muted);
+}
+
+.difficulty-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.24rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.difficulty-count i {
+    width: 0.9rem;
+    color: var(--modal-body);
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+.difficulty-count strong {
+    color: var(--modal-text);
+    font-size: 0.82rem;
+    font-weight: 900;
 }
 
 .leaderboard-time {
@@ -988,16 +1053,16 @@ button {
 }
 
 .leaderboard-time strong {
-    color: #1d1d22;
+    color: var(--modal-text);
     font-size: 1rem;
 }
 
 .leaderboard-empty {
     margin: 1.25rem 0 0;
     padding: 1rem;
-    color: #64748b;
-    background: rgba(148, 163, 184, 0.16);
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    color: var(--modal-muted);
+    background: var(--modal-soft);
+    border: 1px solid var(--modal-border);
     border-radius: 8px;
     text-align: center;
     line-height: 1.4;
@@ -1005,7 +1070,7 @@ button {
 
 .leaderboard-section-title {
     margin: 1rem 0 0.55rem;
-    color: #94a0b3;
+    color: var(--modal-muted);
     font-size: 0.78rem;
     font-weight: 900;
     text-transform: uppercase;
@@ -1021,13 +1086,13 @@ button {
     grid-template-columns: 1.3rem 1fr auto;
     align-items: center;
     gap: 0.65rem;
-    color: #28282e;
+    color: var(--modal-body);
     font-size: 0.98rem;
 }
 
 .stats-row i {
     width: 1.3rem;
-    color: #28282e;
+    color: var(--modal-body);
     text-align: center;
 }
 
@@ -1049,9 +1114,9 @@ button {
     width: 100%;
     min-height: 46px;
     padding: 0 0.9rem;
-    color: #1d1d22;
-    background: rgba(148, 163, 184, 0.16);
-    border: 1px solid rgba(15, 23, 42, 0.12);
+    color: var(--modal-text);
+    background: var(--modal-soft);
+    border: 1px solid var(--modal-border);
     border-radius: 8px;
     font-size: 1rem;
     font-weight: 700;

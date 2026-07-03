@@ -17,9 +17,9 @@
     <link rel="icon" type="image/png" sizes="16x16" href="fav/favicon-16x16.png">
     <link rel="shortcut icon" href="fav/favicon.ico">
     <link rel="stylesheet" href="site-ui.css?v=20260611-light-contrast">
-    <link rel="stylesheet" href="unwordle.css?v=20260703-variety">
+    <link rel="stylesheet" href="unwordle.css?v=20260703-icon-rank">
     <script defer src="site-ui.js?v=20260703-clean-urls"></script>
-    <script defer src="unwordle.js?v=20260703-variety"></script>
+    <script defer src="unwordle.js?v=20260703-icon-rank"></script>
 </head>
 
 <body>
@@ -48,6 +48,9 @@
                 </div>
 
                 <div class="unwordle-icon-group unwordle-icon-group--right">
+                    <button class="unwordle-icon-button" id="shareButton" type="button" data-brand="KobzaReverse" aria-label="Поділитися">
+                        <i class="fas fa-share-nodes" aria-hidden="true"></i>
+                    </button>
                     <button class="unwordle-icon-button" id="leaderboardButton" type="button" data-brand="KobzaReverse" aria-label="Рейтинг">
                         <i class="fas fa-chart-simple" aria-hidden="true"></i>
                     </button>
@@ -73,7 +76,7 @@
             <div class="game-grid" id="gameGrid" aria-label="Сітка Кобза-навпаки"></div>
 
             <div class="game-actions">
-                <button class="game-action" id="solveButton" type="button" data-brand="KobzaReverse">Розв’язок</button>
+                <button class="game-action" id="solveButton" type="button" data-brand="KobzaReverse">Підказка</button>
                 <button class="game-action game-action--primary" id="newPuzzleButton" type="button" data-brand="KobzaReverse">Нова гра</button>
                 <div class="daily-timer" id="dailyTimer" hidden>
                     <span class="daily-timer__label" id="dailyTimerLabel">Час</span>
@@ -128,7 +131,7 @@
         <div class="unwordle-modal__backdrop"></div>
         <section class="unwordle-modal__panel unwordle-modal__panel--name" tabindex="-1">
             <h2 id="nameTitle">Записати результат</h2>
-            <p class="leaderboard-note">Введи ім’я для щоденного рейтингу.</p>
+            <p class="leaderboard-note" id="nameDialogNote">Введи ім’я для щоденного рейтингу.</p>
             <form class="name-form" id="nameForm">
                 <label class="sr-only" for="playerName">Ім’я</label>
                 <input id="playerName" name="playerName" type="text" maxlength="24" autocomplete="name" placeholder="Ім’я" required>
