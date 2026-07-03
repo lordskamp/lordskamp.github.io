@@ -2,11 +2,15 @@
     'use strict';
 
     const WORD_LENGTH = 5;
-    const DICTIONARY_URL = 'data/kobza-words.txt?v=20260703-slovko';
+    const DICTIONARY_URL = 'data/kobza-words.txt?v=20260703-variety';
     const LEADERBOARD_KEY = 'lordskamp:kobza-navpaky:leaderboard:v2';
     const DAILY_STATE_KEY = 'lordskamp:kobza-navpaky:daily-state:v1';
     const REMOTE_LEADERBOARD_ENDPOINT = getLeaderboardEndpoint();
     const REMOTE_LEADERBOARD_TIMEOUT_MS = 7000;
+    const MIN_DICTIONARY_WORDS = 500;
+    const RECENT_TARGET_LIMIT = 240;
+    const DAILY_TARGET_ATTEMPT_LIMIT = 240;
+    const UNLIMITED_TARGET_ATTEMPT_LIMIT = 480;
     const UA_WORD_RE = /^[а-щьюяєіїґ]{5}$/u;
     const UA_LETTER_RE = /^[а-щьюяєіїґ]$/u;
     const DIFFICULTIES = {
@@ -76,7 +80,9 @@
         dailyRankLoading: false,
         dailyRankRequested: false,
         helpSlide: 0,
-        activeModal: null
+        activeModal: null,
+        dictionaryFallback: false,
+        recentTargets: []
     };
 
     const HELP_SLIDES = [
@@ -355,6 +361,33 @@
         return richerWords.length > 500 ? richerWords : state.words;
     }
 
+    function rememberTarget(target, poolSize) {
+        if (state.mode === 'daily' || !target) return;
+        const limit = Math.min(RECENT_TARGET_LIMIT, Math.max(0, poolSize - 1));
+        state.recentTargets = state.recentTargets.filter(word => word !== target);
+        state.recentTargets.push(target);
+        if (state.recentTargets.length > limit) {
+            state.recentTargets = state.recentTargets.slice(-limit);
+        }
+    }
+
+    function targetCandidatePools(rng) {
+        const basePool = targetPool();
+        if (state.mode === 'daily') return [shuffleCopy(basePool, rng)];
+
+        const recentLimit = Math.min(RECENT_TARGET_LIMIT, Math.max(0, basePool.length - 1));
+        const recent = new Set(state.recentTargets.slice(-recentLimit));
+        const freshPool = basePool.filter(word => !recent.has(word));
+        const primaryPool = freshPool.length ? freshPool : basePool;
+        const pools = [shuffleCopy(primaryPool, rng)];
+
+        if (primaryPool.length !== basePool.length) {
+            pools.push(shuffleCopy(basePool, rng));
+        }
+
+        return pools;
+    }
+
     function generatePuzzle() {
         if (state.mode === 'daily') {
             state.difficulty = 'normal';
@@ -366,36 +399,43 @@
         const rowCount = DIFFICULTIES[state.difficulty].clueRows;
         const seedBase = `${state.mode}:${state.difficulty}:${todayKey()}:${state.puzzleNumber}`;
         const rng = state.mode === 'daily' ? mulberry32(hashString(seedBase)) : Math.random;
-        const pool = shuffleCopy(targetPool(), rng);
+        const attemptLimit = state.mode === 'daily' ? DAILY_TARGET_ATTEMPT_LIMIT : UNLIMITED_TARGET_ATTEMPT_LIMIT;
+        const pools = targetCandidatePools(rng);
 
-        for (let i = 0; i < pool.length && i < 240; i += 1) {
-            const target = pool[i];
-            const clues = buildCluesForTarget(target, rowCount, rng);
-            if (!clues) continue;
+        for (const pool of pools) {
+            for (let i = 0; i < pool.length && i < attemptLimit; i += 1) {
+                const target = pool[i];
+                const clues = buildCluesForTarget(target, rowCount, rng);
+                if (!clues) continue;
 
-            state.target = target;
-            state.rows = clues;
-            state.activeRow = 0;
-            state.activeCol = 0;
-            state.locked = false;
-            state.revealed = false;
-            state.invalidRow = null;
-            state.startedAt = Date.now();
-            state.solvedRecorded = false;
+                state.target = target;
+                state.rows = clues;
+                state.activeRow = 0;
+                state.activeCol = 0;
+                state.locked = false;
+                state.revealed = false;
+                state.invalidRow = null;
+                state.startedAt = Date.now();
+                state.solvedRecorded = false;
+                rememberTarget(target, targetPool().length);
 
-            if (state.mode === 'daily') hydrateDailyRecord();
-            else state.dailyRecord = null;
+                if (state.mode === 'daily') hydrateDailyRecord();
+                else state.dailyRecord = null;
 
-            setStatus(state.mode === 'daily'
-                ? (state.dailyRecord?.solved ? 'Сьогоднішній пазл уже розв’язано.' : 'Щоденне завдання готове.')
-                : 'Нове завдання готове.');
-            render();
-            if (state.mode === 'daily' && state.dailyRecord?.solved && !state.dailyRecord.nameSubmitted) {
-                openNameDialog();
-            } else if (state.mode === 'daily' && state.dailyRecord?.solved) {
-                refreshDailyRank();
+                const readyStatus = state.mode === 'daily'
+                    ? (state.dailyRecord?.solved ? 'Сьогоднішній пазл уже розв’язано.' : 'Щоденне завдання готове.')
+                    : 'Нове завдання готове.';
+                setStatus(state.dictionaryFallback
+                    ? `${readyStatus} Словник тимчасово недоступний, використано резервний набір.`
+                    : readyStatus);
+                render();
+                if (state.mode === 'daily' && state.dailyRecord?.solved && !state.dailyRecord.nameSubmitted) {
+                    openNameDialog();
+                } else if (state.mode === 'daily' && state.dailyRecord?.solved) {
+                    refreshDailyRank();
+                }
+                return true;
             }
-            return true;
         }
 
         setStatus('Не вдалося зібрати завдання. Спробуйте ще раз.');
@@ -404,15 +444,21 @@
 
     async function loadWords() {
         try {
-            const response = await fetch(DICTIONARY_URL, { cache: 'force-cache' });
+            state.dictionaryFallback = false;
+            const response = await fetch(DICTIONARY_URL, { cache: 'no-cache' });
             if (!response.ok) throw new Error(`Dictionary request failed: ${response.status}`);
             const text = await response.text();
             const words = text.split(/\r?\n/)
                 .map(normalizeWord)
                 .filter(word => UA_WORD_RE.test(word));
-            state.words = Array.from(new Set(words)).sort();
+            const uniqueWords = Array.from(new Set(words)).sort();
+            if (uniqueWords.length < MIN_DICTIONARY_WORDS) {
+                throw new Error(`Dictionary is too small: ${uniqueWords.length}`);
+            }
+            state.words = uniqueWords;
         } catch (_) {
             state.words = FALLBACK_WORDS.filter(word => UA_WORD_RE.test(word));
+            state.dictionaryFallback = true;
             setStatus('Локальний словник недоступний. Запущено резервний набір.');
         }
 

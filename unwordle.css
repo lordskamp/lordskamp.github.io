@@ -585,6 +585,11 @@ button {
     cursor: pointer;
 }
 
+.daily-timer__pause[hidden],
+.daily-timer.is-solved .daily-timer__pause {
+    display: none;
+}
+
 :root.light-theme .mode-tab:hover,
 :root.light-theme .difficulty-tab:hover,
 :root.light-theme .game-action,
