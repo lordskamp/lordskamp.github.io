@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#8c3dc1">
-    <meta name="kobza-leaderboard-endpoint" content="">
+    <meta name="kobza-leaderboard-endpoint" content="https://kobza-leaderboard.lordskamp.workers.dev/">
     <title>КОБЗА-НАВПАКИ | Lordskamp</title>
     <meta name="description" content="Українська reverse Wordle-гра.">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
@@ -76,7 +76,7 @@
                 <button class="game-action" id="solveButton" type="button" data-brand="KobzaReverse">Розв’язок</button>
                 <button class="game-action game-action--primary" id="newPuzzleButton" type="button" data-brand="KobzaReverse">Нова гра</button>
                 <div class="daily-timer" id="dailyTimer" hidden>
-                    <span class="daily-timer__label">Час</span>
+                    <span class="daily-timer__label" id="dailyTimerLabel">Час</span>
                     <strong id="dailyTimerValue">0:00</strong>
                     <button class="daily-timer__pause" id="pauseTimerButton" type="button" data-brand="KobzaReverse">
                         <i class="fas fa-pause" aria-hidden="true"></i>

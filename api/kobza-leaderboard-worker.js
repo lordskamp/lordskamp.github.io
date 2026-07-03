@@ -97,8 +97,15 @@ export default {
                 return json({ error: 'Invalid leaderboard query.' }, 400);
             }
 
-            const entries = sortEntries(await readEntries(env, dateKey, target)).slice(0, 10);
-            return json({ entries });
+            const entryId = String(url.searchParams.get('entryId') || '');
+            const entries = sortEntries(await readEntries(env, dateKey, target));
+            const rankIndex = entryId
+                ? entries.findIndex(entry => entry.id === entryId)
+                : -1;
+            return json({
+                entries: entries.slice(0, 10),
+                rank: rankIndex === -1 ? null : rankIndex + 1
+            });
         }
 
         if (request.method === 'POST') {
@@ -115,13 +122,20 @@ export default {
             const entries = await readEntries(env, entry.dateKey, entry.target);
             entries.push(entry);
 
+            const sortedEntries = sortEntries(entries).slice(0, MAX_STORED_ENTRIES);
+            const rankIndex = sortedEntries.findIndex(item => item.id === entry.id);
+
             await env.KOBZA_LEADERBOARD.put(
                 leaderboardKey(entry.dateKey, entry.target),
-                JSON.stringify(sortEntries(entries).slice(0, MAX_STORED_ENTRIES)),
+                JSON.stringify(sortedEntries),
                 { expirationTtl: ENTRY_TTL_SECONDS }
             );
 
-            return json({ ok: true, entry });
+            return json({
+                ok: true,
+                entry,
+                rank: rankIndex === -1 ? null : rankIndex + 1
+            });
         }
 
         return json({ error: 'Method not allowed.' }, 405);

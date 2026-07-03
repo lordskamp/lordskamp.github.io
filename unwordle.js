@@ -41,7 +41,7 @@
     const KEYBOARD_ROWS = [
         ['й', 'ц', 'у', 'к', 'е', 'н', 'г', 'ш', 'щ', 'з', 'х', 'ї'],
         ['ф', 'і', 'в', 'а', 'п', 'р', 'о', 'л', 'д', 'ж', 'є'],
-        ['enter', 'ґ', 'я', 'ч', 'с', 'м', 'и', 'т', 'ь', 'б', 'ю', 'backspace']
+        ['ґ', 'я', 'ч', 'с', 'м', 'и', 'т', 'ь', 'б', 'ю', 'backspace']
     ];
     const LATIN_TO_UA = new Map(Object.entries({
         q: 'й', w: 'ц', e: 'у', r: 'к', t: 'е', y: 'н', u: 'г', i: 'ш', o: 'щ', p: 'з',
@@ -73,6 +73,8 @@
         solvedRecorded: false,
         dailyRecord: null,
         pendingDailyEntry: null,
+        dailyRankLoading: false,
+        dailyRankRequested: false,
         helpSlide: 0,
         activeModal: null
     };
@@ -358,6 +360,8 @@
             state.difficulty = 'normal';
             state.puzzleNumber = 0;
         }
+        state.dailyRankLoading = false;
+        state.dailyRankRequested = false;
 
         const rowCount = DIFFICULTIES[state.difficulty].clueRows;
         const seedBase = `${state.mode}:${state.difficulty}:${todayKey()}:${state.puzzleNumber}`;
@@ -388,6 +392,8 @@
             render();
             if (state.mode === 'daily' && state.dailyRecord?.solved && !state.dailyRecord.nameSubmitted) {
                 openNameDialog();
+            } else if (state.mode === 'daily' && state.dailyRecord?.solved) {
+                refreshDailyRank();
             }
             return true;
         }
@@ -444,6 +450,9 @@
             paused: false,
             solved: false,
             nameSubmitted: false,
+            entryId: '',
+            playerName: '',
+            rank: null,
             lastStartedAt: Date.now(),
             rows: state.rows.map(row => ({ letters: row.letters.slice(), locked: row.locked }))
         };
@@ -591,9 +600,6 @@
         const colors = getKeyboardColors();
         els.keyboard.innerHTML = KEYBOARD_ROWS.map(row => {
             const keys = row.map(key => {
-                if (key === 'enter') {
-                    return '<button class="keyboard-key keyboard-key--wide" type="button" data-key="enter" title="Ввести" aria-label="Ввести"><i class="fas fa-check" aria-hidden="true"></i></button>';
-                }
                 if (key === 'backspace') {
                     return '<button class="keyboard-key keyboard-key--wide" type="button" data-key="backspace" title="Стерти" aria-label="Стерти"><i class="fas fa-delete-left" aria-hidden="true"></i></button>';
                 }
@@ -724,9 +730,16 @@
         if (!row || row.locked) return;
 
         row.letters[state.activeCol] = letter;
+        const rowIndex = state.activeRow;
+        const isComplete = row.letters.every(Boolean);
         if (state.activeCol < WORD_LENGTH - 1) state.activeCol += 1;
         setStatus('');
         persistDailyRecord();
+        if (isComplete) {
+            submitRow(rowIndex);
+            renderKeyboard();
+            return;
+        }
         render();
     }
 
@@ -842,6 +855,39 @@
             .slice(0, 10);
     }
 
+    function findDailyRank(entries, reference) {
+        if (!reference) return null;
+        const sorted = entries
+            .map(normalizeLeaderboardEntry)
+            .filter(Boolean)
+            .filter(item => item.mode === 'daily' && item.dateKey === todayKey() && item.target === state.target)
+            .sort((a, b) => a.seconds - b.seconds || String(a.solvedAt).localeCompare(String(b.solvedAt)));
+        const index = sorted.findIndex(item => (
+            (reference.id && item.id === reference.id)
+            || (
+                item.seconds === reference.seconds
+                && item.name === reference.name
+                && item.solvedAt === reference.solvedAt
+            )
+        ));
+        return index === -1 ? null : index + 1;
+    }
+
+    function currentDailyResultReference() {
+        if (!state.dailyRecord?.solved) return null;
+        const seconds = Math.max(1, Math.round((Number(state.dailyRecord.elapsedMs) || 0) / 1000));
+        return {
+            id: String(state.dailyRecord.entryId || ''),
+            mode: 'daily',
+            difficulty: 'normal',
+            dateKey: todayKey(),
+            target: state.target,
+            name: String(state.dailyRecord.playerName || 'Гравець'),
+            seconds,
+            solvedAt: state.dailyRecord.solvedAt || ''
+        };
+    }
+
     async function fetchWithTimeout(url, options = {}) {
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), REMOTE_LEADERBOARD_TIMEOUT_MS);
@@ -865,12 +911,13 @@
         }
     }
 
-    async function readRemoteDailyLeaderboard() {
+    async function readRemoteDailyLeaderboard(entryId = '') {
         const url = leaderboardUrl();
         if (!url) return { source: 'local', entries: localDailyLeaderboard(), error: false };
 
         url.searchParams.set('dateKey', todayKey());
         url.searchParams.set('target', state.target);
+        if (entryId) url.searchParams.set('entryId', entryId);
         const response = await fetchWithTimeout(url.toString(), {
             headers: { Accept: 'application/json' }
         });
@@ -879,6 +926,7 @@
         const payload = await response.json();
         const rawEntries = Array.isArray(payload) ? payload : payload.entries;
         const entries = Array.isArray(rawEntries) ? rawEntries : [];
+        const rank = Number(payload?.rank);
         return {
             source: 'remote',
             entries: entries
@@ -887,6 +935,7 @@
                 .filter(item => item.mode === 'daily' && item.dateKey === todayKey() && item.target === state.target)
                 .sort((a, b) => a.seconds - b.seconds || String(a.solvedAt).localeCompare(String(b.solvedAt)))
                 .slice(0, 10),
+            rank: Number.isFinite(rank) && rank > 0 ? rank : null,
             error: false
         };
     }
@@ -910,7 +959,14 @@
                     solvedAt: entry.solvedAt
                 })
             });
-            return { ok: response.ok, status: response.status };
+            const payload = await response.json().catch(() => ({}));
+            const rank = Number(payload?.rank);
+            return {
+                ok: response.ok,
+                status: response.status,
+                entry: normalizeLeaderboardEntry(payload?.entry),
+                rank: Number.isFinite(rank) && rank > 0 ? rank : null
+            };
         } catch (_) {
             return { ok: false };
         }
@@ -945,9 +1001,14 @@
         entries.push(entry);
         writeLeaderboard(entries);
         const remoteResult = await writeRemoteDailyLeaderboard(entry);
+        const savedEntry = remoteResult.entry || entry;
 
         if (state.dailyRecord) {
             state.dailyRecord.nameSubmitted = true;
+            state.dailyRecord.entryId = savedEntry.id || entry.id;
+            state.dailyRecord.playerName = savedEntry.name || cleanName;
+            state.dailyRecord.solvedAt = savedEntry.solvedAt || entry.solvedAt;
+            state.dailyRecord.rank = remoteResult.rank || findDailyRank(entries, entry);
             persistDailyRecord();
         }
         state.pendingDailyEntry = null;
@@ -958,6 +1019,8 @@
                 ? 'Результат збережено на цьому пристрої. Глобальний рейтинг ще не підключено.'
                 : 'Результат збережено локально. Глобальний рейтинг зараз недоступний.');
         setStatus(message);
+        renderControls();
+        if (!state.dailyRecord?.rank) refreshDailyRank(true);
     }
 
     function recordUnlimitedSolve() {
@@ -976,6 +1039,39 @@
         });
         writeLeaderboard(entries.slice(-250));
         state.solvedRecorded = true;
+    }
+
+    async function refreshDailyRank(force = false) {
+        const record = state.dailyRecord;
+        if (state.mode !== 'daily' || !record?.solved || !record.nameSubmitted) return;
+        if (state.dailyRankLoading) return;
+        if (!force && state.dailyRankRequested) return;
+
+        state.dailyRankRequested = true;
+        state.dailyRankLoading = true;
+        updateTimerDisplay();
+
+        try {
+            const reference = currentDailyResultReference();
+            let result;
+            try {
+                result = await readRemoteDailyLeaderboard(reference?.id || '');
+            } catch (_) {
+                result = {
+                    source: 'local',
+                    entries: localDailyLeaderboard(readLeaderboard()),
+                    rank: findDailyRank(readLeaderboard(), reference),
+                    error: true
+                };
+            }
+
+            const rank = result.rank || findDailyRank(result.entries, reference);
+            record.rank = rank || null;
+            persistDailyRecord();
+        } finally {
+            state.dailyRankLoading = false;
+            updateTimerDisplay();
+        }
     }
 
     function isDailyPaused() {
@@ -1022,10 +1118,26 @@
     function updateTimerDisplay() {
         if (!els.dailyTimerValue || state.mode !== 'daily' || !state.dailyRecord) return;
         const elapsedSeconds = Math.floor(currentDailyElapsedMs() / 1000);
+        const solved = Boolean(state.dailyRecord.solved);
+        els.dailyTimer.classList.toggle('is-solved', solved);
+
+        if (solved) {
+            const rank = Number(state.dailyRecord.rank);
+            const hasRank = Number.isFinite(rank) && rank > 0;
+            const rankLabel = state.dailyRankLoading ? '...' : (hasRank ? `#${rank}` : '—');
+            els.dailyTimerLabel.textContent = state.dailyRecord.nameSubmitted ? 'Місце' : 'Результат';
+            els.dailyTimerValue.textContent = state.dailyRecord.nameSubmitted
+                ? `${rankLabel} · ${formatClock(elapsedSeconds)}`
+                : formatClock(elapsedSeconds);
+            els.pauseTimerButton.hidden = true;
+            els.pauseTimerButton.innerHTML = '';
+            return;
+        }
+
+        els.dailyTimerLabel.textContent = 'Час';
         els.dailyTimerValue.textContent = formatClock(elapsedSeconds);
 
         const paused = Boolean(state.dailyRecord.paused);
-        const solved = Boolean(state.dailyRecord.solved);
         els.pauseTimerButton.hidden = solved;
         els.pauseTimerButton.innerHTML = paused
             ? '<i class="fas fa-play" aria-hidden="true"></i><span>Продовжити</span>'
@@ -1238,10 +1350,6 @@
             button.addEventListener('click', () => {
                 if (state.mode === 'daily') persistDailyRecord(true);
                 state.mode = button.dataset.mode;
-                if (state.mode === 'daily') {
-                    state.difficulty = 'normal';
-                    state.puzzleNumber = 0;
-                }
                 generatePuzzle();
             });
         });
@@ -1307,6 +1415,7 @@
         els.solveButton = document.getElementById('solveButton');
         els.newPuzzleButton = document.getElementById('newPuzzleButton');
         els.dailyTimer = document.getElementById('dailyTimer');
+        els.dailyTimerLabel = document.getElementById('dailyTimerLabel');
         els.dailyTimerValue = document.getElementById('dailyTimerValue');
         els.pauseTimerButton = document.getElementById('pauseTimerButton');
         els.nextPuzzleCountdown = document.getElementById('nextPuzzleCountdown');

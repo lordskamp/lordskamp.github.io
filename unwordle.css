@@ -544,6 +544,10 @@ button {
     backdrop-filter: var(--blur);
 }
 
+.daily-timer.is-solved {
+    padding-right: 0.8rem;
+}
+
 .daily-timer[hidden] {
     display: none;
 }
@@ -562,6 +566,10 @@ button {
     text-align: center;
 }
 
+.daily-timer.is-solved strong {
+    min-width: 7.2rem;
+}
+
 .daily-timer__pause {
     min-height: 32px;
     display: inline-flex;
@@ -575,6 +583,29 @@ button {
     font-size: 0.78rem;
     font-weight: 800;
     cursor: pointer;
+}
+
+:root.light-theme .mode-tab:hover,
+:root.light-theme .difficulty-tab:hover,
+:root.light-theme .game-action,
+:root.light-theme .daily-timer {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(15, 23, 42, 0.16);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+:root.light-theme .mode-tab.is-active,
+:root.light-theme .difficulty-tab.is-active {
+    background: rgba(140, 61, 193, 0.1);
+    border-color: rgba(140, 61, 193, 0.22);
+}
+
+:root.light-theme .game-action--primary,
+:root.light-theme .daily-timer__pause {
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--red), var(--red-dark));
+    border-color: rgba(140, 61, 193, 0.45);
 }
 
 .next-puzzle {
@@ -634,6 +665,18 @@ button {
 
 .keyboard-key--wide {
     flex-basis: 1.45rem;
+}
+
+:root.light-theme .keyboard-key:not([data-state]) {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(15, 23, 42, 0.14);
+    box-shadow: 0 5px 16px rgba(15, 23, 42, 0.12);
+}
+
+:root.light-theme .keyboard-key:not([data-state]):hover {
+    background: #ffffff;
+    border-color: rgba(140, 61, 193, 0.28);
 }
 
 .keyboard-key[data-state="absent"] {
