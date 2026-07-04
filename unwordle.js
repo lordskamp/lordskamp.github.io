@@ -5,6 +5,7 @@
     const DICTIONARY_URL = 'data/kobza-words.txt?v=20260703-variety';
     const LEADERBOARD_KEY = 'lordskamp:kobza-navpaky:leaderboard:v2';
     const DAILY_STATE_KEY = 'lordskamp:kobza-navpaky:daily-state:v1';
+    const PLAYER_NAME_KEY = 'lordskamp:kobza-navpaky:player-name:v1';
     const DAILY_TIME_ZONE = resolveDailyTimeZone();
     const DAILY_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
         timeZone: DAILY_TIME_ZONE,
@@ -24,6 +25,8 @@
     });
     const REMOTE_LEADERBOARD_ENDPOINT = getLeaderboardEndpoint();
     const REMOTE_LEADERBOARD_TIMEOUT_MS = 7000;
+    const MAX_LOCAL_LEADERBOARD_ENTRIES = 1000;
+    const DAILY_CHEAT_WARNING_SECONDS = 60;
     const MIN_DICTIONARY_WORDS = 500;
     const RECENT_TARGET_LIMIT = 240;
     const DAILY_TARGET_ATTEMPT_LIMIT = 240;
@@ -990,8 +993,10 @@
         if (next === -1) {
             state.locked = true;
             if (state.mode === 'daily') {
-                completeDailyPuzzle();
-                setStatus('Готово. Завдання розв’язано.');
+                const seconds = completeDailyPuzzle();
+                setStatus(isSuspiciousDailyTime(seconds)
+                    ? dailyCheatWarningText()
+                    : 'Готово. Завдання розв’язано.');
             } else {
                 const recorded = recordUnlimitedSolve();
                 setStatus(recorded
@@ -1131,6 +1136,39 @@
         }
     }
 
+    function cleanPlayerName(value) {
+        return String(value || '')
+            .trim()
+            .replace(/\s+/g, ' ')
+            .slice(0, 24) || 'Гравець';
+    }
+
+    function playerNameKey(value) {
+        return cleanPlayerName(value).toLocaleLowerCase('uk-UA');
+    }
+
+    function samePlayerName(a, b) {
+        return playerNameKey(a) === playerNameKey(b);
+    }
+
+    function readPlayerName() {
+        try {
+            return String(window.localStorage.getItem(PLAYER_NAME_KEY) || '').trim();
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function writePlayerName(name) {
+        try {
+            const cleanName = String(name || '').trim();
+            if (cleanName) window.localStorage.setItem(PLAYER_NAME_KEY, cleanName);
+            else window.localStorage.removeItem(PLAYER_NAME_KEY);
+        } catch (_) {
+            /* Remembering a player name is best-effort. */
+        }
+    }
+
     function normalizeLeaderboardEntry(item) {
         const seconds = Number(item?.seconds);
         if (!Number.isFinite(seconds) || seconds <= 0) return null;
@@ -1148,12 +1186,109 @@
         };
     }
 
-    function localDailyLeaderboard(entries = readLeaderboard()) {
-        return entries
+    function styleSortValue(entry) {
+        const score = normalizeStyleScore(entry?.styleScore);
+        return score === null ? Number.NEGATIVE_INFINITY : score;
+    }
+
+    function compareLeaderboardEntries(a, b) {
+        return a.seconds - b.seconds
+            || styleSortValue(b) - styleSortValue(a)
+            || String(a.solvedAt).localeCompare(String(b.solvedAt))
+            || String(a.id).localeCompare(String(b.id));
+    }
+
+    function firstSubmittedEntry(a, b) {
+        const solvedAtCompare = String(a.solvedAt).localeCompare(String(b.solvedAt));
+        if (solvedAtCompare < 0) return a;
+        if (solvedAtCompare > 0) return b;
+        return String(a.id).localeCompare(String(b.id)) <= 0 ? a : b;
+    }
+
+    function bestStyleScore(entries) {
+        const scores = entries
+            .map(entry => normalizeStyleScore(entry?.styleScore))
+            .filter(score => score !== null);
+        return scores.length ? Math.max(...scores) : null;
+    }
+
+    function mergeWithFirstAttempt(first, entries) {
+        if (first.mode !== 'daily') {
+            return {
+                entry: first,
+                styleUpdated: false,
+                keptExisting: true
+            };
+        }
+
+        const styleScore = bestStyleScore(entries);
+        const currentScore = normalizeStyleScore(first.styleScore);
+        const styleUpdated = styleScore !== null && styleScore !== currentScore;
+
+        return {
+            entry: {
+                ...first,
+                styleScore
+            },
+            styleUpdated,
+            keptExisting: !styleUpdated
+        };
+    }
+
+    function leaderboardPlayerKey(entry) {
+        if (entry.mode === 'unlimited') {
+            return `unlimited:${playerNameKey(entry.name)}:${entry.difficulty}:${entry.variation}`;
+        }
+
+        return `daily:${playerNameKey(entry.name)}:${entry.dateKey}:${entry.target}`;
+    }
+
+    function uniqueLeaderboardEntries(entries) {
+        const byPlayerPuzzle = new Map();
+        entries
             .map(normalizeLeaderboardEntry)
             .filter(Boolean)
+            .forEach(entry => {
+                const key = leaderboardPlayerKey(entry);
+                byPlayerPuzzle.set(key, [...(byPlayerPuzzle.get(key) || []), entry]);
+            });
+
+        return Array.from(byPlayerPuzzle.values()).map(items => {
+            const first = items.reduce((oldest, item) => firstSubmittedEntry(oldest, item));
+            return mergeWithFirstAttempt(first, items).entry;
+        });
+    }
+
+    function mergeLocalLeaderboardEntries(entries, incomingEntries) {
+        const byPlayerPuzzle = new Map();
+        [...entries, ...incomingEntries]
+            .map(normalizeLeaderboardEntry)
+            .filter(Boolean)
+            .forEach(entry => {
+                const key = leaderboardPlayerKey(entry);
+                byPlayerPuzzle.set(key, [...(byPlayerPuzzle.get(key) || []), entry]);
+            });
+
+        return Array.from(byPlayerPuzzle.values())
+            .map(items => {
+                const first = items.reduce((oldest, item) => firstSubmittedEntry(oldest, item));
+                return mergeWithFirstAttempt(first, items).entry;
+            })
+            .sort((a, b) => String(a.solvedAt).localeCompare(String(b.solvedAt)))
+            .slice(-MAX_LOCAL_LEADERBOARD_ENTRIES);
+    }
+
+    function findLocalExistingPlayerEntry(entries, entry) {
+        const normalizedEntry = normalizeLeaderboardEntry(entry);
+        if (!normalizedEntry) return null;
+        const key = leaderboardPlayerKey(normalizedEntry);
+        return uniqueLeaderboardEntries(entries).find(item => leaderboardPlayerKey(item) === key) || null;
+    }
+
+    function localDailyLeaderboard(entries = readLeaderboard()) {
+        return uniqueLeaderboardEntries(entries)
             .filter(item => item.mode === 'daily' && item.dateKey === todayKey() && item.target === state.target)
-            .sort((a, b) => a.seconds - b.seconds || String(a.solvedAt).localeCompare(String(b.solvedAt)))
+            .sort(compareLeaderboardEntries)
             .slice(0, 10);
     }
 
@@ -1166,7 +1301,7 @@
             .forEach(item => {
                 const key = `${item.name.toLocaleLowerCase('uk-UA')}|${item.difficulty}|${item.variation}`;
                 const current = unique.get(key);
-                if (!current || String(item.solvedAt).localeCompare(String(current.solvedAt)) < 0) {
+                if (!current || firstSubmittedEntry(current, item) === item) {
                     unique.set(key, item);
                 }
             });
@@ -1219,11 +1354,9 @@
 
     function findDailyRank(entries, reference) {
         if (!reference) return null;
-        const sorted = entries
-            .map(normalizeLeaderboardEntry)
-            .filter(Boolean)
+        const sorted = uniqueLeaderboardEntries(entries)
             .filter(item => item.mode === 'daily' && item.dateKey === todayKey() && item.target === state.target)
-            .sort((a, b) => a.seconds - b.seconds || String(a.solvedAt).localeCompare(String(b.solvedAt)));
+            .sort(compareLeaderboardEntries);
         const index = sorted.findIndex(item => (
             (reference.id && item.id === reference.id)
             || (
@@ -1296,7 +1429,7 @@
                 .map(normalizeLeaderboardEntry)
                 .filter(Boolean)
                 .filter(item => item.mode === 'daily' && item.dateKey === todayKey() && item.target === state.target)
-                .sort((a, b) => a.seconds - b.seconds || String(a.solvedAt).localeCompare(String(b.solvedAt)))
+                .sort(compareLeaderboardEntries)
                 .slice(0, 10),
             rank: Number.isFinite(rank) && rank > 0 ? rank : null,
             error: false
@@ -1336,7 +1469,7 @@
         };
     }
 
-    async function writeRemoteLeaderboard(entry) {
+    async function writeRemoteLeaderboard(entry, options = {}) {
         const url = leaderboardUrl();
         if (!url) return { ok: false, skipped: true };
         try {
@@ -1347,6 +1480,7 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
+                    id: entry.id,
                     mode: entry.mode,
                     difficulty: entry.difficulty,
                     dateKey: entry.dateKey,
@@ -1355,7 +1489,8 @@
                     name: entry.name,
                     seconds: entry.seconds,
                     styleScore: entry.mode === 'daily' ? entry.styleScore : undefined,
-                    solvedAt: entry.solvedAt
+                    solvedAt: entry.solvedAt,
+                    replaceExisting: options.replaceExisting === true
                 })
             });
             const payload = await response.json().catch(() => ({}));
@@ -1364,11 +1499,84 @@
                 ok: response.ok,
                 status: response.status,
                 entry: normalizeLeaderboardEntry(payload?.entry),
-                rank: Number.isFinite(rank) && rank > 0 ? rank : null
+                existing: normalizeLeaderboardEntry(payload?.existing),
+                incoming: normalizeLeaderboardEntry(payload?.incoming),
+                conflict: response.status === 409 && payload?.conflict === true,
+                replaced: Boolean(payload?.replaced),
+                keptExisting: Boolean(payload?.keptExisting),
+                styleUpdated: Boolean(payload?.styleUpdated),
+                rank: Number.isFinite(rank) && rank > 0 ? rank : null,
+                profile: payload?.profile || null
             };
         } catch (_) {
             return { ok: false };
         }
+    }
+
+    function profileEntriesFromPayload(profile) {
+        return [
+            ...(Array.isArray(profile?.dailyEntries) ? profile.dailyEntries : []),
+            ...(Array.isArray(profile?.unlimitedEntries) ? profile.unlimitedEntries : [])
+        ].map(normalizeLeaderboardEntry).filter(Boolean);
+    }
+
+    function confirmLeaderboardReplacement(existing, entry) {
+        const label = entry.mode === 'unlimited' ? 'цієї варіації' : 'сьогоднішнього пазла';
+        const previousTime = existing?.seconds ? formatClock(existing.seconds) : 'є запис';
+        const incomingTime = entry?.seconds ? formatClock(entry.seconds) : 'новий запис';
+        const rule = entry.mode === 'daily'
+            ? 'Час залишиться з першої спроби. Оновляться тільки очки стилю, якщо вони кращі.'
+            : 'Час у рейтингу залишиться з першої спроби для цього ніку.';
+        return window.confirm(
+            `Нік “${entry.name}” уже є в рейтингу ${label}.\n\n` +
+            `Замінити запис для цього ніку?\n${rule}\n\n` +
+            `Було: ${previousTime}\nЗараз: ${incomingTime}`
+        );
+    }
+
+    function replacementStatusMessage(result, addedMessage, replacedMessage) {
+        if (!result.ok) {
+            return result.skipped
+                ? 'Результат збережено на цьому пристрої. Глобальний рейтинг ще не підключено.'
+                : 'Результат збережено локально. Глобальний рейтинг зараз недоступний.';
+        }
+
+        if (!result.replaced) return addedMessage;
+        if (result.styleUpdated) return 'Очки стилю оновлено. Час залишився з першої спроби.';
+        return result.keptExisting
+            ? 'У рейтингу залишився перший час для цього ніку.'
+            : replacedMessage;
+    }
+
+    async function saveLeaderboardEntry(entry) {
+        let remoteResult = await writeRemoteLeaderboard(entry);
+
+        if (remoteResult.conflict) {
+            const confirmed = confirmLeaderboardReplacement(remoteResult.existing || entry, entry);
+            if (!confirmed) {
+                return { cancelled: true, conflict: true };
+            }
+            remoteResult = await writeRemoteLeaderboard(entry, { replaceExisting: true });
+        }
+
+        if (!remoteResult.ok && !remoteResult.conflict) {
+            const existing = findLocalExistingPlayerEntry(readLeaderboard(), entry);
+            if (existing && !confirmLeaderboardReplacement(existing, entry)) {
+                return { cancelled: true, conflict: true };
+            }
+        }
+
+        const savedEntry = remoteResult.entry || entry;
+        const profileEntries = profileEntriesFromPayload(remoteResult.profile);
+        const mergedEntries = mergeLocalLeaderboardEntries(readLeaderboard(), [savedEntry, ...profileEntries]);
+        writeLeaderboard(mergedEntries);
+        writePlayerName(savedEntry.name || entry.name);
+
+        return {
+            ...remoteResult,
+            entry: savedEntry,
+            entries: mergedEntries
+        };
     }
 
     function completeDailyPuzzle() {
@@ -1386,38 +1594,40 @@
 
         updateTimerDisplay();
         if (!state.dailyRecord?.nameSubmitted) openNameDialog('daily');
+        return seconds;
     }
 
     async function recordDailyName(name) {
         if (!state.pendingDailyEntry) return;
-        const cleanName = String(name || '').trim().slice(0, 24) || 'Гравець';
+        const cleanName = cleanPlayerName(name);
         const entry = {
             ...state.pendingDailyEntry,
             id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
             name: cleanName
         };
-        const entries = readLeaderboard();
-        entries.push(entry);
-        writeLeaderboard(entries);
-        const remoteResult = await writeRemoteLeaderboard(entry);
-        const savedEntry = remoteResult.entry || entry;
+        const saveResult = await saveLeaderboardEntry(entry);
+        if (saveResult.cancelled) {
+            els.nameDialogNote.textContent = 'Можеш змінити ім’я або підтвердити заміну існуючого запису.';
+            return;
+        }
+        const savedEntry = saveResult.entry || entry;
 
         if (state.dailyRecord) {
             state.dailyRecord.nameSubmitted = true;
             state.dailyRecord.entryId = savedEntry.id || entry.id;
             state.dailyRecord.playerName = savedEntry.name || cleanName;
             state.dailyRecord.solvedAt = savedEntry.solvedAt || entry.solvedAt;
-            state.dailyRecord.rank = remoteResult.rank || findDailyRank(entries, entry);
+            state.dailyRecord.elapsedMs = Math.max(1, Math.round(Number(savedEntry.seconds) || entry.seconds)) * 1000;
+            state.dailyRecord.rank = saveResult.rank || findDailyRank(saveResult.entries || readLeaderboard(), savedEntry);
             persistDailyRecord();
         }
         state.pendingDailyEntry = null;
         closeModal();
-        const message = remoteResult.ok
-            ? 'Результат додано в рейтинг.'
-            : (remoteResult.skipped
-                ? 'Результат збережено на цьому пристрої. Глобальний рейтинг ще не підключено.'
-                : 'Результат збережено локально. Глобальний рейтинг зараз недоступний.');
-        setStatus(message);
+        setStatus(replacementStatusMessage(
+            saveResult,
+            'Результат додано в рейтинг.',
+            'Запис у рейтингу оновлено за правилом першої спроби.'
+        ));
         renderControls();
         if (!state.dailyRecord?.rank) refreshDailyRank(true);
     }
@@ -1433,25 +1643,25 @@
 
     async function recordUnlimitedName(name) {
         if (!state.pendingUnlimitedEntry) return;
-        const cleanName = String(name || '').trim().slice(0, 24) || 'Гравець';
+        const cleanName = cleanPlayerName(name);
         const entry = {
             ...state.pendingUnlimitedEntry,
             id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
             name: cleanName
         };
-        const entries = readLeaderboard();
-        entries.push(entry);
-        writeLeaderboard(entries.slice(-250));
-        const remoteResult = await writeRemoteLeaderboard(entry);
-        state.lastUnlimitedEntry = remoteResult.entry || entry;
+        const saveResult = await saveLeaderboardEntry(entry);
+        if (saveResult.cancelled) {
+            els.nameDialogNote.textContent = 'Можеш змінити ім’я або підтвердити заміну існуючого запису.';
+            return;
+        }
+        state.lastUnlimitedEntry = saveResult.entry || entry;
         state.pendingUnlimitedEntry = null;
         closeModal();
-        const message = remoteResult.ok
-            ? 'Результат додано в рейтинг варіації.'
-            : (remoteResult.skipped
-                ? 'Результат збережено на цьому пристрої. Глобальний рейтинг ще не підключено.'
-                : 'Результат збережено локально. Глобальний рейтинг зараз недоступний.');
-        setStatus(message);
+        setStatus(replacementStatusMessage(
+            saveResult,
+            'Результат додано в рейтинг варіації.',
+            'У рейтингу варіації залишився час першої спроби.'
+        ));
     }
 
     async function refreshDailyRank(force = false) {
@@ -1526,6 +1736,14 @@
         const minutes = Math.floor(value / 60);
         const rest = value % 60;
         return minutes ? `${minutes}хв ${rest}с` : `${rest}с`;
+    }
+
+    function isSuspiciousDailyTime(seconds) {
+        return Number(seconds) > 0 && Number(seconds) < DAILY_CHEAT_WARNING_SECONDS;
+    }
+
+    function dailyCheatWarningText() {
+        return 'Попередження: слово дня менш ніж за 1 хвилину виглядає як читерство.';
     }
 
     function normalizeStyleScore(value) {
@@ -1744,7 +1962,7 @@
             return;
         }
 
-        els.leaderboardTitle.textContent = 'Рейтинг щодня';
+        els.leaderboardTitle.textContent = 'Сьогоднішній рейтинг';
         els.leaderboardNote.textContent = REMOTE_LEADERBOARD_ENDPOINT
             ? 'Глобальний рейтинг за сьогодні.'
             : 'Глобальний рейтинг ще не підключено. Поки показано результати цього браузера.';
@@ -1773,16 +1991,23 @@
     }
 
     function renderStats(entries) {
-        const dailyEntries = entries.filter(item => item.mode === 'daily');
+        const profileName = readPlayerName();
+        const statsEntries = uniqueLeaderboardEntries(entries)
+            .filter(item => !profileName || samePlayerName(item.name, profileName));
+        const dailyEntries = statsEntries.filter(item => item.mode === 'daily');
         const solvedDates = Array.from(new Set(dailyEntries.map(item => item.dateKey))).sort();
         const dailySeconds = dailyEntries.map(item => Number(item.seconds)).filter(Number.isFinite);
         const fastest = dailySeconds.length ? Math.min(...dailySeconds) : 0;
 
-        const unlimitedEasy = countUnlimited(entries, 'easy');
-        const unlimitedNormal = countUnlimited(entries, 'normal');
-        const unlimitedHard = countUnlimited(entries, 'hard');
+        const unlimitedEasy = countUnlimited(statsEntries, 'easy');
+        const unlimitedNormal = countUnlimited(statsEntries, 'normal');
+        const unlimitedHard = countUnlimited(statsEntries, 'hard');
+        const statsTitle = profileName
+            ? `Особиста статистика · ${profileName}`
+            : 'Статистика цього браузера';
 
         return `
+            <div class="leaderboard-section-title">${escapeHtml(statsTitle)}</div>
             <div class="leaderboard-section-title">Щоденний пазл</div>
             <div class="stats-list">
                 ${renderStatRow('fa-chart-line', 'Поточна серія', currentStreak(solvedDates))}
@@ -1865,10 +2090,14 @@
 
     function openNameDialog(kind = 'daily') {
         state.nameDialogKind = kind;
-        els.playerName.value = '';
-        els.nameDialogNote.textContent = kind === 'unlimited'
-            ? 'Введи ім’я для рейтингу цієї варіації.'
-            : 'Введи ім’я для щоденного рейтингу.';
+        els.playerName.value = readPlayerName();
+        if (kind === 'unlimited') {
+            els.nameDialogNote.textContent = 'Введи ім’я для рейтингу цієї варіації.';
+        } else if (isSuspiciousDailyTime(state.pendingDailyEntry?.seconds)) {
+            els.nameDialogNote.textContent = `${dailyCheatWarningText()} Якщо все чесно, збережи результат.`;
+        } else {
+            els.nameDialogNote.textContent = 'Введи ім’я для щоденного рейтингу.';
+        }
         openModal(els.nameDialog);
         requestAnimationFrame(() => els.playerName.focus({ preventScroll: true }));
     }
@@ -1999,6 +2228,7 @@
 
         els.clearLeaderboardButton.addEventListener('click', () => {
             writeLeaderboard([]);
+            writePlayerName('');
             renderLeaderboard();
         });
 
