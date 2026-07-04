@@ -7,6 +7,7 @@ const CORS_HEADERS = {
 
 const NAME_LIMIT = 24;
 const MAX_SECONDS = 24 * 60 * 60;
+const MAX_ABS_STYLE_SCORE = 10000;
 const MAX_STORED_ENTRIES = 500;
 const MAX_UNLIMITED_STORED_ENTRIES = 5000;
 const ENTRY_TTL_SECONDS = 60 * 60 * 24 * 35;
@@ -46,6 +47,13 @@ function cleanDifficulty(value) {
     return DIFFICULTIES.has(difficulty) ? difficulty : 'normal';
 }
 
+function cleanStyleScore(value) {
+    if (value === null || typeof value === 'undefined' || value === '') return null;
+    const score = Math.round(Number(value));
+    if (!Number.isFinite(score) || Math.abs(score) > MAX_ABS_STYLE_SCORE) return null;
+    return score;
+}
+
 function leaderboardKeyFor(mode, params) {
     if (mode === 'unlimited') {
         return `unlimited:${params.difficulty}:${params.variation}`;
@@ -70,6 +78,7 @@ function normalizeEntry(item) {
     const target = normalizeWord(item?.target);
     const variation = String(item?.variation || '').trim();
     const seconds = Math.round(Number(item?.seconds));
+    const styleScore = mode === 'daily' ? cleanStyleScore(item?.styleScore) : null;
 
     if (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_SECONDS) return null;
     if (!DATE_RE.test(dateKey)) return null;
@@ -85,6 +94,7 @@ function normalizeEntry(item) {
         variation: mode === 'unlimited' ? variation : '',
         name: cleanName(item?.name),
         seconds,
+        styleScore,
         solvedAt: item?.solvedAt || new Date().toISOString()
     };
 }

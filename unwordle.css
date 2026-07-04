@@ -1040,7 +1040,7 @@ button {
 
 .leaderboard-row {
     display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    grid-template-columns: 2rem minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 0.75rem;
     padding: 0.72rem 0.8rem;
@@ -1050,6 +1050,7 @@ button {
 }
 
 .leaderboard-row--unlimited {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
     padding-block: 0.52rem;
 }
 
@@ -1064,6 +1065,15 @@ button {
     border-radius: 999px;
     font-size: 0.8rem;
     font-weight: 900;
+}
+
+.leaderboard-rank--medal {
+    color: inherit;
+    background: transparent;
+    border-radius: 0;
+    font-size: 1.55rem;
+    line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));
 }
 
 .leaderboard-main {
@@ -1081,6 +1091,7 @@ button {
 }
 
 .leaderboard-main span,
+.leaderboard-style span,
 .leaderboard-time span {
     color: var(--modal-muted);
     font-size: 0.76rem;
@@ -1127,15 +1138,25 @@ button {
     gap: 0.48rem;
 }
 
+.leaderboard-style,
 .leaderboard-time {
     display: grid;
     gap: 0.12rem;
     text-align: right;
 }
 
+.leaderboard-style {
+    min-width: 4.2rem;
+}
+
+.leaderboard-style strong,
 .leaderboard-time strong {
     color: var(--modal-text);
     font-size: 1rem;
+}
+
+.leaderboard-style span {
+    line-height: 1.05;
 }
 
 .leaderboard-empty {
@@ -1330,6 +1351,30 @@ button {
         height: 46px;
         border-radius: 5px;
         font-size: 0.8rem;
+    }
+
+    .leaderboard-row {
+        grid-template-columns: 1.75rem minmax(0, 1fr) auto auto;
+        gap: 0.5rem;
+        padding-inline: 0.58rem;
+    }
+
+    .leaderboard-row--unlimited {
+        grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+    }
+
+    .leaderboard-rank {
+        width: 1.75rem;
+        height: 1.75rem;
+    }
+
+    .leaderboard-style {
+        min-width: 3.65rem;
+    }
+
+    .leaderboard-style span,
+    .leaderboard-time span {
+        font-size: 0.68rem;
     }
 }
 

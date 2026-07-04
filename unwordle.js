@@ -30,6 +30,18 @@
     const UNLIMITED_TARGET_ATTEMPT_LIMIT = 480;
     const VARIETY_RE = /^\d{8,18}$/;
     const SHARE_FEEDBACK_MS = 1800;
+    const STYLE_TIME_LIMIT_SECONDS = 4 * 60;
+    const STYLE_LETTER_SCORES = new Map(Object.entries({
+        о: 1, а: 1, и: 1, н: 1, е: 1, і: 1, т: 1, р: 1, в: 1,
+        к: 2, с: 2, м: 2, д: 2, л: 2, п: 2,
+        у: 3,
+        з: 4, я: 4, б: 4, г: 4,
+        ч: 5, х: 5, й: 5, ь: 5,
+        ж: 6, ї: 6, ц: 6, ш: 6,
+        ю: 7,
+        є: 8, ф: 8, щ: 8,
+        ґ: 10
+    }));
     const UA_WORD_RE = /^[а-щьюяєіїґ]{5}$/u;
     const UA_LETTER_RE = /^[а-щьюяєіїґ]$/u;
     const DIFFICULTIES = {
@@ -109,6 +121,7 @@
         locked: false,
         revealed: false,
         invalidRow: null,
+        invalidAttempts: 0,
         puzzleNumber: 0,
         startedAt: 0,
         solvedRecorded: false,
@@ -607,6 +620,7 @@
                 state.locked = false;
                 state.revealed = false;
                 state.invalidRow = null;
+                state.invalidAttempts = 0;
                 state.startedAt = state.mode === 'daily' ? Date.now() : null;
                 state.solvedRecorded = false;
                 state.pendingUnlimitedEntry = null;
@@ -696,6 +710,7 @@
             playerName: '',
             rank: null,
             lastStartedAt: null,
+            invalidAttempts: 0,
             rows: state.rows.map(row => ({ letters: row.letters.slice(), locked: row.locked }))
         };
     }
@@ -708,6 +723,7 @@
             target: state.target,
             variation: '',
             seconds,
+            styleScore: calculateStyleScore(seconds),
             solvedAt: new Date().toISOString()
         };
     }
@@ -736,6 +752,7 @@
             ...record,
             rows: Array.isArray(record.rows) ? record.rows : []
         };
+        state.invalidAttempts = Math.max(0, Math.round(Number(state.dailyRecord.invalidAttempts) || 0));
 
         state.rows.forEach((row, index) => {
             const saved = state.dailyRecord.rows[index];
@@ -794,6 +811,7 @@
         record.dateKey = todayKey();
         record.target = state.target;
         record.difficulty = 'normal';
+        record.invalidAttempts = Math.max(0, Math.round(Number(state.invalidAttempts) || 0));
         record.rows = state.rows.map(row => ({ letters: row.letters.slice(), locked: row.locked }));
 
         if (materializeTimer && record.running && !record.paused && !record.solved) {
@@ -931,6 +949,13 @@
         }, 320);
     }
 
+    function rejectInvalidWord(rowIndex, message) {
+        state.invalidAttempts += 1;
+        persistDailyRecord();
+        setInvalidRow(rowIndex);
+        setStatus(message);
+    }
+
     function submitRow(rowIndex = state.activeRow) {
         if (isDailyPaused()) {
             setStatus('Таймер на паузі. Натисни “Продовжити”, щоб грати далі.');
@@ -948,15 +973,13 @@
         }
 
         if (!state.wordSet.has(word)) {
-            setInvalidRow(rowIndex);
-            setStatus('Такого слова немає у словнику.');
+            rejectInvalidWord(rowIndex, 'Такого слова немає у словнику.');
             return;
         }
 
         const actualPattern = scoreGuess(word, state.target);
         if (patternToKey(actualPattern) !== patternToKey(row.pattern)) {
-            setInvalidRow(rowIndex);
-            setStatus('Слово не відповідає кольорам рядка.');
+            rejectInvalidWord(rowIndex, 'Слово не відповідає кольорам рядка.');
             return;
         }
 
@@ -1120,6 +1143,7 @@
             variation: String(item?.variation || ''),
             name: String(item?.name || 'Гравець').trim().slice(0, 24) || 'Гравець',
             seconds: Math.max(1, Math.round(seconds)),
+            styleScore: normalizeStyleScore(item?.styleScore),
             solvedAt: item?.solvedAt || new Date().toISOString()
         };
     }
@@ -1330,6 +1354,7 @@
                     variation: entry.variation,
                     name: entry.name,
                     seconds: entry.seconds,
+                    styleScore: entry.mode === 'daily' ? entry.styleScore : undefined,
                     solvedAt: entry.solvedAt
                 })
             });
@@ -1503,6 +1528,40 @@
         return minutes ? `${minutes}хв ${rest}с` : `${rest}с`;
     }
 
+    function normalizeStyleScore(value) {
+        if (value === null || typeof value === 'undefined' || value === '') return null;
+        const score = Math.round(Number(value));
+        return Number.isFinite(score) ? score : null;
+    }
+
+    function scoreStyleWord(word) {
+        return Array.from(normalizeWord(word)).reduce((total, letter) => (
+            total + (STYLE_LETTER_SCORES.get(letter) || 0)
+        ), 0);
+    }
+
+    function confirmedStyleWords() {
+        return state.rows
+            .filter(row => row.locked)
+            .map(row => row.letters.join(''))
+            .filter(word => UA_WORD_RE.test(word));
+    }
+
+    function calculateStyleScore(seconds, invalidAttempts = state.invalidAttempts) {
+        const words = confirmedStyleWords();
+        const mistakes = Math.max(0, Math.round(Number(invalidAttempts) || 0));
+        const wordScore = words.reduce((total, word) => total + scoreStyleWord(word), 0);
+        const confirmedWordBonus = words.length * 10;
+        const cleanBonus = mistakes === 0 ? 25 : 0;
+        const timeBonus = Math.max(0, STYLE_TIME_LIMIT_SECONDS - Math.max(0, Math.round(Number(seconds) || 0)));
+        return wordScore + confirmedWordBonus + cleanBonus + timeBonus - (mistakes * 3);
+    }
+
+    function formatStyleScore(value) {
+        const score = normalizeStyleScore(value);
+        return score === null ? '—' : String(score);
+    }
+
     function updateTimerDisplay() {
         if (!els.dailyTimerValue || state.mode !== 'daily' || !state.dailyRecord) return;
         const elapsedSeconds = Math.floor(currentDailyElapsedMs() / 1000);
@@ -1567,14 +1626,27 @@
         return date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
     }
 
+    function renderLeaderboardRank(index) {
+        const rank = index + 1;
+        const medals = ['🥇', '🥈', '🥉'];
+        if (medals[index]) {
+            return `<span class="leaderboard-rank leaderboard-rank--medal" title="${rank} місце" aria-label="${rank} місце">${medals[index]}</span>`;
+        }
+        return `<span class="leaderboard-rank">${rank}</span>`;
+    }
+
     function renderLeaderboardList(entries, emptyMessage) {
         return entries.length
             ? `<div class="leaderboard-list">
                 ${entries.map((item, index) => `
                     <div class="leaderboard-row">
-                        <span class="leaderboard-rank">${index + 1}</span>
+                        ${renderLeaderboardRank(index)}
                         <span class="leaderboard-main">
                             <strong>${escapeHtml(item.name || 'Гравець')}</strong>
+                        </span>
+                        <span class="leaderboard-style" title="Очки стилю" aria-label="Очки стилю: ${escapeHtml(formatStyleScore(item.styleScore))}">
+                            <strong>${escapeHtml(formatStyleScore(item.styleScore))}</strong>
+                            <span>очки стилю</span>
                         </span>
                         <span class="leaderboard-time">
                             <strong>${formatClock(Number(item.seconds) || 0)}</strong>
@@ -1618,7 +1690,7 @@
             ? `<div class="leaderboard-list">
                 ${players.map((item, index) => `
                     <div class="leaderboard-row leaderboard-row--unlimited">
-                        <span class="leaderboard-rank">${index + 1}</span>
+                        ${renderLeaderboardRank(index)}
                         <span class="leaderboard-main">
                             <strong>${escapeHtml(item.name || 'Гравець')}</strong>
                         </span>
