@@ -148,27 +148,27 @@
             `
         },
         {
-            title: 'Зверху вниз',
+            title: 'Обирай рядок',
             body: () => `
-                <p>Коли рядок прийнято, гра автоматично переходить до наступного.</p>
+                <p>Можеш натиснути будь-який незавершений рядок і вводити слово там.</p>
                 ${renderHelpGrid([
-                    patternRow('ВАГОН', '01010'),
-                    patternRow('ДОБРА', '02202'),
+                    helpRow(patternRow('ВАГОН', '01010'), { accepted: true }),
+                    helpRow(patternRow('ДОБРА', '02202'), { typing: true }),
                     wordRow('КОБЗА', 'correct')
                 ])}
-                <p>Кожен рядок перевіряється і як слово, і як точна відповідність кольорам відносно фінального слова.</p>
+                <p>Коли в рядку 5 літер, гра автоматично перевіряє і слово, і точну відповідність кольорам.</p>
             `
         },
         {
             title: 'Помилки',
             body: () => `
-                <p>Якщо слово не підходить, рядок здригнеться, а над пазлом з’явиться причина.</p>
+                <p>Якщо слово не підходить, над пазлом з’явиться причина, а рядок здригнеться.</p>
+                <p class="help-error-reason">Слово не відповідає кольорам рядка.</p>
                 ${renderHelpGrid([
                     helpRow(patternRow('ВАГОН', '01010'), { accepted: true }),
                     helpRow(patternRow('ДОБРА', '20001'), { invalid: true }),
                     wordRow('КОБЗА', 'correct')
                 ])}
-                <p class="help-error-reason">Слово не відповідає кольорам рядка.</p>
                 <p>Виправ рядок: щойно він знову матиме 5 літер, гра перевірить слово автоматично.</p>
             `
         },
@@ -207,7 +207,7 @@
 
     function renderHelpGrid(rows) {
         return `<div class="help-example">${rows.map(row => (
-            `<div class="help-example-row-wrap${row.accepted ? ' is-accepted' : ''}${row.invalid ? ' is-invalid' : ''}">
+            `<div class="help-example-row-wrap${row.accepted ? ' is-accepted' : ''}${row.invalid ? ' is-invalid' : ''}${row.typing ? ' is-typing' : ''}">
                 <div class="help-example-row">${(row.cells || row).map(item => (
                 `<span class="help-tile" data-state="${item.state}">${escapeHtml(item.letter)}</span>`
             )).join('')}</div>

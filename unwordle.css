@@ -865,7 +865,32 @@ button {
 }
 
 .help-example-row-wrap.is-invalid .help-example-row {
-    animation: row-shake 0.34s ease-in-out 0.18s 3;
+    animation: help-row-shake-loop 2.8s ease-in-out infinite;
+}
+
+.help-example-row-wrap.is-typing .help-tile {
+    color: transparent;
+    animation: help-type-letter 4.2s linear infinite;
+}
+
+.help-example-row-wrap.is-typing .help-tile:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.help-example-row-wrap.is-typing .help-tile:nth-child(2) {
+    animation-delay: 0.34s;
+}
+
+.help-example-row-wrap.is-typing .help-tile:nth-child(3) {
+    animation-delay: 0.58s;
+}
+
+.help-example-row-wrap.is-typing .help-tile:nth-child(4) {
+    animation-delay: 0.82s;
+}
+
+.help-example-row-wrap.is-typing .help-tile:nth-child(5) {
+    animation-delay: 1.06s;
 }
 
 .help-row-check {
@@ -886,6 +911,10 @@ button {
 .help-example-row-wrap.is-accepted .help-row-check {
     opacity: 1;
     transform: scale(1);
+}
+
+.help-example-row-wrap.is-typing .help-row-check {
+    animation: help-check-loop 4.2s ease-in-out infinite;
 }
 
 .help-tile {
@@ -955,7 +984,7 @@ button {
 
 .help-content .help-error-reason {
     max-width: 360px;
-    margin: -0.35rem auto 0.95rem;
+    margin: -0.35rem auto 0.75rem;
     padding: 0.58rem 0.72rem;
     color: var(--modal-text);
     background: rgba(232, 121, 111, 0.16);
@@ -1185,6 +1214,44 @@ button {
     75% { transform: translateX(-4px); }
 }
 
+@keyframes help-row-shake-loop {
+    0%, 18%, 100% { transform: translateX(0); }
+    4% { transform: translateX(-6px); }
+    8% { transform: translateX(6px); }
+    12% { transform: translateX(-4px); }
+    16% { transform: translateX(0); }
+}
+
+@keyframes help-type-letter {
+    0%, 9% {
+        color: transparent;
+        transform: scale(1);
+    }
+    12%, 72% {
+        color: #ffffff;
+        transform: scale(1.04);
+    }
+    78%, 100% {
+        color: transparent;
+        transform: scale(1);
+    }
+}
+
+@keyframes help-check-loop {
+    0%, 42% {
+        opacity: 0;
+        transform: scale(0.72);
+    }
+    48%, 72% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    78%, 100% {
+        opacity: 0;
+        transform: scale(0.72);
+    }
+}
+
 @media (max-width: 768px) {
     :root {
         --grid-size: 35px;
@@ -1319,5 +1386,14 @@ button {
         animation-iteration-count: 1 !important;
         scroll-behavior: auto !important;
         transition-duration: 0.001ms !important;
+    }
+
+    .help-example-row-wrap.is-typing .help-tile {
+        color: #ffffff;
+    }
+
+    .help-example-row-wrap.is-typing .help-row-check {
+        opacity: 1;
+        transform: scale(1);
     }
 }
