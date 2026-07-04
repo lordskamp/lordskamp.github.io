@@ -117,10 +117,8 @@
                 <p>Приклад стартової сітки:</p>
                 ${renderHelpGrid([
                     blankRow(),
-                    [
-                        cell('absent'), cell('present'), cell('correct'), cell('present'), cell('absent')
-                    ],
-                    wordRow('СЛОВО', 'correct')
+                    patternRow('ВАГОН', '01010'),
+                    wordRow('КОБЗА', 'correct')
                 ])}
                 <em>Якщо ти знаєш Wordle: тут ми відновлюємо слова за фінальним словом і кольорами плиток.</em>
             `
@@ -141,7 +139,7 @@
                 <p>Кожен заповнений рядок має бути дійсним українським словом.</p>
                 <div class="help-label">Добре:</div>
                 ${renderHelpGrid([[
-                    cell('present', 'В'), cell('correct', 'Е'), cell('absent', 'С'), cell('absent', 'Н'), cell('present', 'А')
+                    ...patternRow('ДОБРА', '02202')
                 ]])}
                 <div class="help-label">Погано:</div>
                 ${renderHelpGrid([[
@@ -152,10 +150,11 @@
         {
             title: 'Зверху вниз',
             body: () => `
-                <p>Рухайся від верхнього рядка до нижнього. Коли рядок прийнято, гра автоматично переходить до наступного.</p>
+                <p>Коли рядок прийнято, гра автоматично переходить до наступного.</p>
                 ${renderHelpGrid([
-                    [cell('absent'), cell('absent'), cell('present', 'Е'), cell('absent'), cell('absent')],
-                    [cell('absent'), cell('correct', 'Е'), cell('absent'), cell('absent'), cell('absent')]
+                    patternRow('ВАГОН', '01010'),
+                    patternRow('ДОБРА', '02202'),
+                    wordRow('КОБЗА', 'correct')
                 ])}
                 <p>Кожен рядок перевіряється і як слово, і як точна відповідність кольорам відносно фінального слова.</p>
             `
@@ -163,12 +162,13 @@
         {
             title: 'Помилки',
             body: () => `
-                <p>Якщо слово не підходить, рядок здригнеться, а під перемикачами з’явиться причина.</p>
+                <p>Якщо слово не підходить, рядок здригнеться, а над пазлом з’явиться причина.</p>
                 ${renderHelpGrid([
-                    [cell('absent', 'С'), cell('absent'), cell('present', 'В'), cell('absent'), cell('absent')],
-                    [cell('absent'), cell('correct', 'А'), cell('absent', 'С'), cell('absent'), cell('absent')],
-                    wordRow('СЛОВО', 'correct')
+                    helpRow(patternRow('ВАГОН', '01010'), { accepted: true }),
+                    helpRow(patternRow('ДОБРА', '20001'), { invalid: true }),
+                    wordRow('КОБЗА', 'correct')
                 ])}
+                <p class="help-error-reason">Слово не відповідає кольорам рядка.</p>
                 <p>Виправ рядок: щойно він знову матиме 5 літер, гра перевірить слово автоматично.</p>
             `
         },
@@ -177,9 +177,9 @@
             body: () => `
                 <p class="help-centered">Бажаю приємної гри.</p>
                 ${renderHelpGrid([
-                    [cell('absent', 'К'), cell('absent', 'Н'), cell('absent', 'И'), cell('present', 'Г'), cell('absent', 'А')],
-                    [cell('absent', 'В'), cell('present', 'Е'), cell('present', 'С'), cell('absent', 'Н'), cell('absent', 'А')],
-                    wordRow('СЛОВО', 'correct')
+                    patternRow('ВАГОН', '01010'),
+                    patternRow('ДОБРА', '02202'),
+                    wordRow('КОБЗА', 'correct')
                 ])}
             `
         }
@@ -197,11 +197,22 @@
         return Array.from(word).map(letter => cell(stateName, letter));
     }
 
+    function patternRow(word, patternKey) {
+        return Array.from(word).map((letter, index) => cell(tileStateName(Number(patternKey[index])), letter));
+    }
+
+    function helpRow(cells, options = {}) {
+        return { cells, ...options };
+    }
+
     function renderHelpGrid(rows) {
         return `<div class="help-example">${rows.map(row => (
-            `<div class="help-example-row">${row.map(item => (
+            `<div class="help-example-row-wrap${row.accepted ? ' is-accepted' : ''}${row.invalid ? ' is-invalid' : ''}">
+                <div class="help-example-row">${(row.cells || row).map(item => (
                 `<span class="help-tile" data-state="${item.state}">${escapeHtml(item.letter)}</span>`
-            )).join('')}</div>`
+            )).join('')}</div>
+                <span class="help-row-check"${row.accepted ? ' aria-label="Рядок прийнято"' : ' aria-hidden="true"'}>✓</span>
+            </div>`
         )).join('')}</div>`;
     }
 
@@ -396,6 +407,18 @@
         return info.score > previousScore;
     }
 
+    function coloredProgressMatches(info, chosen) {
+        if (chosen.length === 0) return true;
+        const previousColored = chosen[chosen.length - 1].colored;
+        const delta = info.colored - previousColored;
+        return delta >= 0 && delta <= 2;
+    }
+
+    function rowProgressMatches(info, chosen, difficulty) {
+        return scoreProgressMatches(info, chosen, difficulty)
+            && coloredProgressMatches(info, chosen);
+    }
+
     function buildCluesForTarget(target, rowCount, rng, difficulty = state.difficulty) {
         const ranges = SCORE_RANGES[rowCount];
         const matchRanges = MATCH_COUNT_RANGES[difficulty] || [];
@@ -436,8 +459,8 @@
         for (let index = 0; index < rowCount; index += 1) {
             const strictPool = byRange[index].filter(info => !usedWords.has(info.word) && !usedPatterns.has(info.patternKey));
             const relaxedPool = byRange[index].filter(info => !usedWords.has(info.word));
-            const strictProgressPool = strictPool.filter(info => scoreProgressMatches(info, chosen, difficulty));
-            const relaxedProgressPool = relaxedPool.filter(info => scoreProgressMatches(info, chosen, difficulty));
+            const strictProgressPool = strictPool.filter(info => rowProgressMatches(info, chosen, difficulty));
+            const relaxedProgressPool = relaxedPool.filter(info => rowProgressMatches(info, chosen, difficulty));
             const progressPool = strictProgressPool.length ? strictProgressPool : relaxedProgressPool;
             const pool = difficulty === 'hard'
                 ? progressPool.slice().sort((a, b) => a.score - b.score)
@@ -820,7 +843,7 @@
             colors.set(letter, 'correct');
         });
 
-        state.rows.forEach(row => {
+        state.rows.filter(row => row.locked).forEach(row => {
             row.letters.forEach((letter, index) => {
                 if (!letter) return;
                 const name = tileStateName(row.pattern[index]);
