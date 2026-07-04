@@ -884,15 +884,6 @@ button {
     background: var(--wordle-correct);
 }
 
-.help-tile.is-error::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    right: 0;
-    border-top: 14px solid #e8796f;
-    border-left: 14px solid transparent;
-}
-
 .color-rule {
     display: grid;
     grid-template-columns: 40px 1fr;
@@ -974,13 +965,17 @@ button {
 
 .leaderboard-row {
     display: grid;
-    grid-template-columns: 2rem 1fr auto;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.75rem;
     padding: 0.72rem 0.8rem;
     background: var(--modal-soft);
     border: 1px solid var(--modal-border);
     border-radius: 8px;
+}
+
+.leaderboard-row--unlimited {
+    padding-block: 0.52rem;
 }
 
 .leaderboard-rank {
@@ -999,11 +994,15 @@ button {
 .leaderboard-main {
     display: grid;
     gap: 0.12rem;
+    min-width: 0;
 }
 
 .leaderboard-main strong {
     color: var(--modal-text);
     font-size: 0.98rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .leaderboard-main span,
@@ -1011,11 +1010,6 @@ button {
     color: var(--modal-muted);
     font-size: 0.76rem;
     font-weight: 700;
-}
-
-.leaderboard-breakdown {
-    display: block;
-    line-height: 1.35;
 }
 
 .difficulty-counts {
@@ -1044,6 +1038,18 @@ button {
     color: var(--modal-text);
     font-size: 0.82rem;
     font-weight: 900;
+}
+
+.leaderboard-difficulty {
+    min-width: 7rem;
+    display: inline-flex;
+    justify-content: flex-end;
+}
+
+.leaderboard-difficulty .difficulty-counts {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 0.48rem;
 }
 
 .leaderboard-time {

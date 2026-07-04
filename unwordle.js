@@ -26,20 +26,38 @@
     };
     const SCORE_RANGES = {
         2: [
-            { min: 0, max: 3, maxGreen: 1 },
-            { min: 3, max: 7, minGreen: 1 }
+            { min: 1, max: 2 },
+            { min: 3, max: 5 }
         ],
         3: [
-            { min: 0, max: 3, maxGreen: 1 },
-            { min: 2, max: 5 },
-            { min: 4, max: 8, minGreen: 1 }
+            { min: 1, max: 2 },
+            { min: 2, max: 3 },
+            { min: 4, max: 6 }
         ],
         5: [
-            { min: 0, max: 2, maxGreen: 1 },
-            { min: 1, max: 4, maxGreen: 2 },
-            { min: 2, max: 5 },
-            { min: 3, max: 7, minGreen: 1 },
-            { min: 5, max: 8, minGreen: 2 }
+            { min: 0, max: 2, allowBlank: true },
+            { min: 0, max: 3, allowBlank: true },
+            { min: 1, max: 5 },
+            { min: 2, max: 7 },
+            { min: 3, max: 8 }
+        ]
+    };
+    const MATCH_COUNT_RANGES = {
+        easy: [
+            { min: 120 },
+            { min: 30 }
+        ],
+        normal: [
+            { min: 80 },
+            { min: 30 },
+            { min: 30 }
+        ],
+        hard: [
+            { min: 80 },
+            { min: 30 },
+            { min: 30 },
+            { min: 30 },
+            { min: 30 }
         ]
     };
     const STATE_NAMES = ['absent', 'present', 'correct'];
@@ -127,7 +145,7 @@
                 ]])}
                 <div class="help-label">Погано:</div>
                 ${renderHelpGrid([[
-                    cell('absent', 'Ф', true), cell('correct', 'Ж'), cell('absent', 'Ґ', true), cell('absent', 'Ї', true), cell('absent', 'Є', true)
+                    cell('absent', 'Ф'), cell('correct', 'Ж'), cell('absent', 'Ґ'), cell('absent', 'Ї'), cell('absent', 'Є')
                 ]])}
             `
         },
@@ -147,11 +165,11 @@
             body: () => `
                 <p>Якщо слово не підходить, рядок здригнеться, а під перемикачами з’явиться причина.</p>
                 ${renderHelpGrid([
-                    [cell('absent', 'С'), cell('absent'), cell('present', 'В', true), cell('absent'), cell('absent')],
-                    [cell('absent'), cell('correct', 'А'), cell('absent', 'С', true), cell('absent'), cell('absent')],
+                    [cell('absent', 'С'), cell('absent'), cell('present', 'В'), cell('absent'), cell('absent')],
+                    [cell('absent'), cell('correct', 'А'), cell('absent', 'С'), cell('absent'), cell('absent')],
                     wordRow('СЛОВО', 'correct')
                 ])}
-                <p>Виправ рядок і натисни Enter або кнопку з галочкою на клавіатурі.</p>
+                <p>Виправ рядок: щойно він знову матиме 5 літер, гра перевірить слово автоматично.</p>
             `
         },
         {
@@ -167,8 +185,8 @@
         }
     ];
 
-    function cell(stateName, letter = '', error = false) {
-        return { state: stateName, letter, error };
+    function cell(stateName, letter = '') {
+        return { state: stateName, letter };
     }
 
     function blankRow() {
@@ -182,7 +200,7 @@
     function renderHelpGrid(rows) {
         return `<div class="help-example">${rows.map(row => (
             `<div class="help-example-row">${row.map(item => (
-                `<span class="help-tile${item.error ? ' is-error' : ''}" data-state="${item.state}">${escapeHtml(item.letter)}</span>`
+                `<span class="help-tile" data-state="${item.state}">${escapeHtml(item.letter)}</span>`
             )).join('')}</div>`
         )).join('')}</div>`;
     }
@@ -344,6 +362,7 @@
         return {
             green,
             yellow,
+            colored: green + yellow,
             score: green * 2 + yellow
         };
     }
@@ -356,60 +375,87 @@
         if (info.score < spec.min || info.score > spec.max) return false;
         if (typeof spec.minGreen === 'number' && info.green < spec.minGreen) return false;
         if (typeof spec.maxGreen === 'number' && info.green > spec.maxGreen) return false;
-        return info.patternKey !== '22222';
+        if (info.patternKey === '22222') return false;
+        if (info.patternKey === '00000') return Boolean(spec.allowBlank);
+        return true;
     }
 
-    function buildCluesForTarget(target, rowCount, rng) {
+    function matchCountMatchesSpec(info, spec) {
+        if (!spec) return true;
+        if (typeof spec.min === 'number' && info.matchCount < spec.min) return false;
+        if (typeof spec.max === 'number' && info.matchCount > spec.max) return false;
+        return true;
+    }
+
+    function scoreProgressMatches(info, chosen, difficulty) {
+        if (chosen.length === 0) return true;
+        const previousScore = chosen[chosen.length - 1].score;
+        if (difficulty === 'hard' && chosen.length === 1 && previousScore === 0 && info.score === 0) {
+            return true;
+        }
+        return info.score > previousScore;
+    }
+
+    function buildCluesForTarget(target, rowCount, rng, difficulty = state.difficulty) {
         const ranges = SCORE_RANGES[rowCount];
+        const matchRanges = MATCH_COUNT_RANGES[difficulty] || [];
+        const useMatchRanges = !state.dictionaryFallback && state.words.length >= MIN_DICTIONARY_WORDS;
+        const patternCounts = new Map();
         const candidates = state.words
             .filter(word => word !== target)
             .map(word => {
                 const pattern = scoreGuess(word, target);
+                const patternKey = patternToKey(pattern);
+                patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
                 return {
                     word,
                     pattern,
-                    patternKey: patternToKey(pattern),
+                    patternKey,
                     ...analyzePattern(pattern)
                 };
             })
+            .map(info => ({
+                ...info,
+                matchCount: patternCounts.get(info.patternKey) || 0
+            }))
             .filter(info => info.patternKey !== '22222');
 
-        const byRange = ranges.map(spec => shuffleCopy(candidates.filter(info => patternMatchesSpec(info, spec)), rng));
+        const byRange = ranges.map((spec, index) => {
+            const matchSpec = useMatchRanges ? matchRanges[index] : null;
+            return shuffleCopy(candidates.filter(info => (
+                patternMatchesSpec(info, spec)
+                && matchCountMatchesSpec(info, matchSpec)
+            )), rng);
+        });
         if (byRange.some(bucket => bucket.length === 0)) return null;
 
         const usedWords = new Set();
         const usedPatterns = new Set();
         const chosen = [];
 
-        // Pick one real hidden word per clue row, backtracking when a row bucket is exhausted.
-        function search(index) {
-            if (index >= rowCount) return true;
+        for (let index = 0; index < rowCount; index += 1) {
             const strictPool = byRange[index].filter(info => !usedWords.has(info.word) && !usedPatterns.has(info.patternKey));
             const relaxedPool = byRange[index].filter(info => !usedWords.has(info.word));
-            const pool = strictPool.length >= 8 ? strictPool : relaxedPool;
+            const strictProgressPool = strictPool.filter(info => scoreProgressMatches(info, chosen, difficulty));
+            const relaxedProgressPool = relaxedPool.filter(info => scoreProgressMatches(info, chosen, difficulty));
+            const progressPool = strictProgressPool.length ? strictProgressPool : relaxedProgressPool;
+            const pool = difficulty === 'hard'
+                ? progressPool.slice().sort((a, b) => a.score - b.score)
+                : progressPool;
+            const info = pool[0];
 
-            for (const info of pool.slice(0, 160)) {
-                usedWords.add(info.word);
-                usedPatterns.add(info.patternKey);
-                chosen.push(info);
-
-                if (search(index + 1)) return true;
-
-                chosen.pop();
-                usedWords.delete(info.word);
-                usedPatterns.delete(info.patternKey);
-            }
-            return false;
+            if (!info) return null;
+            usedWords.add(info.word);
+            usedPatterns.add(info.patternKey);
+            chosen.push(info);
         }
 
-        return search(0)
-            ? chosen.map(info => ({
-                solution: info.word,
-                pattern: info.pattern,
-                letters: Array(WORD_LENGTH).fill(''),
-                locked: false
-            }))
-            : null;
+        return chosen.map(info => ({
+            solution: info.word,
+            pattern: info.pattern,
+            letters: Array(WORD_LENGTH).fill(''),
+            locked: false
+        }));
     }
 
     function targetPool() {
@@ -466,7 +512,7 @@
         for (const pool of pools) {
             for (let i = 0; i < pool.length && i < attemptLimit; i += 1) {
                 const target = pool[i];
-                const clues = buildCluesForTarget(target, rowCount, rng);
+                const clues = buildCluesForTarget(target, rowCount, rng, state.difficulty);
                 if (!clues) continue;
 
                 state.target = target;
@@ -1476,15 +1522,13 @@
         const list = players.length
             ? `<div class="leaderboard-list">
                 ${players.map((item, index) => `
-                    <div class="leaderboard-row">
+                    <div class="leaderboard-row leaderboard-row--unlimited">
                         <span class="leaderboard-rank">${index + 1}</span>
                         <span class="leaderboard-main">
                             <strong>${escapeHtml(item.name || 'Гравець')}</strong>
-                            <span class="leaderboard-breakdown">${renderDifficultyCounts(item)}</span>
                         </span>
-                        <span class="leaderboard-time">
-                            <strong>${Number(item.total) || 0}</strong>
-                            <span>пазлів</span>
+                        <span class="leaderboard-difficulty">
+                            ${renderDifficultyCounts(item)}
                         </span>
                     </div>
                 `).join('')}
@@ -1567,6 +1611,10 @@
         const dailySeconds = dailyEntries.map(item => Number(item.seconds)).filter(Number.isFinite);
         const fastest = dailySeconds.length ? Math.min(...dailySeconds) : 0;
 
+        const unlimitedEasy = countUnlimited(entries, 'easy');
+        const unlimitedNormal = countUnlimited(entries, 'normal');
+        const unlimitedHard = countUnlimited(entries, 'hard');
+
         return `
             <div class="leaderboard-section-title">Щоденний пазл</div>
             <div class="stats-list">
@@ -1577,11 +1625,9 @@
             </div>
             <div class="leaderboard-section-title">Нескінченні пазли</div>
             <div class="stats-list">
-                ${renderStatRow('fa-layer-group', 'Нескінченні', renderDifficultyCounts({
-                    easy: countUnlimited(entries, 'easy'),
-                    normal: countUnlimited(entries, 'normal'),
-                    hard: countUnlimited(entries, 'hard')
-                }), true)}
+                ${renderStatRow('fa-play', 'Легкі розв’язання', unlimitedEasy)}
+                ${renderStatRow('fa-square', 'Звичайні розв’язання', unlimitedNormal)}
+                ${renderStatRow('fa-cube', 'Складні розв’язання', unlimitedHard)}
             </div>
         `;
     }
