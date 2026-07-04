@@ -5,6 +5,23 @@
     const DICTIONARY_URL = 'data/kobza-words.txt?v=20260703-variety';
     const LEADERBOARD_KEY = 'lordskamp:kobza-navpaky:leaderboard:v2';
     const DAILY_STATE_KEY = 'lordskamp:kobza-navpaky:daily-state:v1';
+    const DAILY_TIME_ZONE = resolveDailyTimeZone();
+    const DAILY_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+        timeZone: DAILY_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const DAILY_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+        timeZone: DAILY_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+    });
     const REMOTE_LEADERBOARD_ENDPOINT = getLeaderboardEndpoint();
     const REMOTE_LEADERBOARD_TIMEOUT_MS = 7000;
     const MIN_DICTIONARY_WORDS = 500;
@@ -96,6 +113,7 @@
         startedAt: 0,
         solvedRecorded: false,
         dailyRecord: null,
+        dailyKey: '',
         pendingDailyEntry: null,
         pendingUnlimitedEntry: null,
         lastUnlimitedEntry: null,
@@ -116,8 +134,8 @@
                 <p>Мета гри — заповнити сітку правильними літерами.</p>
                 <p>Приклад стартової сітки:</p>
                 ${renderHelpGrid([
-                    patternRow('     ', '01100'),
-                    patternRow('     ', '01020'),
+                    patternRow('     ', '00100'),
+                    patternRow('     ', '02010'),
                     wordRow('КОБЗА', 'correct')
                 ])}
                 <em>Якщо ти знаєш Wordle: тут ми відновлюємо слова за фінальним словом і кольорами плиток.</em>
@@ -139,7 +157,7 @@
                 <p>Кожен заповнений рядок має бути дійсним українським словом.</p>
                 <div class="help-label">Добре:</div>
                 ${renderHelpGrid([[
-                    ...patternRow('ДОБРА', '02202')
+                    ...patternRow('ЛОБИК', '02201')
                 ]])}
                 <div class="help-label">Погано:</div>
                 ${renderHelpGrid([[
@@ -153,7 +171,7 @@
                 <p>Можеш натиснути будь-який незавершений рядок і вводити слово там.</p>
                 ${renderHelpGrid([
                     helpRow(patternRow('ВАГОН', '01010'), { accepted: true }),
-                    helpRow(patternRow('ДОБРА', '02202'), { typing: true }),
+                    helpRow(patternRow('ЛОБИК', '02201'), { typing: true }),
                     wordRow('КОБЗА', 'correct')
                 ])}
                 <p>Коли в рядку 5 літер, гра автоматично перевіряє і слово, і точну відповідність кольорам.</p>
@@ -166,7 +184,7 @@
                 <p class="help-error-reason">Слово не відповідає кольорам рядка.</p>
                 ${renderHelpGrid([
                     helpRow(patternRow('ВАГОН', '01010'), { accepted: true }),
-                    helpRow(patternRow('ДОБРА', '20001'), { invalid: true }),
+                    helpRow(patternRow('ЛОБИК', '02202'), { invalid: true }),
                     wordRow('КОБЗА', 'correct')
                 ])}
                 <p>Виправ рядок: щойно він знову матиме 5 літер, гра перевірить слово автоматично.</p>
@@ -178,7 +196,7 @@
                 <p class="help-centered">Бажаю приємної гри.</p>
                 ${renderHelpGrid([
                     patternRow('ВАГОН', '01010'),
-                    patternRow('ДОБРА', '02202'),
+                    patternRow('ЛОБИК', '02201'),
                     wordRow('КОБЗА', 'correct')
                 ])}
             `
@@ -187,10 +205,6 @@
 
     function cell(stateName, letter = '') {
         return { state: stateName, letter };
-    }
-
-    function blankRow() {
-        return Array.from({ length: WORD_LENGTH }, () => cell('absent'));
     }
 
     function wordRow(word, stateName) {
@@ -318,17 +332,64 @@
         };
     }
 
+    function resolveDailyTimeZone() {
+        const candidates = ['Europe/Kyiv', 'Europe/Kiev'];
+        for (const timeZone of candidates) {
+            try {
+                new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date(0));
+                return timeZone;
+            } catch (_) {
+                /* Some older runtimes still expose the previous IANA spelling. */
+            }
+        }
+        return 'UTC';
+    }
+
+    function dateTimeParts(formatter, date) {
+        return formatter.formatToParts(date).reduce((parts, item) => {
+            if (item.type !== 'literal') parts[item.type] = item.value;
+            return parts;
+        }, {});
+    }
+
     function todayKey(date = new Date()) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+        const { year, month, day } = dateTimeParts(DAILY_DATE_FORMATTER, date);
         return `${year}-${month}-${day}`;
     }
 
     function addDays(dateKey, offset) {
         const [year, month, day] = dateKey.split('-').map(Number);
-        const date = new Date(year, month - 1, day + offset);
-        return todayKey(date);
+        const date = new Date(Date.UTC(year, month - 1, day + offset));
+        const nextYear = date.getUTCFullYear();
+        const nextMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const nextDay = String(date.getUTCDate()).padStart(2, '0');
+        return `${nextYear}-${nextMonth}-${nextDay}`;
+    }
+
+    function dailyOffsetMs(date) {
+        const parts = dateTimeParts(DAILY_DATE_TIME_FORMATTER, date);
+        const hour = Number(parts.hour) === 24 ? 0 : Number(parts.hour);
+        const zonedAsUtc = Date.UTC(
+            Number(parts.year),
+            Number(parts.month) - 1,
+            Number(parts.day),
+            hour,
+            Number(parts.minute),
+            Number(parts.second)
+        );
+        return zonedAsUtc - date.getTime();
+    }
+
+    function dailyKeyStartMs(dateKey) {
+        const [year, month, day] = dateKey.split('-').map(Number);
+        const localMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
+        let timestamp = localMidnightAsUtc;
+
+        for (let i = 0; i < 3; i += 1) {
+            timestamp = localMidnightAsUtc - dailyOffsetMs(new Date(timestamp));
+        }
+
+        return timestamp;
     }
 
     function shuffleCopy(items, rng = Math.random) {
@@ -524,9 +585,10 @@
         state.dailyRankLoading = false;
         state.dailyRankRequested = false;
 
+        const dailyKey = state.mode === 'daily' ? todayKey() : '';
         const rowCount = DIFFICULTIES[state.difficulty].clueRows;
         const seedBase = state.mode === 'daily'
-            ? `${state.mode}:${state.difficulty}:${todayKey()}:${state.puzzleNumber}`
+            ? `${state.mode}:${state.difficulty}:${dailyKey}:${state.puzzleNumber}`
             : `${state.mode}:${state.difficulty}:${state.varietyId}`;
         const rng = mulberry32(hashString(seedBase));
         const attemptLimit = state.mode === 'daily' ? DAILY_TARGET_ATTEMPT_LIMIT : UNLIMITED_TARGET_ATTEMPT_LIMIT;
@@ -549,6 +611,7 @@
                 state.solvedRecorded = false;
                 state.pendingUnlimitedEntry = null;
                 state.lastUnlimitedEntry = null;
+                state.dailyKey = dailyKey;
                 rememberTarget(target, targetPool().length);
                 syncUrlToMode();
 
@@ -1479,14 +1542,23 @@
 
     function secondsToNextPuzzle() {
         const now = new Date();
-        const next = new Date(now);
-        next.setHours(24, 0, 0, 0);
-        return Math.max(0, Math.ceil((next.getTime() - now.getTime()) / 1000));
+        const nextKey = addDays(todayKey(now), 1);
+        return Math.max(0, Math.ceil((dailyKeyStartMs(nextKey) - now.getTime()) / 1000));
     }
 
     function updateNextPuzzleCountdown() {
         if (!els.nextPuzzleCountdown || state.mode !== 'daily') return;
         els.nextPuzzleCountdown.textContent = `Наступний пазл через ${formatClock(secondsToNextPuzzle())}`;
+    }
+
+    function refreshDailyPuzzleIfNeeded() {
+        if (state.mode !== 'daily') return;
+        const currentKey = todayKey();
+        if (!state.dailyKey) {
+            state.dailyKey = currentKey;
+            return;
+        }
+        if (state.dailyKey !== currentKey) generatePuzzle();
     }
 
     function formatDate(value) {
@@ -1905,6 +1977,7 @@
 
     function startIntervals() {
         window.setInterval(() => {
+            refreshDailyPuzzleIfNeeded();
             updateTimerDisplay();
             updateNextPuzzleCountdown();
         }, 1000);
