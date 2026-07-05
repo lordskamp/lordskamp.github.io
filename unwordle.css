@@ -818,7 +818,8 @@ button {
 }
 
 .help-content h2,
-.unwordle-modal__panel--leaderboard h2 {
+.unwordle-modal__panel--leaderboard h2,
+.unwordle-modal__panel--name h2 {
     margin: 0 2.2rem 1rem;
     color: var(--modal-text);
     font-size: 1.55rem;
@@ -1142,20 +1143,28 @@ button {
 .leaderboard-time {
     display: grid;
     gap: 0.12rem;
+    align-content: center;
     text-align: right;
 }
 
 .leaderboard-style {
     min-width: 4.2rem;
+    text-align: left;
 }
 
 .leaderboard-style strong,
 .leaderboard-time strong {
     color: var(--modal-text);
     font-size: 1rem;
+    line-height: 1;
 }
 
-.leaderboard-style span {
+.leaderboard-time strong {
+    text-align: right;
+}
+
+.leaderboard-style span,
+.leaderboard-time span {
     line-height: 1.05;
 }
 

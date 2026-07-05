@@ -1522,15 +1522,12 @@
 
     function confirmLeaderboardReplacement(existing, entry) {
         const label = entry.mode === 'unlimited' ? 'цієї варіації' : 'сьогоднішнього пазла';
-        const previousTime = existing?.seconds ? formatClock(existing.seconds) : 'є запис';
-        const incomingTime = entry?.seconds ? formatClock(entry.seconds) : 'новий запис';
         const rule = entry.mode === 'daily'
             ? 'Час залишиться з першої спроби. Оновляться тільки очки стилю, якщо вони кращі.'
             : 'Час у рейтингу залишиться з першої спроби для цього ніку.';
         return window.confirm(
             `Нік “${entry.name}” уже є в рейтингу ${label}.\n\n` +
-            `Замінити запис для цього ніку?\n${rule}\n\n` +
-            `Було: ${previousTime}\nЗараз: ${incomingTime}`
+            `Замінити запис для цього ніку?\n${rule}`
         );
     }
 
