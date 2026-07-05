@@ -200,7 +200,7 @@
                 <p class="help-error-reason">Слово не відповідає кольорам рядка.</p>
                 ${renderHelpGrid([
                     helpRow(patternRow('ВАГОН', '01010'), { accepted: true }),
-                    helpRow(patternRow('ЛОБИК', '02202'), { invalid: true }),
+                    helpRow(patternRow('ЛОБИК', '20202'), { invalid: true }),
                     wordRow('КОБЗА', 'correct')
                 ])}
                 <p>Виправ рядок: щойно він знову матиме 5 літер, гра перевірить слово автоматично.</p>
