@@ -518,6 +518,10 @@ button {
     filter: saturate(1.06);
 }
 
+.unwordle-tile.is-hidden-letter {
+    color: transparent;
+}
+
 :root.light-theme .unwordle-tile.is-active {
     border-color: #0f172a;
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.78), 0 8px 22px rgba(15, 23, 42, 0.14);
@@ -654,11 +658,6 @@ button {
 
 .next-puzzle[hidden] {
     display: none;
-}
-
-.unwordle-card.is-paused .game-grid,
-.unwordle-card.is-paused .ukrainian-keyboard {
-    opacity: 0.52;
 }
 
 .ukrainian-keyboard {

@@ -624,7 +624,7 @@
                 state.revealed = false;
                 state.invalidRow = null;
                 state.invalidAttempts = 0;
-                state.startedAt = state.mode === 'daily' ? Date.now() : null;
+                state.startedAt = null;
                 state.solvedRecorded = false;
                 state.pendingUnlimitedEntry = null;
                 state.lastUnlimitedEntry = null;
@@ -743,6 +743,36 @@
         };
     }
 
+    function dailyHasStartedProgress() {
+        const record = state.dailyRecord;
+        if (!record) return false;
+        const elapsed = Math.max(0, Number(record.elapsedMs) || 0);
+        return elapsed > 0 || state.rows.some(row => row.locked || row.letters.some(Boolean));
+    }
+
+    function normalizeDailyTimerState() {
+        const record = state.dailyRecord;
+        if (!record || record.solved) return;
+
+        if (record.running) {
+            record.paused = false;
+            record.lastStartedAt = record.lastStartedAt || Date.now();
+            return;
+        }
+
+        if (dailyHasStartedProgress()) {
+            record.running = true;
+            record.paused = false;
+            record.lastStartedAt = Date.now();
+            return;
+        }
+
+        record.running = false;
+        record.paused = true;
+        record.elapsedMs = 0;
+        record.lastStartedAt = null;
+    }
+
     function hydrateDailyRecord() {
         const stored = readDailyRecord();
         const isSamePuzzle = stored
@@ -780,6 +810,8 @@
                 state.dailyRecord.lastStartedAt = null;
             }
         }
+
+        if (!state.dailyRecord.solved) normalizeDailyTimerState();
 
         if (state.dailyRecord.solved && !state.dailyRecord.nameSubmitted) {
             const seconds = Math.max(1, Math.round(currentDailyElapsedMs() / 1000));
@@ -845,10 +877,11 @@
     }
 
     function renderGrid() {
+        const waitingToStart = isDailyWaitingToStart();
         const rowsHtml = state.rows.map((row, rowIndex) => {
             const tiles = row.pattern.map((color, colIndex) => {
                 const letter = row.letters[colIndex] || '';
-                const isActive = !isDailyPaused() && !state.locked && rowIndex === state.activeRow && colIndex === state.activeCol && !row.locked;
+                const isActive = !waitingToStart && !state.locked && rowIndex === state.activeRow && colIndex === state.activeCol && !row.locked;
                 return `<button class="unwordle-tile${isActive ? ' is-active' : ''}${letter ? ' is-filled' : ''}" type="button" data-row="${rowIndex}" data-col="${colIndex}" data-state="${tileStateName(color)}" aria-label="Рядок ${rowIndex + 1}, плитка ${colIndex + 1}">${escapeHtml(letter.toLocaleUpperCase('uk-UA'))}</button>`;
             }).join('');
             return `
@@ -859,9 +892,13 @@
             `;
         }).join('');
 
-        const targetTiles = Array.from(state.target).map(letter => (
-            `<span class="unwordle-tile is-filled" data-state="correct">${escapeHtml(letter.toLocaleUpperCase('uk-UA'))}</span>`
-        )).join('');
+        const targetTiles = Array.from(state.target).map((letter, index) => {
+            const visibleLetter = waitingToStart ? '' : escapeHtml(letter.toLocaleUpperCase('uk-UA'));
+            const label = waitingToStart
+                ? `Прихована літера ${index + 1} фінального слова`
+                : `Фінальне слово, літера ${index + 1}: ${letter.toLocaleUpperCase('uk-UA')}`;
+            return `<span class="unwordle-tile${waitingToStart ? ' is-hidden-letter' : ' is-filled'}" data-state="correct" aria-label="${escapeHtml(label)}">${visibleLetter}</span>`;
+        }).join('');
 
         els.grid.innerHTML = `
             ${rowsHtml}
@@ -906,7 +943,7 @@
         els.newPuzzleButton.hidden = state.mode === 'daily';
         els.dailyTimer.hidden = state.mode !== 'daily';
         els.nextPuzzleCountdown.hidden = state.mode !== 'daily';
-        els.card.classList.toggle('is-paused', isDailyPaused());
+        els.card.classList.toggle('is-awaiting-start', isDailyWaitingToStart());
         els.shareButton.setAttribute('aria-label', state.mode === 'daily' ? 'Поділитися словом дня' : 'Поділитися варіацією');
         els.leaderboardButton.setAttribute('aria-label', state.mode === 'daily' ? 'Рейтинг' : 'Рейтинг нескінченної');
         updateTimerDisplay();
@@ -922,6 +959,7 @@
 
     function getKeyboardColors() {
         const colors = new Map();
+        if (isDailyWaitingToStart()) return colors;
 
         Array.from(state.target).forEach(letter => {
             colors.set(letter, 'correct');
@@ -960,8 +998,8 @@
     }
 
     function submitRow(rowIndex = state.activeRow) {
-        if (isDailyPaused()) {
-            setStatus('Таймер на паузі. Натисни “Продовжити”, щоб грати далі.');
+        if (isDailyWaitingToStart()) {
+            setStatus('Натисни “Почати”, щоб запустити таймер і грати.');
             return;
         }
 
@@ -1012,8 +1050,8 @@
     }
 
     function putLetter(letter) {
-        if (isDailyPaused()) {
-            setStatus('Таймер на паузі. Продовж гру, щоб вводити літери.');
+        if (isDailyWaitingToStart()) {
+            setStatus('Натисни “Почати”, щоб вводити літери.');
             return;
         }
 
@@ -1039,7 +1077,7 @@
     }
 
     function backspace() {
-        if (isDailyPaused()) return;
+        if (isDailyWaitingToStart()) return;
         if (state.locked) return;
         const row = state.rows[state.activeRow];
         if (!row || row.locked) return;
@@ -1694,28 +1732,21 @@
         }
     }
 
-    function isDailyPaused() {
-        return state.mode === 'daily' && Boolean(state.dailyRecord?.paused);
+    function isDailyWaitingToStart() {
+        if (state.mode !== 'daily' || !state.dailyRecord || state.dailyRecord.solved) return false;
+        return !state.dailyRecord.running;
     }
 
-    function toggleDailyPause() {
+    function startDailyTimer() {
         if (state.mode !== 'daily' || !state.dailyRecord || state.dailyRecord.solved) return;
         const record = state.dailyRecord;
-        if (record.running && !record.paused) {
-            record.elapsedMs = currentDailyElapsedMs();
-            record.running = false;
-            record.paused = true;
-            record.lastStartedAt = null;
-            setStatus('Таймер на паузі.');
-        } else {
-            record.running = true;
-            record.paused = false;
-            record.lastStartedAt = Date.now();
-            setStatus('Гру продовжено.');
-        }
+        if (record.running) return;
+        record.running = true;
+        record.paused = false;
+        record.lastStartedAt = Date.now();
+        setStatus('Гру розпочато. Таймер уже не зупиняється.');
         persistDailyRecord();
-        renderControls();
-        renderGrid();
+        render();
     }
 
     function formatClock(totalSeconds) {
@@ -1781,7 +1812,9 @@
         if (!els.dailyTimerValue || state.mode !== 'daily' || !state.dailyRecord) return;
         const elapsedSeconds = Math.floor(currentDailyElapsedMs() / 1000);
         const solved = Boolean(state.dailyRecord.solved);
+        const waitingToStart = isDailyWaitingToStart();
         els.dailyTimer.classList.toggle('is-solved', solved);
+        els.dailyTimer.classList.toggle('is-running', !solved && !waitingToStart);
 
         if (solved) {
             const rank = Number(state.dailyRecord.rank);
@@ -1802,12 +1835,12 @@
         els.dailyTimerLabel.textContent = 'Час';
         els.dailyTimerValue.textContent = formatClock(elapsedSeconds);
 
-        const paused = Boolean(state.dailyRecord.paused);
-        els.pauseTimerButton.hidden = solved;
-        els.pauseTimerButton.innerHTML = paused
-            ? '<i class="fas fa-play" aria-hidden="true"></i><span>Продовжити</span>'
-            : '<i class="fas fa-pause" aria-hidden="true"></i><span>Пауза</span>';
-        els.pauseTimerButton.setAttribute('aria-pressed', String(paused));
+        els.pauseTimerButton.hidden = !waitingToStart;
+        els.pauseTimerButton.innerHTML = waitingToStart
+            ? '<i class="fas fa-play" aria-hidden="true"></i><span>Почати</span>'
+            : '';
+        els.pauseTimerButton.setAttribute('aria-label', 'Почати слово дня');
+        els.pauseTimerButton.removeAttribute('aria-pressed');
 
         if (state.dailyRecord.running && !state.dailyRecord.paused && !state.dailyRecord.solved) {
             persistDailyRecord(true);
@@ -2155,7 +2188,7 @@
 
         els.grid.addEventListener('click', event => {
             const tile = event.target.closest('.unwordle-tile[data-row]');
-            if (!tile || state.locked || isDailyPaused()) return;
+            if (!tile || state.locked || isDailyWaitingToStart()) return;
             const rowIndex = Number(tile.dataset.row);
             const colIndex = Number(tile.dataset.col);
             if (!Number.isInteger(rowIndex) || !Number.isInteger(colIndex)) return;
@@ -2173,7 +2206,7 @@
             state.varietyId = makeVarietyId();
             generatePuzzle();
         });
-        els.pauseTimerButton.addEventListener('click', toggleDailyPause);
+        els.pauseTimerButton.addEventListener('click', startDailyTimer);
 
         document.querySelectorAll('.mode-tab').forEach(button => {
             button.addEventListener('click', () => {
