@@ -6,6 +6,8 @@
     'use strict';
 
     const CLOUD_VALUE_LIMIT = 3900;
+    const CLOUD_STORAGE_TIMEOUT_MS = 3000;
+    const CLOUD_STORAGE_KEY_RE = /^[A-Za-z0-9_-]{1,128}$/;
     let backHandler = null;
 
     function getApp() {
@@ -35,28 +37,54 @@
 
     function restoreCloudStorage(keys) {
         const storage = cloudStorage();
-        if (!storage || !Array.isArray(keys) || !keys.length) return Promise.resolve({});
+        const entries = Array.isArray(keys)
+            ? keys.map(item => ({
+                cloudKey: String(item?.cloudKey || item || '').trim(),
+                localKey: String(item?.localKey || item?.cloudKey || item || '').trim()
+            })).filter(item => item.cloudKey && item.localKey)
+            : [];
+
+        if (!storage) return Promise.resolve({ ok: false, reason: 'unavailable' });
+        if (!entries.length || entries.some(item => !CLOUD_STORAGE_KEY_RE.test(item.cloudKey))) {
+            return Promise.resolve({ ok: false, reason: 'invalid-key' });
+        }
 
         return new Promise(resolve => {
+            let settled = false;
+            let timeoutId = null;
+
+            const finish = result => {
+                if (settled) return;
+                settled = true;
+                if (timeoutId) window.clearTimeout(timeoutId);
+                resolve(result);
+            };
+
+            timeoutId = window.setTimeout(() => finish({ ok: false, reason: 'timeout' }), CLOUD_STORAGE_TIMEOUT_MS);
+
             try {
-                storage.getItems(keys, (error, values) => {
-                    if (error || !values) {
-                        resolve({});
+                storage.getItems(entries.map(item => item.cloudKey), (error, values) => {
+                    if (error) {
+                        finish({ ok: false, reason: 'request-failed' });
                         return;
                     }
 
-                    Object.entries(values).forEach(([key, value]) => {
-                        if (typeof value !== 'string' || !value) return;
+                    entries.forEach(({ cloudKey, localKey }) => {
+                        const value = values?.[cloudKey];
                         try {
-                            window.localStorage.setItem(key, value);
+                            if (typeof value === 'string' && value) {
+                                window.localStorage.setItem(localKey, value);
+                            } else {
+                                window.localStorage.removeItem(localKey);
+                            }
                         } catch (_) {
-                            /* The game still works if browser storage is unavailable. */
+                            finish({ ok: false, reason: 'sync-failed' });
                         }
                     });
-                    resolve(values);
+                    finish({ ok: true });
                 });
             } catch (_) {
-                resolve({});
+                finish({ ok: false, reason: 'request-failed' });
             }
         });
     }
@@ -167,7 +195,7 @@
 
     async function init({ cloudKeys = [] } = {}) {
         const app = getApp();
-        if (!app) return false;
+        if (!app) return { telegram: false, cloudStorage: { ok: false, reason: 'unavailable' } };
 
         document.documentElement.classList.add('telegram-mini-app');
         document.body.classList.add('telegram-mini-app');
@@ -189,8 +217,10 @@
             /* Theme variables are still provided by Telegram when events are unavailable. */
         }
 
-        await restoreCloudStorage(cloudKeys);
-        return true;
+        return {
+            telegram: true,
+            cloudStorage: await restoreCloudStorage(cloudKeys)
+        };
     }
 
     window.KobzaTelegram = {

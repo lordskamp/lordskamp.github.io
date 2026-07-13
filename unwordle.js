@@ -7,6 +7,9 @@
     const DAILY_STATE_KEY = 'lordskamp:kobza-navpaky:daily-state:v1';
     const POOP_STATE_KEY = 'lordskamp:kobza-navpaky:poop-state:v1';
     const PLAYER_NAME_KEY = 'lordskamp:kobza-navpaky:player-name:v1';
+    const CLOUD_DAILY_STATE_KEY = 'lordskamp-kobza-navpaky-daily-state-v1';
+    const CLOUD_POOP_STATE_KEY = 'lordskamp-kobza-navpaky-poop-state-v1';
+    const CLOUD_PLAYER_NAME_KEY = 'lordskamp-kobza-navpaky-player-name-v1';
     const DAILY_TIME_ZONE = resolveDailyTimeZone();
     const DAILY_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
         timeZone: DAILY_TIME_ZONE,
@@ -321,7 +324,7 @@
             const url = new URL(window.location.href);
             if (url.searchParams.get('resetDaily') !== '1') return;
             window.localStorage.removeItem(DAILY_STATE_KEY);
-            window.KobzaTelegram?.removeCloudValue(DAILY_STATE_KEY);
+            window.KobzaTelegram?.removeCloudValue(CLOUD_DAILY_STATE_KEY);
             url.searchParams.delete('resetDaily');
             window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
         } catch (_) {
@@ -843,7 +846,7 @@
         try {
             const serialized = JSON.stringify(record);
             window.localStorage.setItem(DAILY_STATE_KEY, serialized);
-            window.KobzaTelegram?.setCloudValue(DAILY_STATE_KEY, serialized);
+            window.KobzaTelegram?.setCloudValue(CLOUD_DAILY_STATE_KEY, serialized);
         } catch (_) {
             /* Persistent daily timer is best-effort when storage is unavailable. */
         }
@@ -862,7 +865,7 @@
         try {
             const serialized = JSON.stringify(record);
             window.localStorage.setItem(POOP_STATE_KEY, serialized);
-            window.KobzaTelegram?.setCloudValue(POOP_STATE_KEY, serialized);
+            window.KobzaTelegram?.setCloudValue(CLOUD_POOP_STATE_KEY, serialized);
         } catch (_) {
             /* Persistent mode progress is best-effort when storage is unavailable. */
         }
@@ -1591,10 +1594,10 @@
             const cleanName = String(name || '').trim();
             if (cleanName) {
                 window.localStorage.setItem(PLAYER_NAME_KEY, cleanName);
-                window.KobzaTelegram?.setCloudValue(PLAYER_NAME_KEY, cleanName);
+                window.KobzaTelegram?.setCloudValue(CLOUD_PLAYER_NAME_KEY, cleanName);
             } else {
                 window.localStorage.removeItem(PLAYER_NAME_KEY);
-                window.KobzaTelegram?.removeCloudValue(PLAYER_NAME_KEY);
+                window.KobzaTelegram?.removeCloudValue(CLOUD_PLAYER_NAME_KEY);
             }
         } catch (_) {
             /* Remembering a player name is best-effort. */
@@ -2956,11 +2959,19 @@
     }
 
     async function init() {
-        await window.KobzaTelegram?.init({
-            cloudKeys: [DAILY_STATE_KEY, POOP_STATE_KEY, PLAYER_NAME_KEY]
+        const telegramSession = await window.KobzaTelegram?.init({
+            cloudKeys: [
+                { cloudKey: CLOUD_DAILY_STATE_KEY, localKey: DAILY_STATE_KEY },
+                { cloudKey: CLOUD_POOP_STATE_KEY, localKey: POOP_STATE_KEY },
+                { cloudKey: CLOUD_PLAYER_NAME_KEY, localKey: PLAYER_NAME_KEY }
+            ]
         });
         cacheElements();
         bindEvents();
+        if (telegramSession?.telegram && !telegramSession.cloudStorage?.ok) {
+            setStatus('Хмарне сховище Telegram недоступне. Оновіть Telegram і відкрийте гру знову.');
+            return;
+        }
         const telegramPlayerName = window.KobzaTelegram?.getPlayerName();
         if (telegramPlayerName && !readPlayerName()) writePlayerName(telegramPlayerName);
         window.KobzaTelegram?.setBackHandler(() => {
