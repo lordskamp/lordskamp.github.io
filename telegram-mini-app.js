@@ -144,6 +144,26 @@
         }
     }
 
+    function openInvoice(url) {
+        const app = getApp();
+        if (!app?.openInvoice || !url) return Promise.resolve('unavailable');
+
+        return new Promise(resolve => {
+            let settled = false;
+            const finish = status => {
+                if (settled) return;
+                settled = true;
+                resolve(String(status || 'failed'));
+            };
+
+            try {
+                app.openInvoice(url, finish);
+            } catch (_) {
+                finish('failed');
+            }
+        });
+    }
+
     function setBackHandler(handler) {
         const app = getApp();
         backHandler = typeof handler === 'function' ? handler : null;
@@ -231,6 +251,7 @@
         getPlayerName,
         haptic,
         share,
+        openInvoice,
         setBackHandler,
         setBackButtonVisible,
         setCloudValue,

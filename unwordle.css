@@ -118,6 +118,19 @@ body.telegram-mini-app .keyboard-key:not([data-state]) {
     box-shadow: none;
 }
 
+/* Telegram iOS has a shorter usable viewport than the visual sheet suggests. */
+body.telegram-mini-app .unwordle-modal {
+    place-items: start center;
+    padding-top: calc(var(--safe-top) + 0.75rem);
+    padding-bottom: calc(var(--safe-bottom) + 0.75rem);
+}
+
+body.telegram-mini-app .unwordle-modal__panel {
+    max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 1.5rem);
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
 @supports (-webkit-touch-callout: none) {
     :root {
         --bg-overscan: 120px;
@@ -1520,6 +1533,38 @@ button {
     .leaderboard-style span,
     .leaderboard-time span {
         font-size: 0.68rem;
+    }
+
+    body.telegram-mini-app .unwordle-modal__panel {
+        padding: 0.85rem 0.7rem 0.95rem;
+    }
+
+    body.telegram-mini-app .help-content h2 {
+        margin: 0 2rem 0.8rem;
+        font-size: 1.32rem;
+    }
+
+    body.telegram-mini-app .help-content p,
+    body.telegram-mini-app .help-content em {
+        font-size: 0.96rem;
+    }
+
+    body.telegram-mini-app .help-example-row-wrap {
+        grid-template-columns: minmax(0, 1fr) 18px;
+        gap: 5px;
+    }
+
+    body.telegram-mini-app .help-example-row {
+        width: min(100%, 310px);
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 4px;
+    }
+
+    body.telegram-mini-app .help-tile {
+        width: auto;
+        height: auto;
+        aspect-ratio: 1;
+        font-size: clamp(1.08rem, 6vw, 1.42rem);
     }
 }
 

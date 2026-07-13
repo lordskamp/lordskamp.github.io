@@ -174,7 +174,8 @@
         activeModal: null,
         nameDialogKind: 'daily',
         dictionaryFallback: false,
-        recentTargets: []
+        recentTargets: [],
+        hintPurchasePending: false
     };
 
     const HELP_SLIDES = [
@@ -1251,8 +1252,12 @@
         const isDailyPuzzleMode = state.mode === 'daily' || state.mode === 'poop';
         els.difficultyTabs.hidden = !isUnlimited;
         els.solveButton.hidden = !isUnlimited;
-        els.solveButton.disabled = state.mode !== 'unlimited' || state.locked || state.rows.every(row => row.locked);
-        els.solveButton.setAttribute('aria-label', 'Підказати один рядок');
+        els.solveButton.disabled = state.mode !== 'unlimited'
+            || state.locked
+            || state.rows.every(row => row.locked)
+            || state.hintPurchasePending;
+        els.solveButton.textContent = state.hintPurchasePending ? 'Зачекайте…' : 'Підказка · 1 ⭐';
+        els.solveButton.setAttribute('aria-label', 'Купити підказку за одну Telegram Зірку');
         els.newPuzzleButton.hidden = !isUnlimited;
         els.restartPoopButton.hidden = state.mode !== 'poop';
         els.restartPoopButton.disabled = state.mode !== 'poop' || state.locked;
@@ -1505,6 +1510,103 @@
             setStatus('Підказка відкрила один рядок. Результат не піде в рейтинг.');
         }
         render();
+    }
+
+    function hintServiceUrl(path) {
+        const baseUrl = leaderboardUrl();
+        if (!baseUrl) return null;
+        try {
+            return new URL(path, baseUrl.origin).toString();
+        } catch (_) {
+            return null;
+        }
+    }
+
+    async function requestHintService(path, body = {}) {
+        const url = hintServiceUrl(path);
+        const telegramInitData = window.KobzaTelegram?.getInitData?.() || '';
+        if (!url || !telegramInitData) return { ok: false, status: 0, payload: {} };
+
+        try {
+            const response = await fetchWithTimeout(url, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    Authorization: `tma ${telegramInitData}`
+                },
+                body: JSON.stringify(body)
+            });
+            return {
+                ok: response.ok,
+                status: response.status,
+                payload: await response.json().catch(() => ({}))
+            };
+        } catch (_) {
+            return { ok: false, status: 0, payload: {} };
+        }
+    }
+
+    function wait(milliseconds) {
+        return new Promise(resolve => window.setTimeout(resolve, milliseconds));
+    }
+
+    async function claimPaidHint(retries = 0) {
+        let result = { ok: false, status: 0, payload: {} };
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            result = await requestHintService('/hint-claim');
+            if (result.ok || result.status !== 409 || attempt === retries) return result;
+            await wait(800);
+        }
+        return result;
+    }
+
+    async function requestPaidHint() {
+        if (state.mode !== 'unlimited' || state.locked || state.hintPurchasePending) return;
+        if (!window.KobzaTelegram?.isAvailable?.() || typeof window.KobzaTelegram?.openInvoice !== 'function') {
+            setStatus('Підказка за ⭐ доступна лише у Telegram.');
+            return;
+        }
+
+        state.hintPurchasePending = true;
+        render();
+        try {
+            const availableCredit = await claimPaidHint();
+            if (availableCredit.ok) {
+                showHint();
+                return;
+            }
+
+            if (availableCredit.status && availableCredit.status !== 409) {
+                setStatus('Не вдалося підготувати оплату. Спробуйте ще раз.');
+                return;
+            }
+
+            const invoice = await requestHintService('/hint-invoice');
+            const invoiceLink = String(invoice.payload?.invoiceLink || '');
+            if (!invoice.ok || !invoiceLink) {
+                setStatus('Не вдалося створити рахунок на 1 ⭐. Спробуйте ще раз.');
+                return;
+            }
+
+            const paymentStatus = await window.KobzaTelegram.openInvoice(invoiceLink);
+            if (paymentStatus !== 'paid') {
+                setStatus(paymentStatus === 'cancelled'
+                    ? 'Оплату скасовано.'
+                    : 'Оплату не завершено. Підказку не відкрито.');
+                return;
+            }
+
+            const paidCredit = await claimPaidHint(5);
+            if (!paidCredit.ok) {
+                setStatus('Платіж прийнято. Зачекайте кілька секунд і натисніть «Підказка» ще раз.');
+                return;
+            }
+            showHint();
+        } finally {
+            state.hintPurchasePending = false;
+            render();
+        }
     }
 
     function handleKeyValue(value) {
@@ -2833,7 +2935,9 @@
 
         document.addEventListener('keydown', handlePhysicalKey);
 
-        els.solveButton.addEventListener('click', showHint);
+        els.solveButton.addEventListener('click', () => {
+            void requestPaidHint();
+        });
         els.newPuzzleButton.addEventListener('click', () => {
             state.puzzleNumber += 1;
             state.varietyId = makeVarietyId();

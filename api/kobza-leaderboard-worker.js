@@ -18,6 +18,12 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const UNLIMITED_AGGREGATE_KEY = 'unlimited:aggregate';
 const PROFILE_KEY_PREFIX = 'profile:';
 const TELEGRAM_INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
+const HINT_PRICE_STARS = 1;
+const HINT_INVOICE_TTL_SECONDS = 60 * 60;
+const HINT_CREDIT_TTL_SECONDS = 60 * 60 * 24 * 30;
+const HINT_INVOICE_KEY_PREFIX = 'hint-invoice:';
+const HINT_CREDIT_KEY_PREFIX = 'hint-credit:';
+const HINT_PAYLOAD_PREFIX = 'kobza_hint_v1';
 const TELEGRAM_ID_RE = /^[1-9]\d{0,19}$/;
 const UA_WORD_RE = /^[а-щьюяєіїґ]{5}$/u;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -659,6 +665,187 @@ function readQueryParams(url) {
     return { mode, params: { dateKey, target } };
 }
 
+function hintInvoiceKey(invoiceId) {
+    return `${HINT_INVOICE_KEY_PREFIX}${invoiceId}`;
+}
+
+function hintCreditPrefix(telegramId) {
+    return `${HINT_CREDIT_KEY_PREFIX}${telegramId}:`;
+}
+
+function hintCreditKey(telegramId, invoiceId) {
+    return `${hintCreditPrefix(telegramId)}${invoiceId}`;
+}
+
+function parseHintPayload(payload) {
+    const [prefix, telegramId, invoiceId, ...extra] = String(payload || '').split(':');
+    if (prefix !== HINT_PAYLOAD_PREFIX || extra.length || !cleanTelegramId(telegramId) || !/^[a-f0-9]{32}$/i.test(invoiceId || '')) {
+        return null;
+    }
+    return { telegramId, invoiceId };
+}
+
+async function readStoredJson(env, key) {
+    try {
+        const value = await env.KOBZA_LEADERBOARD.get(key, 'json');
+        return value && typeof value === 'object' ? value : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+async function telegramBotCall(env, method, parameters) {
+    if (!env.TELEGRAM_BOT_TOKEN) throw new Error('Telegram bot token is not configured.');
+
+    const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(parameters)
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.ok !== true) {
+        throw new Error(String(body?.description || `Telegram ${method} failed.`));
+    }
+    return body.result;
+}
+
+async function createHintInvoice(env, user) {
+    const telegramId = cleanTelegramId(user?.id);
+    if (!telegramId) throw new Error('Telegram user is invalid.');
+
+    const invoiceId = crypto.randomUUID().replaceAll('-', '');
+    const payload = `${HINT_PAYLOAD_PREFIX}:${telegramId}:${invoiceId}`;
+    const invoice = {
+        invoiceId,
+        telegramId,
+        payload,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+    };
+
+    await env.KOBZA_LEADERBOARD.put(
+        hintInvoiceKey(invoiceId),
+        JSON.stringify(invoice),
+        { expirationTtl: HINT_INVOICE_TTL_SECONDS }
+    );
+
+    const invoiceLink = await telegramBotCall(env, 'createInvoiceLink', {
+        title: 'Підказка для КОБЗА-НАВПАКИ',
+        description: 'Відкриває один рядок у поточній грі.',
+        payload,
+        currency: 'XTR',
+        prices: [{ label: 'Підказка', amount: HINT_PRICE_STARS }]
+    });
+
+    return { invoiceLink };
+}
+
+async function claimHintCredit(env, user) {
+    const telegramId = cleanTelegramId(user?.id);
+    if (!telegramId || typeof env.KOBZA_LEADERBOARD.list !== 'function') return false;
+
+    const available = await env.KOBZA_LEADERBOARD.list({
+        prefix: hintCreditPrefix(telegramId),
+        limit: 25
+    });
+    const keys = Array.isArray(available?.keys) ? available.keys.map(item => item?.name).filter(Boolean) : [];
+    for (const key of keys) {
+        const credit = await readStoredJson(env, key);
+        if (!credit || cleanTelegramId(credit.telegramId) !== telegramId) continue;
+        await env.KOBZA_LEADERBOARD.delete(key);
+        return true;
+    }
+    return false;
+}
+
+function webhookIsAuthorized(request, env) {
+    const secret = String(env.TELEGRAM_WEBHOOK_SECRET || '');
+    const received = String(request.headers.get('X-Telegram-Bot-Api-Secret-Token') || '');
+    return Boolean(secret) && constantTimeEqual(secret, received);
+}
+
+async function handleTelegramPaymentWebhook(request, env) {
+    let update;
+    try {
+        update = await request.json();
+    } catch (_) {
+        return json({ error: 'Invalid Telegram update.' }, 400);
+    }
+
+    const preCheckout = update?.pre_checkout_query;
+    if (preCheckout) {
+        const telegramId = cleanTelegramId(preCheckout?.from?.id);
+        const payload = parseHintPayload(preCheckout?.invoice_payload);
+        const invoice = payload ? await readStoredJson(env, hintInvoiceKey(payload.invoiceId)) : null;
+        const isValid = Boolean(
+            telegramId
+            && payload
+            && invoice
+            && invoice.status === 'pending'
+            && cleanTelegramId(invoice.telegramId) === telegramId
+            && invoice.payload === preCheckout.invoice_payload
+        );
+        await telegramBotCall(env, 'answerPreCheckoutQuery', {
+            pre_checkout_query_id: preCheckout.id,
+            ok: isValid,
+            ...(isValid ? {} : { error_message: 'Цей рахунок більше недійсний. Відкрийте новий.' })
+        });
+        return json({ ok: true });
+    }
+
+    const message = update?.message;
+    const payment = message?.successful_payment;
+    if (!payment) return json({ ok: true });
+
+    const telegramId = cleanTelegramId(message?.from?.id);
+    const payload = parseHintPayload(payment.invoice_payload);
+    if (
+        !telegramId
+        || !payload
+        || payload.telegramId !== telegramId
+        || payment.currency !== 'XTR'
+        || Number(payment.total_amount) !== HINT_PRICE_STARS
+        || !String(payment.telegram_payment_charge_id || '')
+    ) {
+        return json({ ok: true });
+    }
+
+    const invoice = await readStoredJson(env, hintInvoiceKey(payload.invoiceId));
+    if (
+        !invoice
+        || cleanTelegramId(invoice.telegramId) !== telegramId
+        || invoice.payload !== payment.invoice_payload
+    ) {
+        return json({ ok: true });
+    }
+
+    const paymentChargeId = String(payment.telegram_payment_charge_id);
+    await Promise.all([
+        env.KOBZA_LEADERBOARD.put(
+            hintCreditKey(telegramId, payload.invoiceId),
+            JSON.stringify({
+                telegramId,
+                invoiceId: payload.invoiceId,
+                paymentChargeId,
+                paidAt: new Date().toISOString()
+            }),
+            { expirationTtl: HINT_CREDIT_TTL_SECONDS }
+        ),
+        env.KOBZA_LEADERBOARD.put(
+            hintInvoiceKey(payload.invoiceId),
+            JSON.stringify({
+                ...invoice,
+                status: 'paid',
+                paymentChargeId,
+                paidAt: new Date().toISOString()
+            }),
+            { expirationTtl: HINT_CREDIT_TTL_SECONDS }
+        )
+    ]);
+
+    return json({ ok: true });
+}
+
 export default {
     async fetch(request, env) {
         if (request.method === 'OPTIONS') {
@@ -670,6 +857,36 @@ export default {
         }
 
         const url = new URL(request.url);
+
+        if (url.pathname === '/telegram-webhook') {
+            if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+            if (!env.TELEGRAM_WEBHOOK_SECRET) return json({ error: 'Telegram webhook is not configured.' }, 503);
+            if (!webhookIsAuthorized(request, env)) return json({ error: 'Unauthorized Telegram webhook.' }, 401);
+            try {
+                return await handleTelegramPaymentWebhook(request, env);
+            } catch (_) {
+                return json({ error: 'Telegram payment update failed.' }, 500);
+            }
+        }
+
+        if (url.pathname === '/hint-invoice' || url.pathname === '/hint-claim') {
+            if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+
+            const authorization = await validateTelegramUser(request, env);
+            if (authorization.error) return json({ error: authorization.error }, authorization.status);
+
+            if (url.pathname === '/hint-claim') {
+                return (await claimHintCredit(env, authorization.user))
+                    ? json({ ok: true })
+                    : json({ error: 'NO_HINT_CREDITS' }, 409);
+            }
+
+            try {
+                return json({ ok: true, ...(await createHintInvoice(env, authorization.user)) });
+            } catch (_) {
+                return json({ error: 'Could not create the Telegram Stars invoice.' }, 502);
+            }
+        }
 
         if (request.method === 'GET') {
             const profileName = url.searchParams.get('profileName');
