@@ -25,6 +25,8 @@ const HINT_INVOICE_KEY_PREFIX = 'hint-invoice:';
 const HINT_CREDIT_KEY_PREFIX = 'hint-credit:';
 const HINT_PAYLOAD_PREFIX = 'kobza_hint_v1';
 const TELEGRAM_ID_RE = /^[1-9]\d{0,19}$/;
+const TELEGRAM_BOT_USERNAME_RE = /^[A-Za-z0-9_]{5,32}$/;
+const AVATAR_URL_MAX_LENGTH = 2048;
 const UA_WORD_RE = /^[а-щьюяєіїґ]{5}$/u;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const VARIETY_RE = /^\d{8,18}$/;
@@ -55,6 +57,17 @@ function json(data, status = 200) {
 function cleanTelegramId(value) {
     const id = String(value || '').trim();
     return TELEGRAM_ID_RE.test(id) ? id : '';
+}
+
+function cleanAvatarUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw || raw.length > AVATAR_URL_MAX_LENGTH) return '';
+    try {
+        const url = new URL(raw);
+        return url.protocol === 'https:' ? url.toString() : '';
+    } catch (_) {
+        return '';
+    }
 }
 
 function bytesToHex(bytes) {
@@ -259,6 +272,7 @@ function normalizeEntry(item) {
     const attempts = Math.round(Number(item?.attempts));
     const styleScore = mode === 'daily' ? cleanStyleScore(item?.styleScore) : null;
     const telegramId = cleanTelegramId(item?.telegramId);
+    const avatarUrl = cleanAvatarUrl(item?.avatarUrl);
 
     if (mode !== 'poop' && (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_SECONDS)) return null;
     if (mode === 'poop' && (!Number.isFinite(attempts) || attempts < 1 || attempts > MAX_POOP_ATTEMPTS)) return null;
@@ -278,6 +292,7 @@ function normalizeEntry(item) {
         variation: mode === 'unlimited' ? variation : '',
         name: cleanName(item?.name),
         telegramId,
+        avatarUrl,
         seconds: mode === 'poop' ? 0 : seconds,
         attempts: mode === 'poop' ? attempts : null,
         styleScore,
@@ -358,9 +373,18 @@ function bestStyleScore(entries) {
 }
 
 function mergeWithFirstAttempt(first, entries) {
+    const newestWithAvatar = entries
+        .slice()
+        .sort((a, b) => String(b.solvedAt).localeCompare(String(a.solvedAt)))
+        .find(item => cleanAvatarUrl(item?.avatarUrl));
+    const avatarUrl = cleanAvatarUrl(newestWithAvatar?.avatarUrl) || cleanAvatarUrl(first.avatarUrl);
+    const firstEntry = avatarUrl === cleanAvatarUrl(first.avatarUrl)
+        ? first
+        : { ...first, avatarUrl };
+
     if (first.mode !== 'daily') {
         return {
-            entry: first,
+            entry: firstEntry,
             styleUpdated: false,
             keptExisting: true
         };
@@ -372,7 +396,7 @@ function mergeWithFirstAttempt(first, entries) {
 
     return {
         entry: {
-            ...first,
+            ...firstEntry,
             styleScore
         },
         styleUpdated,
@@ -444,11 +468,17 @@ function upsertUnlimitedEntry(entries, entry) {
     entries.forEach(item => {
         if (item.mode !== 'unlimited') return;
         const key = unlimitedKey(item);
-        byPuzzle.set(key, byPuzzle.has(key) ? firstSubmittedEntry(byPuzzle.get(key), item) : item);
+        const existing = byPuzzle.get(key);
+        byPuzzle.set(key, existing
+            ? mergeWithFirstAttempt(firstSubmittedEntry(existing, item), [existing, item]).entry
+            : item);
     });
 
     const key = unlimitedKey(entry);
-    byPuzzle.set(key, byPuzzle.has(key) ? firstSubmittedEntry(byPuzzle.get(key), entry) : entry);
+    const existing = byPuzzle.get(key);
+    byPuzzle.set(key, existing
+        ? mergeWithFirstAttempt(firstSubmittedEntry(existing, entry), [existing, entry]).entry
+        : entry);
 
     return Array.from(byPuzzle.values())
         .sort((a, b) => String(b.solvedAt).localeCompare(String(a.solvedAt)))
@@ -604,6 +634,7 @@ function summarizeUnlimited(entries, sinceMs = 0, includeIdentity = false) {
         const player = players.get(key) || {
             identity: key,
             name: entry.name,
+            avatarUrl: cleanAvatarUrl(entry.avatarUrl),
             total: 0,
             easy: 0,
             normal: 0,
@@ -614,6 +645,8 @@ function summarizeUnlimited(entries, sinceMs = 0, includeIdentity = false) {
         player[entry.difficulty] += 1;
         if (!player.latestSolvedAt || String(entry.solvedAt).localeCompare(player.latestSolvedAt) > 0) {
             player.latestSolvedAt = entry.solvedAt;
+            player.name = entry.name;
+            player.avatarUrl = cleanAvatarUrl(entry.avatarUrl) || player.avatarUrl;
         }
         players.set(key, player);
     });
@@ -709,6 +742,73 @@ async function telegramBotCall(env, method, parameters) {
     return body.result;
 }
 
+function telegramBotUsername(env) {
+    const username = String(env.TELEGRAM_BOT_USERNAME || 'unwordle_bot').trim().replace(/^@/, '');
+    return TELEGRAM_BOT_USERNAME_RE.test(username) ? username : 'unwordle_bot';
+}
+
+function telegramMiniAppUrl(env, startParam) {
+    const link = new URL(`https://t.me/${telegramBotUsername(env)}`);
+    link.searchParams.set('startapp', startParam);
+    return link.toString();
+}
+
+function inlineGameResults(env) {
+    const unlimitedVariation = Date.now().toString();
+    const modes = [
+        {
+            id: 'daily',
+            title: 'Щоденна КОБЗА-НАВПАКИ',
+            description: 'Одне слово дня для всіх.',
+            startParam: 'd',
+            text: 'Спробуй слово дня в КОБЗА-НАВПАКИ.'
+        },
+        {
+            id: 'unlimited',
+            title: 'Нескінченна КОБЗА-НАВПАКИ',
+            description: 'Окрема варіація для цього виклику.',
+            startParam: `u-n-${unlimitedVariation}`,
+            text: 'Спробуй цю варіацію КОБЗА-НАВПАКИ.'
+        },
+        {
+            id: 'poop',
+            title: 'Режим 💩',
+            description: 'Дійди до ГІМНО, змінюючи по одній літері.',
+            startParam: 'p',
+            text: 'Спробуй режим 💩 у КОБЗА-НАВПАКИ.'
+        }
+    ];
+
+    return modes.map(mode => {
+        const url = telegramMiniAppUrl(env, mode.startParam);
+        return {
+            type: 'article',
+            id: mode.id,
+            title: mode.title,
+            description: mode.description,
+            input_message_content: {
+                message_text: `${mode.text}\n${url}`,
+                disable_web_page_preview: true
+            },
+            reply_markup: {
+                inline_keyboard: [[{ text: 'Грати', url }]]
+            }
+        };
+    });
+}
+
+async function handleTelegramInlineQuery(inlineQuery, env) {
+    const inlineQueryId = String(inlineQuery?.id || '').trim();
+    if (!inlineQueryId) return;
+
+    await telegramBotCall(env, 'answerInlineQuery', {
+        inline_query_id: inlineQueryId,
+        results: inlineGameResults(env),
+        cache_time: 0,
+        is_personal: true
+    });
+}
+
 async function createHintInvoice(env, user) {
     const telegramId = cleanTelegramId(user?.id);
     if (!telegramId) throw new Error('Telegram user is invalid.');
@@ -764,12 +864,17 @@ function webhookIsAuthorized(request, env) {
     return Boolean(secret) && constantTimeEqual(secret, received);
 }
 
-async function handleTelegramPaymentWebhook(request, env) {
+async function handleTelegramWebhook(request, env) {
     let update;
     try {
         update = await request.json();
     } catch (_) {
         return json({ error: 'Invalid Telegram update.' }, 400);
+    }
+
+    if (update?.inline_query) {
+        await handleTelegramInlineQuery(update.inline_query, env);
+        return json({ ok: true });
     }
 
     const preCheckout = update?.pre_checkout_query;
@@ -863,9 +968,9 @@ export default {
             if (!env.TELEGRAM_WEBHOOK_SECRET) return json({ error: 'Telegram webhook is not configured.' }, 503);
             if (!webhookIsAuthorized(request, env)) return json({ error: 'Unauthorized Telegram webhook.' }, 401);
             try {
-                return await handleTelegramPaymentWebhook(request, env);
+                return await handleTelegramWebhook(request, env);
             } catch (_) {
-                return json({ error: 'Telegram payment update failed.' }, 500);
+                return json({ error: 'Telegram webhook update failed.' }, 500);
             }
         }
 
@@ -928,7 +1033,8 @@ export default {
             const entry = normalizeEntry({
                 ...body,
                 name: telegramDisplayName(authorization.user),
-                telegramId: String(authorization.user.id)
+                telegramId: String(authorization.user.id),
+                avatarUrl: cleanAvatarUrl(authorization.user.photo_url)
             });
             if (!entry) return json({ error: 'Invalid leaderboard entry.' }, 400);
             const allowReplace = body?.replaceExisting === true;

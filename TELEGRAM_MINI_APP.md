@@ -8,7 +8,8 @@
 - Configure a **Main Mini App** to add Telegram's prominent **Launch app** button to the bot profile.
 - The game's share button creates links such as `https://t.me/unwordle_bot?startapp=p`. They open the selected game mode inside Telegram.
 - `d` opens the daily game, `p` opens the 💩 mode, and `u-<difficulty>-<variation>` opens the same unlimited puzzle for every recipient.
-- Results submitted from Telegram use the player's verified Telegram identity. The display name shown in the table is taken from that Telegram account; typed names are not trusted by the server.
+- Results submitted from Telegram use the player's verified Telegram identity. The display name shown in the table is taken from that Telegram account; typed names are not trusted by the server. If Telegram provides a profile picture, it is shown beside that result in the rating.
+- Inline mode works in private and group chats: type `@unwordle_bot`, then choose the daily, unlimited, or 💩 result. The sent card includes a **Грати** button that opens the selected Mini App mode for every participant.
 
 ## One-time BotFather setup
 
@@ -17,6 +18,8 @@
 3. Set the game URL to `https://lordskamp.github.io/unwordle/` and provide the required title, icon, and preview material.
 4. Configure it as the bot's **Main Mini App**. This is what activates the profile-level **Launch app** button and makes the `?startapp=` share links launch the game directly.
 5. Keep the menu button set to **Грати** with the same URL.
+6. Send `/setinline` to BotFather and use a placeholder such as **Оберіть режим КОБЗА-НАВПАКИ**.
+7. When setting the webhook, include `inline_query` in `allowed_updates` alongside `message` and `pre_checkout_query`, so the Worker can return the three inline choices.
 
 ## Protected global rating
 

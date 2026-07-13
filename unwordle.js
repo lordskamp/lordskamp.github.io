@@ -1259,8 +1259,9 @@
         els.solveButton.textContent = state.hintPurchasePending ? 'Зачекайте…' : 'Підказка · 1 ⭐';
         els.solveButton.setAttribute('aria-label', 'Купити підказку за одну Telegram Зірку');
         els.newPuzzleButton.hidden = !isUnlimited;
-        els.restartPoopButton.hidden = state.mode !== 'poop';
-        els.restartPoopButton.disabled = state.mode !== 'poop' || state.locked;
+        const poopPuzzleSolved = Boolean(state.poopRecord?.solved);
+        els.restartPoopButton.hidden = state.mode !== 'poop' || poopPuzzleSolved;
+        els.restartPoopButton.disabled = state.mode !== 'poop' || state.locked || poopPuzzleSolved;
         els.dailyTimer.hidden = state.mode !== 'daily';
         els.nextPuzzleCountdown.hidden = !isDailyPuzzleMode;
         els.card.classList.toggle('is-awaiting-start', isDailyWaitingToStart());
@@ -1721,6 +1722,7 @@
             startWord: normalizeWord(item?.startWord || ''),
             variation: String(item?.variation || ''),
             name: String(item?.name || 'Гравець').trim().slice(0, 24) || 'Гравець',
+            avatarUrl: cleanAvatarUrl(item?.avatarUrl),
             seconds: mode === 'poop' ? 0 : Math.max(1, Math.round(seconds)),
             attempts: mode === 'poop' ? attempts : null,
             styleScore: mode === 'daily' ? normalizeStyleScore(item?.styleScore) : null,
@@ -2076,6 +2078,7 @@
         if (!Number.isFinite(total) || total <= 0) return null;
         return {
             name: String(item?.name || 'Гравець').trim().slice(0, 24) || 'Гравець',
+            avatarUrl: cleanAvatarUrl(item?.avatarUrl),
             total: Math.max(0, Math.round(total)),
             easy: Math.max(0, Math.round(Number(item?.easy) || 0)),
             normal: Math.max(0, Math.round(Number(item?.normal) || 0)),
@@ -2514,9 +2517,25 @@
         return date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
     }
 
-    function renderLeaderboardRank(index) {
+    function cleanAvatarUrl(value) {
+        const raw = String(value || '').trim();
+        if (!raw || raw.length > 2048) return '';
+        try {
+            const url = new URL(raw);
+            return url.protocol === 'https:' ? url.toString() : '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function renderLeaderboardRank(index, avatarUrl = '', name = 'Гравець') {
         const rank = index + 1;
         const medals = ['🥇', '🥈', '🥉'];
+        const label = `${rank} місце${name ? ` — ${name}` : ''}`;
+        const safeAvatarUrl = cleanAvatarUrl(avatarUrl);
+        if (safeAvatarUrl) {
+            return `<span class="leaderboard-avatar" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><img src="${escapeHtml(safeAvatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
+        }
         if (medals[index]) {
             return `<span class="leaderboard-rank leaderboard-rank--medal" title="${rank} місце" aria-label="${rank} місце">${medals[index]}</span>`;
         }
@@ -2528,7 +2547,7 @@
             ? `<div class="leaderboard-list">
                 ${entries.map((item, index) => `
                     <div class="leaderboard-row">
-                        ${renderLeaderboardRank(index)}
+                        ${renderLeaderboardRank(index, item.avatarUrl, item.name)}
                         <span class="leaderboard-main">
                             <strong>${escapeHtml(item.name || 'Гравець')}</strong>
                         </span>
@@ -2551,7 +2570,7 @@
             ? `<div class="leaderboard-list">
                 ${entries.map((item, index) => `
                     <div class="leaderboard-row leaderboard-row--poop">
-                        ${renderLeaderboardRank(index)}
+                        ${renderLeaderboardRank(index, item.avatarUrl, item.name)}
                         <span class="leaderboard-main">
                             <strong>${escapeHtml(item.name || 'Гравець')}</strong>
                         </span>
@@ -2597,7 +2616,7 @@
             ? `<div class="leaderboard-list">
                 ${players.map((item, index) => `
                     <div class="leaderboard-row leaderboard-row--unlimited">
-                        ${renderLeaderboardRank(index)}
+                        ${renderLeaderboardRank(index, item.avatarUrl, item.name)}
                         <span class="leaderboard-main">
                             <strong>${escapeHtml(item.name || 'Гравець')}</strong>
                         </span>
@@ -2842,29 +2861,26 @@
 
     function currentShareText() {
         if (state.mode === 'poop') {
-            const url = shareGameUrl({ mode: 'poop' });
             const attempts = Number(state.poopRecord?.attempts || state.pendingPoopEntry?.attempts || 0);
             if (state.locked && attempts > 0) {
-                return `Я дійшов до ГІМНО за ${attempts} спроб у режимі 💩, зможеш краще? ${url}`;
+                return `Я дійшов до ГІМНО за ${attempts} спроб у режимі 💩, зможеш краще?`;
             }
-            return `Спробуй режим 💩 у КОБЗА-НАВПАКИ: ${url}`;
+            return 'Спробуй режим 💩 у КОБЗА-НАВПАКИ.';
         }
 
         if (state.mode === 'daily') {
-            const url = shareGameUrl({ mode: 'daily' });
             if (state.dailyRecord?.solved) {
                 const seconds = Math.max(1, Math.round(currentDailyElapsedMs() / 1000));
-                return `Я розв’язав слово дня за ${formatClock(seconds)}, зможеш краще? ${url}`;
+                return `Я розв’язав слово дня за ${formatClock(seconds)}, зможеш краще?`;
             }
-            return `Спробуй слово дня в КОБЗА-НАВПАКИ: ${url}`;
+            return 'Спробуй слово дня в КОБЗА-НАВПАКИ.';
         }
 
-        const url = shareGameUrl({ mode: 'unlimited' });
         const seconds = Number(state.lastUnlimitedEntry?.seconds || state.pendingUnlimitedEntry?.seconds || 0);
         if (state.locked && seconds > 0) {
-            return `Я розв’язав варіацію КОБЗА-НАВПАКИ за ${formatClock(seconds)}, зможеш краще? ${url}`;
+            return `Я розв’язав варіацію КОБЗА-НАВПАКИ за ${formatClock(seconds)}, зможеш краще?`;
         }
-        return `Спробуй цю варіацію КОБЗА-НАВПАКИ: ${url}`;
+        return 'Спробуй цю варіацію КОБЗА-НАВПАКИ.';
     }
 
     async function copyText(text) {
@@ -2885,13 +2901,13 @@
     }
 
     async function shareCurrentPuzzle() {
-        const text = currentShareText();
+        const shareText = currentShareText();
         const url = state.mode === 'poop'
             ? shareGameUrl({ mode: 'poop' })
             : state.mode === 'daily'
                 ? shareGameUrl({ mode: 'daily' })
                 : shareGameUrl({ mode: 'unlimited' });
-        const shareText = text.endsWith(url) ? text.slice(0, -url.length).trim() : text;
+        const shareMessage = [shareText, url].filter(Boolean).join('\n');
 
         if (window.KobzaTelegram?.share(shareText, url)) {
             window.KobzaTelegram?.haptic('light');
@@ -2900,10 +2916,10 @@
 
         try {
             if (navigator.share) {
-                await navigator.share({ title: 'КОБЗА-НАВПАКИ', text: shareText, url });
+                await navigator.share({ title: 'КОБЗА-НАВПАКИ', text: shareMessage });
                 setStatus('Гра готова до поширення.');
             } else {
-                await copyText(text);
+                await copyText(shareMessage);
                 setStatus('Текст для поширення скопійовано.');
             }
             window.setTimeout(() => {

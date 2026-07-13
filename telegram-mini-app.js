@@ -134,10 +134,11 @@
         if (!app?.openTelegramLink) return false;
 
         try {
-            const shareUrl = new URL('https://t.me/share/url');
-            shareUrl.searchParams.set('url', url || window.location.href);
-            shareUrl.searchParams.set('text', text || '');
-            app.openTelegramLink(shareUrl.toString());
+            // URLSearchParams serializes spaces as "+". Some Telegram clients show
+            // those characters literally, so percent-encode both share parameters.
+            // Telegram places the caption before the shared link in the compose field.
+            const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(String(text || '').trim())}&url=${encodeURIComponent(String(url || window.location.href).trim())}`;
+            app.openTelegramLink(shareUrl);
             return true;
         } catch (_) {
             return false;
