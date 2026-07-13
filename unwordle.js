@@ -316,6 +316,7 @@
             const url = new URL(window.location.href);
             if (url.searchParams.get('resetDaily') !== '1') return;
             window.localStorage.removeItem(DAILY_STATE_KEY);
+            window.KobzaTelegram?.removeCloudValue(DAILY_STATE_KEY);
             url.searchParams.delete('resetDaily');
             window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
         } catch (_) {
@@ -803,7 +804,9 @@
 
     function writeDailyRecord(record) {
         try {
-            window.localStorage.setItem(DAILY_STATE_KEY, JSON.stringify(record));
+            const serialized = JSON.stringify(record);
+            window.localStorage.setItem(DAILY_STATE_KEY, serialized);
+            window.KobzaTelegram?.setCloudValue(DAILY_STATE_KEY, serialized);
         } catch (_) {
             /* Persistent daily timer is best-effort when storage is unavailable. */
         }
@@ -820,7 +823,9 @@
 
     function writePoopRecord(record) {
         try {
-            window.localStorage.setItem(POOP_STATE_KEY, JSON.stringify(record));
+            const serialized = JSON.stringify(record);
+            window.localStorage.setItem(POOP_STATE_KEY, serialized);
+            window.KobzaTelegram?.setCloudValue(POOP_STATE_KEY, serialized);
         } catch (_) {
             /* Persistent mode progress is best-effort when storage is unavailable. */
         }
@@ -1266,6 +1271,7 @@
     }
 
     function rejectInvalidWord(rowIndex, message) {
+        window.KobzaTelegram?.haptic('error');
         state.invalidAttempts += 1;
         persistDailyRecord();
         setInvalidRow(rowIndex);
@@ -1299,6 +1305,7 @@
 
         const word = row.letters.join('');
         if (word.length !== WORD_LENGTH) {
+            window.KobzaTelegram?.haptic('error');
             setInvalidRow(rowIndex);
             setStatus('Потрібно 5 літер.');
             return;
@@ -1321,6 +1328,7 @@
         if (word === POOP_TARGET) {
             state.locked = true;
             completePoopPuzzle();
+            window.KobzaTelegram?.haptic('success');
             setStatus(`Готово! Ти дійшов до «${POOP_TARGET}» за ${state.poopRecord?.attempts || 0} спроб.`);
         } else {
             state.rows.push(poopRow());
@@ -1328,6 +1336,7 @@
             state.activeCol = 0;
             persistPoopRecord();
             setStatus('Слово прийнято. Зміни ще одну літеру.');
+            window.KobzaTelegram?.haptic('light');
         }
         render();
     }
@@ -1338,6 +1347,7 @@
             return;
         }
         if (isDailyWaitingToStart()) {
+            window.KobzaTelegram?.haptic('warning');
             setStatus('Натисни “Почати”, щоб запустити таймер і грати.');
             return;
         }
@@ -1347,6 +1357,7 @@
 
         const word = row.letters.join('');
         if (word.length !== WORD_LENGTH) {
+            window.KobzaTelegram?.haptic('error');
             setInvalidRow(rowIndex);
             setStatus('Потрібно 5 літер.');
             return;
@@ -1380,10 +1391,12 @@
                     ? 'Готово. Завдання розв’язано.'
                     : 'Готово. Після підказки результат не йде в рейтинг.');
             }
+            window.KobzaTelegram?.haptic('success');
         } else {
             state.activeRow = next;
             state.activeCol = 0;
             setStatus('Рядок прийнято.');
+            window.KobzaTelegram?.haptic('light');
         }
         render();
     }
@@ -1539,8 +1552,13 @@
     function writePlayerName(name) {
         try {
             const cleanName = String(name || '').trim();
-            if (cleanName) window.localStorage.setItem(PLAYER_NAME_KEY, cleanName);
-            else window.localStorage.removeItem(PLAYER_NAME_KEY);
+            if (cleanName) {
+                window.localStorage.setItem(PLAYER_NAME_KEY, cleanName);
+                window.KobzaTelegram?.setCloudValue(PLAYER_NAME_KEY, cleanName);
+            } else {
+                window.localStorage.removeItem(PLAYER_NAME_KEY);
+                window.KobzaTelegram?.removeCloudValue(PLAYER_NAME_KEY);
+            }
         } catch (_) {
             /* Remembering a player name is best-effort. */
         }
@@ -2644,6 +2662,7 @@
         if (!dialog) return;
         state.activeModal = dialog;
         dialog.hidden = false;
+        window.KobzaTelegram?.setBackButtonVisible(dialog !== els.nameDialog);
         requestAnimationFrame(() => dialog.querySelector('.unwordle-modal__panel')?.focus({ preventScroll: true }));
     }
 
@@ -2651,6 +2670,7 @@
         if (!state.activeModal) return;
         state.activeModal.hidden = true;
         state.activeModal = null;
+        window.KobzaTelegram?.setBackButtonVisible(false);
     }
 
     function openNameDialog(kind = 'daily') {
@@ -2714,11 +2734,29 @@
     }
 
     async function shareCurrentPuzzle() {
+        const text = currentShareText();
+        const url = state.mode === 'poop'
+            ? gameUrl({ mode: 'poop' })
+            : state.mode === 'daily'
+                ? gameUrl({ mode: 'daily' })
+                : gameUrl({ mode: 'unlimited' });
+        const shareText = text.endsWith(url) ? text.slice(0, -url.length).trim() : text;
+
+        if (window.KobzaTelegram?.share(shareText, url)) {
+            window.KobzaTelegram?.haptic('light');
+            return;
+        }
+
         try {
-            await copyText(currentShareText());
-            setStatus('Текст для поширення скопійовано.');
+            if (navigator.share) {
+                await navigator.share({ title: 'КОБЗА-НАВПАКИ', text: shareText, url });
+                setStatus('Гра готова до поширення.');
+            } else {
+                await copyText(text);
+                setStatus('Текст для поширення скопійовано.');
+            }
             window.setTimeout(() => {
-                if (els.status?.textContent === 'Текст для поширення скопійовано.') setStatus('');
+                if (['Текст для поширення скопійовано.', 'Гра готова до поширення.'].includes(els.status?.textContent)) setStatus('');
             }, SHARE_FEEDBACK_MS);
         } catch (_) {
             setStatus('Не вдалося скопіювати. Спробуй ще раз.');
@@ -2761,6 +2799,7 @@
                 if (state.mode === 'daily') persistDailyRecord(true);
                 if (state.mode === 'poop') persistPoopRecord();
                 state.mode = button.dataset.mode;
+                window.KobzaTelegram?.haptic('selection');
                 if (state.mode === 'unlimited') state.varietyId = state.varietyId || makeVarietyId();
                 generatePuzzle();
             });
@@ -2770,6 +2809,7 @@
             button.addEventListener('click', () => {
                 if (state.mode !== 'unlimited') return;
                 state.difficulty = button.dataset.difficulty;
+                window.KobzaTelegram?.haptic('selection');
                 state.varietyId = makeVarietyId();
                 generatePuzzle();
             });
@@ -2870,8 +2910,16 @@
     }
 
     async function init() {
+        await window.KobzaTelegram?.init({
+            cloudKeys: [DAILY_STATE_KEY, POOP_STATE_KEY, PLAYER_NAME_KEY]
+        });
         cacheElements();
         bindEvents();
+        const telegramPlayerName = window.KobzaTelegram?.getPlayerName();
+        if (telegramPlayerName && !readPlayerName()) writePlayerName(telegramPlayerName);
+        window.KobzaTelegram?.setBackHandler(() => {
+            if (state.activeModal && state.activeModal !== els.nameDialog) closeModal();
+        });
         renderKeyboard();
         await loadWords();
 

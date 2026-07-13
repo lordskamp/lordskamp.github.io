@@ -63,6 +63,61 @@
     --modal-soft: rgba(148, 163, 184, 0.16);
 }
 
+/* Telegram injects these variables for light, dark, and custom client themes. */
+body.telegram-mini-app {
+    --bg: var(--tg-theme-bg-color, #0a0a0a);
+    --page-bg: var(--tg-theme-bg-color, #0a0a0a);
+    --text-color: var(--tg-theme-text-color, #ffffff);
+    --text-muted: var(--tg-theme-hint-color, #9ca3af);
+    --red: var(--tg-theme-button-color, #8c3dc1);
+    --red-dark: var(--tg-theme-button-color, #54297e);
+    --glass: var(--tg-theme-secondary-bg-color, rgba(31, 41, 55, 0.35));
+    --glass-hover: var(--tg-theme-section-bg-color, rgba(55, 65, 81, 0.6));
+    --glass-border: var(--tg-theme-section-separator-color, rgba(140, 61, 193, 0.2));
+    --island-bg: var(--tg-theme-secondary-bg-color, rgba(31, 41, 55, 0.35));
+    --island-border: var(--tg-theme-section-separator-color, rgba(140, 61, 193, 0.2));
+    --modal-bg: var(--tg-theme-bg-color, rgba(12, 12, 14, 0.96));
+    --modal-text: var(--tg-theme-text-color, #f8fafc);
+    --modal-body: var(--tg-theme-text-color, #e5e7eb);
+    --modal-muted: var(--tg-theme-hint-color, #a7b0c0);
+    --modal-border: var(--tg-theme-section-separator-color, rgba(255, 255, 255, 0.12));
+    --modal-soft: var(--tg-theme-secondary-bg-color, rgba(255, 255, 255, 0.08));
+}
+
+body.telegram-mini-app .gradient-background,
+body.telegram-mini-app #siteHeaderMount,
+body.telegram-mini-app .unwordle-footer,
+body.telegram-mini-app .custom-cursor {
+    display: none;
+}
+
+body.telegram-mini-app .content-wrapper {
+    padding-top: max(0.75rem, var(--safe-top));
+    padding-bottom: max(0.75rem, var(--safe-bottom));
+}
+
+body.telegram-mini-app .unwordle-card {
+    background: var(--tg-theme-secondary-bg-color, var(--island-bg));
+    border-color: var(--tg-theme-section-separator-color, var(--island-border));
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.telegram-mini-app .game-action--primary,
+body.telegram-mini-app .daily-timer__pause {
+    color: var(--tg-theme-button-text-color, #ffffff);
+    background: var(--tg-theme-button-color, var(--red));
+    border-color: var(--tg-theme-button-color, var(--red));
+}
+
+body.telegram-mini-app .keyboard-key:not([data-state]) {
+    color: var(--tg-theme-text-color, #07111f);
+    background: var(--tg-theme-secondary-bg-color, rgba(226, 232, 240, 0.84));
+    border-color: var(--tg-theme-section-separator-color, rgba(255, 255, 255, 0.28));
+    box-shadow: none;
+}
+
 @supports (-webkit-touch-callout: none) {
     :root {
         --bg-overscan: 120px;
@@ -745,6 +800,37 @@ button {
 .keyboard-key[data-state="correct"] {
     color: #ffffff;
     background: var(--wordle-correct);
+}
+
+/* Site-level light-theme preferences must not override Telegram's own theme. */
+:root.light-theme body.telegram-mini-app .mode-tab:hover,
+:root.light-theme body.telegram-mini-app .difficulty-tab:hover,
+:root.light-theme body.telegram-mini-app .game-action,
+:root.light-theme body.telegram-mini-app .daily-timer {
+    color: var(--tg-theme-text-color, var(--text-color));
+    background: var(--tg-theme-secondary-bg-color, var(--glass));
+    border-color: var(--tg-theme-section-separator-color, var(--glass-border));
+    box-shadow: none;
+}
+
+:root.light-theme body.telegram-mini-app .mode-tab.is-active,
+:root.light-theme body.telegram-mini-app .difficulty-tab.is-active {
+    background: var(--tg-theme-section-bg-color, var(--glass-hover));
+    border-color: var(--tg-theme-section-separator-color, var(--glass-border));
+}
+
+:root.light-theme body.telegram-mini-app .game-action--primary,
+:root.light-theme body.telegram-mini-app .daily-timer__pause {
+    color: var(--tg-theme-button-text-color, #ffffff);
+    background: var(--tg-theme-button-color, var(--red));
+    border-color: var(--tg-theme-button-color, var(--red));
+}
+
+:root.light-theme body.telegram-mini-app .keyboard-key:not([data-state]) {
+    color: var(--tg-theme-text-color, var(--text-color));
+    background: var(--tg-theme-secondary-bg-color, var(--glass));
+    border-color: var(--tg-theme-section-separator-color, var(--glass-border));
+    box-shadow: none;
 }
 
 .unwordle-footer {
