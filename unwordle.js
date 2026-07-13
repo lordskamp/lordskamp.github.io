@@ -894,7 +894,7 @@
             target: POOP_TARGET,
             startWord: state.poopStartWord,
             variation: '',
-            attempts: Math.max(1, state.rows.filter(row => row.locked && !row.isStart).length),
+            attempts: Math.max(1, Math.round(Number(state.poopRecord?.attempts) || 0)),
             solvedAt: new Date().toISOString()
         };
     }
@@ -1023,7 +1023,10 @@
             dateKey: todayKey(),
             target: POOP_TARGET,
             startWord: state.poopStartWord,
-            attempts: Math.max(0, accepted.length - 1),
+            attempts: Math.max(
+                accepted.length - 1,
+                Math.max(0, Math.round(Number(record.attempts) || 0))
+            ),
             solved,
             rows: state.rows.map(row => ({
                 letters: row.letters.slice(),
@@ -1082,7 +1085,10 @@
         record.dateKey = todayKey();
         record.target = POOP_TARGET;
         record.startWord = state.poopStartWord;
-        record.attempts = Math.max(0, state.rows.filter(row => row.locked && !row.isStart).length);
+        record.attempts = Math.max(
+            state.rows.filter(row => row.locked && !row.isStart).length,
+            Math.max(0, Math.round(Number(record.attempts) || 0))
+        );
         record.rows = state.rows.map(row => ({
             letters: row.letters.slice(),
             locked: row.locked,
@@ -1203,6 +1209,8 @@
         els.solveButton.disabled = state.mode !== 'unlimited' || state.locked || state.rows.every(row => row.locked);
         els.solveButton.setAttribute('aria-label', 'Підказати один рядок');
         els.newPuzzleButton.hidden = !isUnlimited;
+        els.restartPoopButton.hidden = state.mode !== 'poop';
+        els.restartPoopButton.disabled = state.mode !== 'poop' || state.locked;
         els.dailyTimer.hidden = state.mode !== 'daily';
         els.nextPuzzleCountdown.hidden = !isDailyPuzzleMode;
         els.card.classList.toggle('is-awaiting-start', isDailyWaitingToStart());
@@ -1274,6 +1282,17 @@
         if (!state.poopRecord?.nameSubmitted) openNameDialog('poop');
     }
 
+    function restartPoopPuzzle() {
+        if (state.mode !== 'poop' || state.locked || !state.poopRecord) return;
+        state.rows = [poopRow(state.poopStartWord, true, true), poopRow()];
+        state.activeRow = 1;
+        state.activeCol = 0;
+        state.invalidRow = null;
+        persistPoopRecord();
+        setStatus('Маршрут очищено. Уже прийняті спроби залишаться в результаті.');
+        render();
+    }
+
     function submitPoopRow(rowIndex = state.activeRow) {
         const row = state.rows[rowIndex];
         if (!row || row.locked || state.locked) return;
@@ -1296,6 +1315,9 @@
         }
 
         row.locked = true;
+        if (state.poopRecord) {
+            state.poopRecord.attempts = Math.max(0, Math.round(Number(state.poopRecord.attempts) || 0)) + 1;
+        }
         if (word === POOP_TARGET) {
             state.locked = true;
             completePoopPuzzle();
@@ -2730,6 +2752,7 @@
             state.varietyId = makeVarietyId();
             generatePuzzle();
         });
+        els.restartPoopButton.addEventListener('click', restartPoopPuzzle);
         els.pauseTimerButton.addEventListener('click', startDailyTimer);
 
         document.querySelectorAll('.mode-tab').forEach(button => {
@@ -2814,6 +2837,7 @@
         els.difficultyTabs = document.querySelector('.difficulty-tabs');
         els.solveButton = document.getElementById('solveButton');
         els.newPuzzleButton = document.getElementById('newPuzzleButton');
+        els.restartPoopButton = document.getElementById('restartPoopButton');
         els.dailyTimer = document.getElementById('dailyTimer');
         els.dailyTimerLabel = document.getElementById('dailyTimerLabel');
         els.dailyTimerValue = document.getElementById('dailyTimerValue');
