@@ -1287,8 +1287,10 @@
         const colors = new Map();
         if (state.mode === 'poop' || isDailyWaitingToStart()) return colors;
 
-        Array.from(state.target).forEach(letter => {
-            colors.set(letter, 'correct');
+        const targetLetters = new Set(Array.from(state.target));
+        KEYBOARD_ROWS.flat().forEach(letter => {
+            if (letter === 'backspace') return;
+            colors.set(letter, targetLetters.has(letter) ? 'correct' : 'absent');
         });
 
         state.rows.filter(row => row.locked).forEach(row => {
