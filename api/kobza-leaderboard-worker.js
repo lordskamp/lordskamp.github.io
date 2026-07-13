@@ -7,6 +7,7 @@ const CORS_HEADERS = {
 
 const NAME_LIMIT = 24;
 const MAX_SECONDS = 24 * 60 * 60;
+const MAX_POOP_ATTEMPTS = 500;
 const MAX_ABS_STYLE_SCORE = 10000;
 const MAX_STORED_ENTRIES = 500;
 const MAX_UNLIMITED_STORED_ENTRIES = 5000;
@@ -20,6 +21,18 @@ const UA_WORD_RE = /^[а-щьюяєіїґ]{5}$/u;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const VARIETY_RE = /^\d{8,18}$/;
 const DIFFICULTIES = new Set(['easy', 'normal', 'hard']);
+const POOP_TARGET = 'гімно';
+const POOP_START_WORDS = [
+    'балка', 'баран', 'барва', 'барка', 'будка', 'булка', 'бурка',
+    'видра', 'висок', 'вовча', 'вудка', 'дошка', 'дощик', 'дудка', 'душка',
+    'жуйка', 'журба', 'казан', 'казка', 'карта', 'квіти', 'книга', 'кубка',
+    'курка', 'ложка', 'лунка', 'луска', 'манка', 'марка', 'моряк', 'мушка',
+    'нирка', 'норка', 'папка', 'парка', 'парта', 'пиріг', 'пошта', 'пудра',
+    'пушка', 'рибка', 'ручка', 'ряска', 'садок', 'сайка', 'сапка', 'сирок',
+    'сонце', 'стеля', 'сушка', 'торба', 'трава', 'турка', 'тушка', 'фарба',
+    'хатка', 'хмара', 'хутка', 'чашка', 'чобіт', 'шапка', 'шахта', 'шишка',
+    'школа', 'штора', 'шубка', 'ягода'
+];
 
 function json(data, status = 200) {
     return new Response(JSON.stringify(data), {
@@ -65,9 +78,37 @@ function cleanStyleScore(value) {
     return score;
 }
 
+function hashString(value) {
+    let h = 2166136261;
+    for (let i = 0; i < value.length; i += 1) {
+        h ^= value.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function mulberry32(seed) {
+    let t = seed >>> 0;
+    return () => {
+        t += 0x6D2B79F5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function poopStartWordForDate(dateKey) {
+    const rng = mulberry32(hashString(`poop:v1:${dateKey}`));
+    return POOP_START_WORDS[Math.floor(rng() * POOP_START_WORDS.length)];
+}
+
 function leaderboardKeyFor(mode, params) {
     if (mode === 'unlimited') {
         return `unlimited:${params.difficulty}:${params.variation}`;
+    }
+
+    if (mode === 'poop') {
+        return `poop:${params.dateKey}:${params.startWord}:${params.target}`;
     }
 
     return `daily:${params.dateKey}:${params.target}`;
@@ -79,22 +120,34 @@ function matchesLeaderboard(entry, mode, params) {
         return entry.difficulty === params.difficulty && entry.variation === params.variation;
     }
 
+    if (mode === 'poop') {
+        return entry.dateKey === params.dateKey
+            && entry.target === params.target
+            && entry.startWord === params.startWord;
+    }
+
     return entry.dateKey === params.dateKey && entry.target === params.target;
 }
 
 function normalizeEntry(item) {
-    const mode = item?.mode === 'unlimited' ? 'unlimited' : 'daily';
+    const mode = item?.mode === 'unlimited'
+        ? 'unlimited'
+        : item?.mode === 'poop' ? 'poop' : 'daily';
     const difficulty = mode === 'unlimited' ? cleanDifficulty(item?.difficulty) : 'normal';
     const dateKey = String(item?.dateKey || new Date().toISOString().slice(0, 10));
     const target = normalizeWord(item?.target);
+    const startWord = normalizeWord(item?.startWord);
     const variation = String(item?.variation || '').trim();
     const seconds = Math.round(Number(item?.seconds));
+    const attempts = Math.round(Number(item?.attempts));
     const styleScore = mode === 'daily' ? cleanStyleScore(item?.styleScore) : null;
 
-    if (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_SECONDS) return null;
+    if (mode !== 'poop' && (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_SECONDS)) return null;
+    if (mode === 'poop' && (!Number.isFinite(attempts) || attempts < 1 || attempts > MAX_POOP_ATTEMPTS)) return null;
     if (!DATE_RE.test(dateKey)) return null;
     if (!UA_WORD_RE.test(target)) return null;
     if (mode === 'unlimited' && !VARIETY_RE.test(variation)) return null;
+    if (mode === 'poop' && (target !== POOP_TARGET || startWord !== poopStartWordForDate(dateKey))) return null;
 
     return {
         id: item?.id || crypto.randomUUID(),
@@ -102,9 +155,11 @@ function normalizeEntry(item) {
         difficulty,
         dateKey,
         target,
+        startWord: mode === 'poop' ? startWord : '',
         variation: mode === 'unlimited' ? variation : '',
         name: cleanName(item?.name),
-        seconds,
+        seconds: mode === 'poop' ? 0 : seconds,
+        attempts: mode === 'poop' ? attempts : null,
         styleScore,
         solvedAt: item?.solvedAt || new Date().toISOString()
     };
@@ -153,6 +208,11 @@ function styleSortValue(entry) {
 }
 
 function compareEntries(a, b) {
+    if (a.mode === 'poop' || b.mode === 'poop') {
+        return Number(a.attempts) - Number(b.attempts)
+            || String(a.solvedAt).localeCompare(String(b.solvedAt))
+            || String(a.id).localeCompare(String(b.id));
+    }
     return a.seconds - b.seconds
         || styleSortValue(b) - styleSortValue(a)
         || String(a.solvedAt).localeCompare(String(b.solvedAt))
@@ -204,6 +264,12 @@ function sameLeaderboardPlayer(a, b) {
     if (!a || !b || a.mode !== b.mode || !samePlayerName(a.name, b.name)) return false;
     if (a.mode === 'unlimited') {
         return a.difficulty === b.difficulty && a.variation === b.variation;
+    }
+
+    if (a.mode === 'poop') {
+        return a.dateKey === b.dateKey
+            && a.target === b.target
+            && a.startWord === b.startWord;
     }
 
     return a.dateKey === b.dateKey && a.target === b.target;
@@ -276,6 +342,10 @@ function playerProfileKey(name) {
 function profileEntryKey(entry) {
     if (entry.mode === 'unlimited') {
         return `unlimited:${entry.difficulty}:${entry.variation}`;
+    }
+
+    if (entry.mode === 'poop') {
+        return `poop:${entry.dateKey}:${entry.startWord}:${entry.target}`;
     }
 
     return `daily:${entry.dateKey}:${entry.target}`;
@@ -448,7 +518,10 @@ function unlimitedSummary(entries) {
 }
 
 function readQueryParams(url) {
-    const mode = url.searchParams.get('mode') === 'unlimited' ? 'unlimited' : 'daily';
+    const requestedMode = url.searchParams.get('mode');
+    const mode = requestedMode === 'unlimited'
+        ? 'unlimited'
+        : requestedMode === 'poop' ? 'poop' : 'daily';
 
     if (mode === 'unlimited') {
         const difficulty = cleanDifficulty(url.searchParams.get('difficulty'));
@@ -461,6 +534,13 @@ function readQueryParams(url) {
     const dateKey = String(url.searchParams.get('dateKey') || '');
     const target = normalizeWord(url.searchParams.get('target'));
     if (!DATE_RE.test(dateKey) || !UA_WORD_RE.test(target)) return null;
+
+    if (mode === 'poop') {
+        const startWord = normalizeWord(url.searchParams.get('startWord'));
+        if (target !== POOP_TARGET || startWord !== poopStartWordForDate(dateKey)) return null;
+        return { mode, params: { dateKey, target, startWord } };
+    }
+
     return { mode, params: { dateKey, target } };
 }
 
@@ -560,7 +640,9 @@ export default {
                 });
             }
 
-            const params = { dateKey: entry.dateKey, target: entry.target };
+            const params = entry.mode === 'poop'
+                ? { dateKey: entry.dateKey, target: entry.target, startWord: entry.startWord }
+                : { dateKey: entry.dateKey, target: entry.target };
             const entries = await readEntries(env, entry.mode, params);
             const merged = mergeLeaderboardEntry(entries, entry, { allowReplace });
             if (merged.conflict) {

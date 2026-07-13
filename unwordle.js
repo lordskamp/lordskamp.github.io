@@ -5,6 +5,7 @@
     const DICTIONARY_URL = 'data/kobza-words.txt?v=20260703-variety';
     const LEADERBOARD_KEY = 'lordskamp:kobza-navpaky:leaderboard:v2';
     const DAILY_STATE_KEY = 'lordskamp:kobza-navpaky:daily-state:v1';
+    const POOP_STATE_KEY = 'lordskamp:kobza-navpaky:poop-state:v1';
     const PLAYER_NAME_KEY = 'lordskamp:kobza-navpaky:player-name:v1';
     const DAILY_TIME_ZONE = resolveDailyTimeZone();
     const DAILY_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
@@ -31,6 +32,30 @@
     const RECENT_TARGET_LIMIT = 240;
     const DAILY_TARGET_ATTEMPT_LIMIT = 240;
     const UNLIMITED_TARGET_ATTEMPT_LIMIT = 480;
+    const POOP_TARGET = 'гімно';
+    const POOP_START_WORDS = [
+        'балка', 'баран', 'барва', 'барка', 'будка', 'булка', 'бурка',
+        'видра', 'висок', 'вовча', 'вудка', 'дошка', 'дощик', 'дудка', 'душка',
+        'жуйка', 'журба', 'казан', 'казка', 'карта', 'квіти', 'книга', 'кубка',
+        'курка', 'ложка', 'лунка', 'луска', 'манка', 'марка', 'моряк', 'мушка',
+        'нирка', 'норка', 'папка', 'парка', 'парта', 'пиріг', 'пошта', 'пудра',
+        'пушка', 'рибка', 'ручка', 'ряска', 'садок', 'сайка', 'сапка', 'сирок',
+        'сонце', 'стеля', 'сушка', 'торба', 'трава', 'турка', 'тушка', 'фарба',
+        'хатка', 'хмара', 'хутка', 'чашка', 'чобіт', 'шапка', 'шахта', 'шишка',
+        'школа', 'штора', 'шубка', 'ягода'
+    ];
+    const POOP_FALLBACK_START_WORDS = [
+        'дудка', 'душка', 'сушка', 'вудка', 'дошка', 'курка',
+        'мушка', 'сапка', 'тушка', 'чашка', 'шапка', 'сонце'
+    ];
+    const POOP_FALLBACK_WORDS = [
+        'дудка', 'душка', 'сушка', 'вудка', 'дошка', 'курка',
+        'мушка', 'сапка', 'тушка', 'чашка', 'шапка', 'сонце',
+        'думка', 'думна', 'думно', 'гумно', 'гімно',
+        'душна', 'душно', 'сумка', 'сумна', 'сумно',
+        'курна', 'курно', 'дурно', 'самка', 'чушка',
+        'сонне', 'сінне', 'мінне', 'мідне', 'гідне', 'гідно'
+    ];
     const VARIETY_RE = /^\d{8,18}$/;
     const SHARE_FEEDBACK_MS = 1800;
     const STYLE_TIME_LIMIT_SECONDS = 4 * 60;
@@ -54,7 +79,8 @@
     };
     const MODES = {
         daily: 'Щоденна',
-        unlimited: 'Нескінченна'
+        unlimited: 'Нескінченна',
+        poop: 'Режим 💩'
     };
     const SCORE_RANGES = {
         2: [
@@ -108,7 +134,8 @@
     const FALLBACK_WORDS = [
         'аркуш', 'весна', 'гроза', 'доказ', 'життя', 'зміна', 'книга', 'нація',
         'пісня', 'радіо', 'слово', 'трава', 'хмара', 'човен', 'школа', 'ягода',
-        'пошта', 'берег', 'думка', 'загін', 'місто', 'океан', 'свято'
+        'пошта', 'берег', 'думка', 'загін', 'місто', 'океан', 'свято',
+        ...POOP_FALLBACK_WORDS
     ];
 
     const els = {};
@@ -131,6 +158,10 @@
         dailyRecord: null,
         dailyKey: '',
         pendingDailyEntry: null,
+        poopRecord: null,
+        poopKey: '',
+        poopStartWord: '',
+        pendingPoopEntry: null,
         pendingUnlimitedEntry: null,
         lastUnlimitedEntry: null,
         dailyRankLoading: false,
@@ -275,6 +306,11 @@
         return DIFFICULTIES[value] ? value : 'normal';
     }
 
+    function readUrlMode() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('mode') === 'poop' ? 'poop' : 'daily';
+    }
+
     function consumeDailyResetFlag() {
         try {
             const url = new URL(window.location.href);
@@ -301,6 +337,8 @@
         if (mode === 'unlimited') {
             url.searchParams.set('variety', varietyId || makeVarietyId());
             if (difficulty !== 'normal') url.searchParams.set('difficulty', difficulty);
+        } else if (mode === 'poop') {
+            url.searchParams.set('mode', 'poop');
         }
 
         return url.toString();
@@ -590,7 +628,79 @@
         return pools;
     }
 
+    function changedLetterCount(first, second) {
+        const firstLetters = Array.from(first || '');
+        const secondLetters = Array.from(second || '');
+        if (firstLetters.length !== WORD_LENGTH || secondLetters.length !== WORD_LENGTH) return Infinity;
+        return firstLetters.reduce((total, letter, index) => total + Number(letter !== secondLetters[index]), 0);
+    }
+
+    function hasPoopTargetLetterInPlace(word) {
+        return Array.from(word || '').some((letter, index) => letter === Array.from(POOP_TARGET)[index]);
+    }
+
+    function poopStartWordForDate(dateKey = todayKey()) {
+        const pool = state.dictionaryFallback ? POOP_FALLBACK_START_WORDS : POOP_START_WORDS;
+        const available = pool.filter(word => (
+            state.wordSet.has(word) && !hasPoopTargetLetterInPlace(word)
+        ));
+        if (!available.length) return '';
+        const rng = mulberry32(hashString(`poop:v1:${dateKey}`));
+        return available[Math.floor(rng() * available.length)];
+    }
+
+    function poopRow(word = '', locked = false, isStart = false) {
+        const letters = Array.from(normalizeWord(word)).slice(0, WORD_LENGTH);
+        while (letters.length < WORD_LENGTH) letters.push('');
+        return { letters, locked, isStart };
+    }
+
+    function generatePoopPuzzle() {
+        const dateKey = todayKey();
+        const startWord = poopStartWordForDate(dateKey);
+        if (!startWord) {
+            setStatus('Не вдалося підготувати стартове слово для режиму 💩.');
+            return false;
+        }
+
+        state.difficulty = 'normal';
+        state.varietyId = '';
+        state.target = POOP_TARGET;
+        state.rows = [];
+        state.activeRow = 0;
+        state.activeCol = 0;
+        state.locked = false;
+        state.revealed = false;
+        state.invalidRow = null;
+        state.invalidAttempts = 0;
+        state.startedAt = null;
+        state.solvedRecorded = false;
+        state.pendingDailyEntry = null;
+        state.pendingUnlimitedEntry = null;
+        state.lastUnlimitedEntry = null;
+        state.dailyRecord = null;
+        state.dailyKey = '';
+        state.poopKey = dateKey;
+        state.poopStartWord = startWord;
+        state.pendingPoopEntry = null;
+        state.dailyRankLoading = false;
+        state.dailyRankRequested = false;
+        syncUrlToMode();
+        hydratePoopRecord();
+
+        setStatus(state.poopRecord?.solved
+            ? `Сьогоднішній маршрут до «${POOP_TARGET}» уже пройдено.`
+            : `Початкове слово: ${startWord.toLocaleUpperCase('uk-UA')}. Дійди до «${POOP_TARGET.toLocaleUpperCase('uk-UA')}», змінюючи по одній літері.`);
+        render();
+        if (state.poopRecord?.solved && !state.poopRecord.nameSubmitted) {
+            openNameDialog('poop');
+        }
+        return true;
+    }
+
     function generatePuzzle() {
+        if (state.mode === 'poop') return generatePoopPuzzle();
+
         if (state.mode === 'daily') {
             state.difficulty = 'normal';
             state.puzzleNumber = 0;
@@ -699,6 +809,23 @@
         }
     }
 
+    function readPoopRecord() {
+        try {
+            const raw = window.localStorage.getItem(POOP_STATE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function writePoopRecord(record) {
+        try {
+            window.localStorage.setItem(POOP_STATE_KEY, JSON.stringify(record));
+        } catch (_) {
+            /* Persistent mode progress is best-effort when storage is unavailable. */
+        }
+    }
+
     function makeFreshDailyRecord() {
         return {
             dateKey: todayKey(),
@@ -715,6 +842,22 @@
             lastStartedAt: null,
             invalidAttempts: 0,
             rows: state.rows.map(row => ({ letters: row.letters.slice(), locked: row.locked }))
+        };
+    }
+
+    function makeFreshPoopRecord() {
+        return {
+            dateKey: todayKey(),
+            target: POOP_TARGET,
+            startWord: state.poopStartWord,
+            attempts: 0,
+            solved: false,
+            nameSubmitted: false,
+            entryId: '',
+            playerName: '',
+            rank: null,
+            solvedAt: '',
+            rows: [poopRow(state.poopStartWord, true, true)]
         };
     }
 
@@ -739,6 +882,19 @@
             target: state.target,
             variation: state.varietyId,
             seconds,
+            solvedAt: new Date().toISOString()
+        };
+    }
+
+    function makePendingPoopEntry() {
+        return {
+            mode: 'poop',
+            difficulty: 'normal',
+            dateKey: todayKey(),
+            target: POOP_TARGET,
+            startWord: state.poopStartWord,
+            variation: '',
+            attempts: Math.max(1, state.rows.filter(row => row.locked && !row.isStart).length),
             solvedAt: new Date().toISOString()
         };
     }
@@ -831,6 +987,65 @@
         persistDailyRecord();
     }
 
+    function hydratePoopRecord() {
+        const stored = readPoopRecord();
+        const isSamePuzzle = stored
+            && stored.dateKey === todayKey()
+            && stored.target === POOP_TARGET
+            && stored.startWord === state.poopStartWord;
+        const record = isSamePuzzle ? stored : makeFreshPoopRecord();
+        const accepted = [state.poopStartWord];
+        let draft = '';
+        let solved = false;
+
+        const savedRows = Array.isArray(record.rows) ? record.rows.slice(1) : [];
+        for (const saved of savedRows) {
+            const word = Array.isArray(saved?.letters)
+                ? normalizeWord(saved.letters.join('')).slice(0, WORD_LENGTH)
+                : '';
+            if (saved?.locked) {
+                if (solved || !state.wordSet.has(word) || changedLetterCount(accepted[accepted.length - 1], word) !== 1) {
+                    break;
+                }
+                accepted.push(word);
+                if (word === POOP_TARGET) solved = true;
+            } else if (!solved && !draft) {
+                draft = Array.from(word).filter(letter => UA_LETTER_RE.test(letter)).join('');
+            }
+        }
+
+        state.rows = accepted.map((word, index) => poopRow(word, true, index === 0));
+        state.locked = solved;
+        if (!solved) state.rows.push(poopRow(draft, false));
+
+        state.poopRecord = {
+            ...record,
+            dateKey: todayKey(),
+            target: POOP_TARGET,
+            startWord: state.poopStartWord,
+            attempts: Math.max(0, accepted.length - 1),
+            solved,
+            rows: state.rows.map(row => ({
+                letters: row.letters.slice(),
+                locked: row.locked,
+                isStart: Boolean(row.isStart)
+            }))
+        };
+
+        if (solved && !state.poopRecord.nameSubmitted) {
+            state.pendingPoopEntry = makePendingPoopEntry();
+        } else {
+            state.pendingPoopEntry = null;
+        }
+
+        if (!solved) {
+            state.activeRow = state.rows.length - 1;
+            const firstEmpty = state.rows[state.activeRow].letters.findIndex(letter => !letter);
+            state.activeCol = firstEmpty === -1 ? WORD_LENGTH - 1 : firstEmpty;
+        }
+        persistPoopRecord();
+    }
+
     function currentDailyElapsedMs() {
         const record = state.dailyRecord;
         if (!record) return 0;
@@ -840,6 +1055,10 @@
     }
 
     function persistDailyRecord(materializeTimer = false) {
+        if (state.mode === 'poop') {
+            persistPoopRecord();
+            return;
+        }
         if (state.mode !== 'daily' || !state.dailyRecord) return;
 
         const record = state.dailyRecord;
@@ -855,6 +1074,21 @@
         }
 
         writeDailyRecord(record);
+    }
+
+    function persistPoopRecord() {
+        if (state.mode !== 'poop' || !state.poopRecord) return;
+        const record = state.poopRecord;
+        record.dateKey = todayKey();
+        record.target = POOP_TARGET;
+        record.startWord = state.poopStartWord;
+        record.attempts = Math.max(0, state.rows.filter(row => row.locked && !row.isStart).length);
+        record.rows = state.rows.map(row => ({
+            letters: row.letters.slice(),
+            locked: row.locked,
+            isStart: Boolean(row.isStart)
+        }));
+        writePoopRecord(record);
     }
 
     function updateActivePosition() {
@@ -876,7 +1110,33 @@
         return STATE_NAMES[value] || 'absent';
     }
 
+    function renderPoopGrid() {
+        const targetLetters = Array.from(POOP_TARGET);
+        const rowsHtml = state.rows.map((row, rowIndex) => {
+            const tiles = row.letters.map((letter, colIndex) => {
+                const isActive = !state.locked && rowIndex === state.activeRow && colIndex === state.activeCol && !row.locked;
+                const isBrown = row.locked && !row.isStart && letter === targetLetters[colIndex];
+                const label = row.isStart
+                    ? `Початкове слово, літера ${colIndex + 1}`
+                    : `Спроба ${Math.max(1, rowIndex)}, літера ${colIndex + 1}`;
+                return `<button class="unwordle-tile${isActive ? ' is-active' : ''}${letter ? ' is-filled' : ''}" type="button" data-row="${rowIndex}" data-col="${colIndex}"${isBrown ? ' data-state="poop-correct"' : ''} aria-label="${escapeHtml(label)}">${escapeHtml(letter.toLocaleUpperCase('uk-UA'))}</button>`;
+            }).join('');
+            return `
+                <div class="game-row-wrap${row.locked && !row.isStart ? ' is-accepted' : ''}" data-row-wrap="${rowIndex}">
+                    <div class="game-row${state.invalidRow === rowIndex ? ' is-invalid' : ''}" data-row="${rowIndex}">${tiles}</div>
+                    <span class="row-check"${row.locked && !row.isStart ? ' aria-label="Спробу прийнято"' : ' aria-hidden="true"'}>✓</span>
+                </div>
+            `;
+        }).join('');
+
+        els.grid.innerHTML = rowsHtml;
+    }
+
     function renderGrid() {
+        if (state.mode === 'poop') {
+            renderPoopGrid();
+            return;
+        }
         const waitingToStart = isDailyWaitingToStart();
         const rowsHtml = state.rows.map((row, rowIndex) => {
             const tiles = row.pattern.map((color, colIndex) => {
@@ -936,16 +1196,23 @@
             button.setAttribute('aria-pressed', String(active));
         });
 
-        els.difficultyTabs.hidden = state.mode === 'daily';
-        els.solveButton.hidden = state.mode === 'daily';
+        const isUnlimited = state.mode === 'unlimited';
+        const isDailyPuzzleMode = state.mode === 'daily' || state.mode === 'poop';
+        els.difficultyTabs.hidden = !isUnlimited;
+        els.solveButton.hidden = !isUnlimited;
         els.solveButton.disabled = state.mode !== 'unlimited' || state.locked || state.rows.every(row => row.locked);
         els.solveButton.setAttribute('aria-label', 'Підказати один рядок');
-        els.newPuzzleButton.hidden = state.mode === 'daily';
+        els.newPuzzleButton.hidden = !isUnlimited;
         els.dailyTimer.hidden = state.mode !== 'daily';
-        els.nextPuzzleCountdown.hidden = state.mode !== 'daily';
+        els.nextPuzzleCountdown.hidden = !isDailyPuzzleMode;
         els.card.classList.toggle('is-awaiting-start', isDailyWaitingToStart());
-        els.shareButton.setAttribute('aria-label', state.mode === 'daily' ? 'Поділитися словом дня' : 'Поділитися варіацією');
-        els.leaderboardButton.setAttribute('aria-label', state.mode === 'daily' ? 'Рейтинг' : 'Рейтинг нескінченної');
+        els.card.classList.toggle('is-poop-mode', state.mode === 'poop');
+        els.shareButton.setAttribute('aria-label', state.mode === 'daily'
+            ? 'Поділитися словом дня'
+            : state.mode === 'poop' ? 'Поділитися режимом 💩' : 'Поділитися варіацією');
+        els.leaderboardButton.setAttribute('aria-label', state.mode === 'daily'
+            ? 'Рейтинг'
+            : state.mode === 'poop' ? 'Рейтинг режиму 💩' : 'Рейтинг нескінченної');
         updateTimerDisplay();
         updateNextPuzzleCountdown();
     }
@@ -959,7 +1226,7 @@
 
     function getKeyboardColors() {
         const colors = new Map();
-        if (isDailyWaitingToStart()) return colors;
+        if (state.mode === 'poop' || isDailyWaitingToStart()) return colors;
 
         Array.from(state.target).forEach(letter => {
             colors.set(letter, 'correct');
@@ -997,7 +1264,57 @@
         setStatus(message);
     }
 
+    function completePoopPuzzle() {
+        state.pendingPoopEntry = makePendingPoopEntry();
+        if (state.poopRecord) {
+            state.poopRecord.solved = true;
+            state.poopRecord.solvedAt = state.pendingPoopEntry.solvedAt;
+            persistPoopRecord();
+        }
+        if (!state.poopRecord?.nameSubmitted) openNameDialog('poop');
+    }
+
+    function submitPoopRow(rowIndex = state.activeRow) {
+        const row = state.rows[rowIndex];
+        if (!row || row.locked || state.locked) return;
+
+        const word = row.letters.join('');
+        if (word.length !== WORD_LENGTH) {
+            setInvalidRow(rowIndex);
+            setStatus('Потрібно 5 літер.');
+            return;
+        }
+        if (!state.wordSet.has(word)) {
+            rejectInvalidWord(rowIndex, 'Такого слова немає у словнику.');
+            return;
+        }
+
+        const previousWord = state.rows[rowIndex - 1]?.letters.join('') || '';
+        if (changedLetterCount(previousWord, word) !== 1) {
+            rejectInvalidWord(rowIndex, 'Зміни рівно одну літеру від попереднього слова.');
+            return;
+        }
+
+        row.locked = true;
+        if (word === POOP_TARGET) {
+            state.locked = true;
+            completePoopPuzzle();
+            setStatus(`Готово! Ти дійшов до «${POOP_TARGET}» за ${state.poopRecord?.attempts || 0} спроб.`);
+        } else {
+            state.rows.push(poopRow());
+            state.activeRow = state.rows.length - 1;
+            state.activeCol = 0;
+            persistPoopRecord();
+            setStatus('Слово прийнято. Зміни ще одну літеру.');
+        }
+        render();
+    }
+
     function submitRow(rowIndex = state.activeRow) {
+        if (state.mode === 'poop') {
+            submitPoopRow(rowIndex);
+            return;
+        }
         if (isDailyWaitingToStart()) {
             setStatus('Натисни “Почати”, щоб запустити таймер і грати.');
             return;
@@ -1208,18 +1525,23 @@
     }
 
     function normalizeLeaderboardEntry(item) {
+        const mode = ['daily', 'unlimited', 'poop'].includes(item?.mode) ? item.mode : 'daily';
         const seconds = Number(item?.seconds);
-        if (!Number.isFinite(seconds) || seconds <= 0) return null;
+        const attempts = Math.round(Number(item?.attempts));
+        if (mode !== 'poop' && (!Number.isFinite(seconds) || seconds <= 0)) return null;
+        if (mode === 'poop' && (!Number.isFinite(attempts) || attempts < 1)) return null;
         return {
-            id: String(item?.id || `${item?.dateKey || todayKey()}-${item?.name || 'player'}-${seconds}`),
-            mode: item?.mode === 'unlimited' ? 'unlimited' : 'daily',
+            id: String(item?.id || `${item?.dateKey || todayKey()}-${item?.name || 'player'}-${mode === 'poop' ? attempts : seconds}`),
+            mode,
             difficulty: item?.difficulty || 'normal',
             dateKey: String(item?.dateKey || todayKey()),
             target: normalizeWord(item?.target || state.target),
+            startWord: normalizeWord(item?.startWord || ''),
             variation: String(item?.variation || ''),
             name: String(item?.name || 'Гравець').trim().slice(0, 24) || 'Гравець',
-            seconds: Math.max(1, Math.round(seconds)),
-            styleScore: normalizeStyleScore(item?.styleScore),
+            seconds: mode === 'poop' ? 0 : Math.max(1, Math.round(seconds)),
+            attempts: mode === 'poop' ? attempts : null,
+            styleScore: mode === 'daily' ? normalizeStyleScore(item?.styleScore) : null,
             solvedAt: item?.solvedAt || new Date().toISOString()
         };
     }
@@ -1230,6 +1552,11 @@
     }
 
     function compareLeaderboardEntries(a, b) {
+        if (a.mode === 'poop' || b.mode === 'poop') {
+            return Number(a.attempts) - Number(b.attempts)
+                || String(a.solvedAt).localeCompare(String(b.solvedAt))
+                || String(a.id).localeCompare(String(b.id));
+        }
         return a.seconds - b.seconds
             || styleSortValue(b) - styleSortValue(a)
             || String(a.solvedAt).localeCompare(String(b.solvedAt))
@@ -1276,6 +1603,10 @@
     function leaderboardPlayerKey(entry) {
         if (entry.mode === 'unlimited') {
             return `unlimited:${playerNameKey(entry.name)}:${entry.difficulty}:${entry.variation}`;
+        }
+
+        if (entry.mode === 'poop') {
+            return `poop:${playerNameKey(entry.name)}:${entry.dateKey}:${entry.startWord}:${entry.target}`;
         }
 
         return `daily:${playerNameKey(entry.name)}:${entry.dateKey}:${entry.target}`;
@@ -1326,6 +1657,18 @@
     function localDailyLeaderboard(entries = readLeaderboard()) {
         return uniqueLeaderboardEntries(entries)
             .filter(item => item.mode === 'daily' && item.dateKey === todayKey() && item.target === state.target)
+            .sort(compareLeaderboardEntries)
+            .slice(0, 10);
+    }
+
+    function localPoopLeaderboard(entries = readLeaderboard()) {
+        return uniqueLeaderboardEntries(entries)
+            .filter(item => (
+                item.mode === 'poop'
+                && item.dateKey === todayKey()
+                && item.target === POOP_TARGET
+                && item.startWord === state.poopStartWord
+            ))
             .sort(compareLeaderboardEntries)
             .slice(0, 10);
     }
@@ -1406,6 +1749,27 @@
         return index === -1 ? null : index + 1;
     }
 
+    function findPoopRank(entries, reference) {
+        if (!reference) return null;
+        const sorted = uniqueLeaderboardEntries(entries)
+            .filter(item => (
+                item.mode === 'poop'
+                && item.dateKey === todayKey()
+                && item.target === POOP_TARGET
+                && item.startWord === state.poopStartWord
+            ))
+            .sort(compareLeaderboardEntries);
+        const index = sorted.findIndex(item => (
+            (reference.id && item.id === reference.id)
+            || (
+                item.attempts === reference.attempts
+                && item.name === reference.name
+                && item.solvedAt === reference.solvedAt
+            )
+        ));
+        return index === -1 ? null : index + 1;
+    }
+
     function currentDailyResultReference() {
         if (!state.dailyRecord?.solved) return null;
         const seconds = Math.max(1, Math.round((Number(state.dailyRecord.elapsedMs) || 0) / 1000));
@@ -1418,6 +1782,21 @@
             name: String(state.dailyRecord.playerName || 'Гравець'),
             seconds,
             solvedAt: state.dailyRecord.solvedAt || ''
+        };
+    }
+
+    function currentPoopResultReference() {
+        if (!state.poopRecord?.solved) return null;
+        return {
+            id: String(state.poopRecord.entryId || ''),
+            mode: 'poop',
+            difficulty: 'normal',
+            dateKey: todayKey(),
+            target: POOP_TARGET,
+            startWord: state.poopStartWord,
+            name: String(state.poopRecord.playerName || 'Гравець'),
+            attempts: Math.max(1, Math.round(Number(state.poopRecord.attempts) || 0)),
+            solvedAt: state.poopRecord.solvedAt || ''
         };
     }
 
@@ -1474,6 +1853,42 @@
         };
     }
 
+    async function readRemotePoopLeaderboard(entryId = '') {
+        const url = leaderboardUrl();
+        if (!url) return { source: 'local', entries: localPoopLeaderboard(), error: false };
+
+        url.searchParams.set('mode', 'poop');
+        url.searchParams.set('dateKey', todayKey());
+        url.searchParams.set('target', POOP_TARGET);
+        url.searchParams.set('startWord', state.poopStartWord);
+        if (entryId) url.searchParams.set('entryId', entryId);
+        const response = await fetchWithTimeout(url.toString(), {
+            headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) throw new Error(`Leaderboard read failed: ${response.status}`);
+
+        const payload = await response.json();
+        const rawEntries = Array.isArray(payload) ? payload : payload.entries;
+        const entries = Array.isArray(rawEntries) ? rawEntries : [];
+        const rank = Number(payload?.rank);
+        return {
+            source: 'remote',
+            entries: entries
+                .map(normalizeLeaderboardEntry)
+                .filter(Boolean)
+                .filter(item => (
+                    item.mode === 'poop'
+                    && item.dateKey === todayKey()
+                    && item.target === POOP_TARGET
+                    && item.startWord === state.poopStartWord
+                ))
+                .sort(compareLeaderboardEntries)
+                .slice(0, 10),
+            rank: Number.isFinite(rank) && rank > 0 ? rank : null,
+            error: false
+        };
+    }
+
     function normalizeUnlimitedScore(item) {
         const total = Number(item?.total);
         if (!Number.isFinite(total) || total <= 0) return null;
@@ -1523,9 +1938,11 @@
                     difficulty: entry.difficulty,
                     dateKey: entry.dateKey,
                     target: entry.target,
+                    startWord: entry.startWord,
                     variation: entry.variation,
                     name: entry.name,
                     seconds: entry.seconds,
+                    attempts: entry.attempts,
                     styleScore: entry.mode === 'daily' ? entry.styleScore : undefined,
                     solvedAt: entry.solvedAt,
                     replaceExisting: options.replaceExisting === true
@@ -1559,10 +1976,14 @@
     }
 
     function confirmLeaderboardReplacement(existing, entry) {
-        const label = entry.mode === 'unlimited' ? 'цієї варіації' : 'сьогоднішнього пазла';
+        const label = entry.mode === 'unlimited'
+            ? 'цієї варіації'
+            : entry.mode === 'poop' ? 'сьогоднішнього режиму 💩' : 'сьогоднішнього пазла';
         const rule = entry.mode === 'daily'
             ? 'Час залишиться з першої спроби. Оновляться тільки очки стилю, якщо вони кращі.'
-            : 'Час у рейтингу залишиться з першої спроби для цього ніку.';
+            : entry.mode === 'poop'
+                ? 'У рейтингу залишиться результат першого проходження для цього ніку.'
+                : 'Час у рейтингу залишиться з першої спроби для цього ніку.';
         return window.confirm(
             `Нік “${entry.name}” уже є в рейтингу ${label}.\n\n` +
             `Замінити запис для цього ніку?\n${rule}`
@@ -1579,7 +2000,7 @@
         if (!result.replaced) return addedMessage;
         if (result.styleUpdated) return 'Очки стилю оновлено. Час залишився з першої спроби.';
         return result.keptExisting
-            ? 'У рейтингу залишився перший час для цього ніку.'
+            ? 'У рейтингу залишився перший результат для цього ніку.'
             : replacedMessage;
     }
 
@@ -1665,6 +2086,39 @@
         ));
         renderControls();
         if (!state.dailyRecord?.rank) refreshDailyRank(true);
+    }
+
+    async function recordPoopName(name) {
+        if (!state.pendingPoopEntry) return;
+        const cleanName = cleanPlayerName(name);
+        const entry = {
+            ...state.pendingPoopEntry,
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            name: cleanName
+        };
+        const saveResult = await saveLeaderboardEntry(entry);
+        if (saveResult.cancelled) {
+            els.nameDialogNote.textContent = 'Можеш змінити ім’я або підтвердити заміну існуючого запису.';
+            return;
+        }
+        const savedEntry = saveResult.entry || entry;
+
+        if (state.poopRecord) {
+            state.poopRecord.nameSubmitted = true;
+            state.poopRecord.entryId = savedEntry.id || entry.id;
+            state.poopRecord.playerName = savedEntry.name || cleanName;
+            state.poopRecord.solvedAt = savedEntry.solvedAt || entry.solvedAt;
+            state.poopRecord.attempts = Math.max(1, Math.round(Number(savedEntry.attempts) || entry.attempts));
+            state.poopRecord.rank = saveResult.rank || findPoopRank(saveResult.entries || readLeaderboard(), savedEntry);
+            persistPoopRecord();
+        }
+        state.pendingPoopEntry = null;
+        closeModal();
+        setStatus(replacementStatusMessage(
+            saveResult,
+            'Результат додано в рейтинг.',
+            'У рейтингу залишився результат першої спроби.'
+        ));
     }
 
     function recordUnlimitedSolve() {
@@ -1854,18 +2308,20 @@
     }
 
     function updateNextPuzzleCountdown() {
-        if (!els.nextPuzzleCountdown || state.mode !== 'daily') return;
+        if (!els.nextPuzzleCountdown || (state.mode !== 'daily' && state.mode !== 'poop')) return;
         els.nextPuzzleCountdown.textContent = `Наступний пазл через ${formatClock(secondsToNextPuzzle())}`;
     }
 
     function refreshDailyPuzzleIfNeeded() {
-        if (state.mode !== 'daily') return;
+        if (state.mode !== 'daily' && state.mode !== 'poop') return;
         const currentKey = todayKey();
-        if (!state.dailyKey) {
-            state.dailyKey = currentKey;
+        const currentPuzzleKey = state.mode === 'poop' ? state.poopKey : state.dailyKey;
+        if (!currentPuzzleKey) {
+            if (state.mode === 'poop') state.poopKey = currentKey;
+            else state.dailyKey = currentKey;
             return;
         }
-        if (state.dailyKey !== currentKey) generatePuzzle();
+        if (currentPuzzleKey !== currentKey) generatePuzzle();
     }
 
     function formatDate(value) {
@@ -1899,6 +2355,25 @@
                         <span class="leaderboard-time">
                             <strong>${formatClock(Number(item.seconds) || 0)}</strong>
                             <span>час</span>
+                        </span>
+                    </div>
+                `).join('')}
+            </div>`
+            : `<p class="leaderboard-empty">${escapeHtml(emptyMessage)}</p>`;
+    }
+
+    function renderPoopLeaderboardList(entries, emptyMessage) {
+        return entries.length
+            ? `<div class="leaderboard-list">
+                ${entries.map((item, index) => `
+                    <div class="leaderboard-row leaderboard-row--poop">
+                        ${renderLeaderboardRank(index)}
+                        <span class="leaderboard-main">
+                            <strong>${escapeHtml(item.name || 'Гравець')}</strong>
+                        </span>
+                        <span class="leaderboard-attempts">
+                            <strong>${Math.max(1, Math.round(Number(item.attempts) || 0))}</strong>
+                            <span>спроб</span>
                         </span>
                     </div>
                 `).join('')}
@@ -1961,7 +2436,34 @@
         els.clearLeaderboardButton.hidden = entries.length === 0;
         els.clearLeaderboardButton.textContent = 'Очистити статистику';
 
-        if (state.mode !== 'daily') {
+        if (state.mode === 'poop') {
+            els.leaderboardTitle.textContent = 'Рейтинг режиму 💩';
+            els.leaderboardNote.textContent = REMOTE_LEADERBOARD_ENDPOINT
+                ? 'Менше спроб — вище місце.'
+                : 'Глобальний рейтинг ще не підключено. Поки показано результати цього браузера.';
+            els.leaderboardContent.innerHTML = '<p class="leaderboard-empty">Завантаження рейтингу...</p>';
+
+            let result;
+            try {
+                result = await readRemotePoopLeaderboard();
+            } catch (_) {
+                result = { source: 'local', entries: localPoopLeaderboard(entries), error: true };
+            }
+
+            if (result.error) {
+                els.leaderboardNote.textContent = 'Глобальний рейтинг зараз недоступний. Показано результати цього браузера.';
+            } else if (result.source === 'local') {
+                els.leaderboardNote.textContent = 'Глобальний рейтинг ще не підключено. Поки показано результати цього браузера.';
+            }
+
+            els.leaderboardContent.innerHTML = renderPoopLeaderboardList(
+                result.entries,
+                'Сьогодні ще немає результатів. Дійди до «ГІМНО» і додай своє ім’я.'
+            );
+            return;
+        }
+
+        if (state.mode === 'unlimited') {
             els.leaderboardTitle.textContent = 'Рейтинг нескінченної';
             els.leaderboardNote.textContent = REMOTE_LEADERBOARD_ENDPOINT
                 ? 'Топ за кількістю розв’язаних пазлів.'
@@ -2093,6 +2595,17 @@
     }
 
     function renderHelp() {
+        if (state.mode === 'poop') {
+            els.helpContent.innerHTML = `
+                <h2 id="helpTitle">Режим 💩</h2>
+                <p>Почни з показаного слова й дійди до <strong>ГІМНО</strong>.</p>
+                <p>Кожна наступна спроба має бути словом зі словника і відрізнятися від попередньої рівно однією літерою.</p>
+                <p>Літери, що вже стоять на своїх місцях як у «ГІМНО», стають коричневими. Інших підказок і кольорів немає.</p>
+                <p>У рейтингу перемагає той, хто дійде за найменшу кількість прийнятих спроб.</p>
+            `;
+            els.helpNav.innerHTML = '<button class="modal-link" type="button" data-help-action="start">Зрозуміло</button>';
+            return;
+        }
         const slide = HELP_SLIDES[state.helpSlide];
         const isFirst = state.helpSlide === 0;
         const isLast = state.helpSlide === HELP_SLIDES.length - 1;
@@ -2123,6 +2636,8 @@
         els.playerName.value = readPlayerName();
         if (kind === 'unlimited') {
             els.nameDialogNote.textContent = 'Введи ім’я для рейтингу цієї варіації.';
+        } else if (kind === 'poop') {
+            els.nameDialogNote.textContent = 'Введи ім’я для щоденного рейтингу режиму 💩.';
         } else if (isSuspiciousDailyTime(state.pendingDailyEntry?.seconds)) {
             els.nameDialogNote.textContent = `${dailyCheatWarningText()} Якщо все чесно, збережи результат.`;
         } else {
@@ -2133,6 +2648,15 @@
     }
 
     function currentShareText() {
+        if (state.mode === 'poop') {
+            const url = gameUrl({ mode: 'poop' });
+            const attempts = Number(state.poopRecord?.attempts || state.pendingPoopEntry?.attempts || 0);
+            if (state.locked && attempts > 0) {
+                return `Я дійшов до ГІМНО за ${attempts} спроб у режимі 💩, зможеш краще? ${url}`;
+            }
+            return `Спробуй режим 💩 у КОБЗА-НАВПАКИ: ${url}`;
+        }
+
         if (state.mode === 'daily') {
             const url = gameUrl({ mode: 'daily' });
             if (state.dailyRecord?.solved) {
@@ -2212,6 +2736,7 @@
             button.addEventListener('click', () => {
                 if (state.mode === button.dataset.mode) return;
                 if (state.mode === 'daily') persistDailyRecord(true);
+                if (state.mode === 'poop') persistPoopRecord();
                 state.mode = button.dataset.mode;
                 if (state.mode === 'unlimited') state.varietyId = state.varietyId || makeVarietyId();
                 generatePuzzle();
@@ -2220,7 +2745,7 @@
 
         document.querySelectorAll('.difficulty-tab').forEach(button => {
             button.addEventListener('click', () => {
-                if (state.mode === 'daily') return;
+                if (state.mode !== 'unlimited') return;
                 state.difficulty = button.dataset.difficulty;
                 state.varietyId = makeVarietyId();
                 generatePuzzle();
@@ -2265,15 +2790,20 @@
         els.nameForm.addEventListener('submit', event => {
             event.preventDefault();
             if (state.nameDialogKind === 'unlimited') recordUnlimitedName(els.playerName.value);
+            else if (state.nameDialogKind === 'poop') recordPoopName(els.playerName.value);
             else recordDailyName(els.playerName.value);
         });
 
         els.skipNameButton.addEventListener('click', () => {
             if (state.nameDialogKind === 'unlimited') recordUnlimitedName('Гравець');
+            else if (state.nameDialogKind === 'poop') recordPoopName('Гравець');
             else recordDailyName('Гравець');
         });
 
-        window.addEventListener('beforeunload', () => persistDailyRecord(true));
+        window.addEventListener('beforeunload', () => {
+            persistDailyRecord(true);
+            persistPoopRecord();
+        });
     }
 
     function cacheElements() {
@@ -2327,6 +2857,13 @@
             state.mode = 'unlimited';
             state.difficulty = readUrlDifficulty();
             state.varietyId = sharedVariety;
+            generatePuzzle();
+            startIntervals();
+            return;
+        }
+
+        if (readUrlMode() === 'poop') {
+            state.mode = 'poop';
             generatePuzzle();
             startIntervals();
             return;
