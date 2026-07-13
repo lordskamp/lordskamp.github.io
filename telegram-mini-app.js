@@ -154,6 +154,17 @@
         return String(user.username || [user.first_name, user.last_name].filter(Boolean).join(' ') || '').trim();
     }
 
+    function getInitData() {
+        const app = getApp();
+        return typeof app?.initData === 'string' ? app.initData : '';
+    }
+
+    function getStartParam() {
+        const appValue = getApp()?.initDataUnsafe?.start_param;
+        const urlValue = new URLSearchParams(window.location.search).get('tgWebAppStartParam');
+        return String(appValue || urlValue || '').trim();
+    }
+
     async function init({ cloudKeys = [] } = {}) {
         const app = getApp();
         if (!app) return false;
@@ -185,6 +196,8 @@
     window.KobzaTelegram = {
         init,
         isAvailable,
+        getInitData,
+        getStartParam,
         getPlayerName,
         haptic,
         share,

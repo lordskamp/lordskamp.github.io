@@ -1,24 +1,27 @@
-# КОБЗА-НАВПАКИ as a Telegram Mini App
+# КОБЗА-НАВПАКИ — Telegram Mini App
 
-The game remains a static website and can now run as a Telegram Mini App. It uses the official Telegram WebApp script rather than a framework because this project is already plain HTML, CSS, and JavaScript.
+`@unwordle_bot` is the game entry point. The Mini App is still delivered as HTTPS files, but it launches inside Telegram as a dedicated, full-height game rather than sending players to the regular site.
 
-## What is included
+## Player experience
 
-- Telegram calls `ready()` and expands the app as soon as it loads.
-- Telegram light, dark, and custom themes drive the in-app UI.
-- Safe-area insets protect controls on notched phones.
-- A player's daily and 💩-mode progress, plus their chosen display name, are mirrored to Telegram CloudStorage. The normal browser fallback remains local storage.
-- Telegram uses a native share sheet, haptic feedback, and its Back button closes game dialogs.
-- The game works unchanged when opened in a normal browser.
+- The bot profile has a **Грати** menu button.
+- Configure a **Main Mini App** to add Telegram's prominent **Launch app** button to the bot profile.
+- The game's share button creates links such as `https://t.me/unwordle_bot?startapp=p`. They open the selected game mode inside Telegram.
+- `d` opens the daily game, `p` opens the 💩 mode, and `u-<difficulty>-<variation>` opens the same unlimited puzzle for every recipient.
+- Results submitted from Telegram use the player's verified Telegram identity. The display name shown in the table is taken from that Telegram account; typed names are not trusted by the server.
 
-## Connect the game to a bot
+## One-time BotFather setup
 
-1. In Telegram, open [@BotFather](https://t.me/BotFather) and send `/newbot`.
-2. Choose the bot name and a username ending in `bot`, then retain the token privately. This front-end-only version does not need the token in the repository.
-3. Open `/mybots` → your bot → **Bot Settings** → **Configure Mini App**, and set the HTTPS URL for this page. For the GitHub Pages deployment, use `https://lordskamp.github.io/unwordle`.
-4. Also use `/setmenubutton` to make the game the bot's menu-button experience.
-5. Test from Telegram on iOS, Android, and Desktop. For local development, expose the static server with an HTTPS tunnel such as ngrok, then temporarily set that URL in BotFather.
+1. Open [@BotFather](https://t.me/BotFather) → `/mybots` → `@unwordle_bot`.
+2. Choose **Bot Settings** → **Configure Mini App** → **Enable Mini App**.
+3. Set the game URL to `https://lordskamp.github.io/unwordle/` and provide the required title, icon, and preview material.
+4. Configure it as the bot's **Main Mini App**. This is what activates the profile-level **Launch app** button and makes the `?startapp=` share links launch the game directly.
+5. Keep the menu button set to **Грати** with the same URL.
 
-## Score integrity
+## Protected global rating
 
-This is intentionally a front-end-only game. Telegram's visible user name is used only as a convenient default display name; it is not verified identity. The existing leaderboard endpoint therefore remains suitable for casual play only. For a trusted global ranking, add an API that validates `Telegram.WebApp.initData` with the bot token before it accepts scores.
+The Cloudflare Worker in `api/kobza-leaderboard-worker.js` now checks `Telegram.WebApp.initData` before accepting a score. It derives the player identity and display name from the signed Telegram data, so two people with the same visible name keep separate results.
+
+Before deploying this Worker version, add the bot token as a Cloudflare Worker secret named `TELEGRAM_BOT_TOKEN` and redeploy it with the existing `KOBZA_LEADERBOARD` KV binding. Do not add that token to this repository or to a GitHub Pages file.
+
+The Worker validates the player identity but the puzzle itself still runs in the client. If the ranking later needs anti-cheat guarantees for completion time, move puzzle generation and solve verification to the Worker too.

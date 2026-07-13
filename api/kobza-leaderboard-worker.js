@@ -1,7 +1,7 @@
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Cache-Control': 'no-store'
 };
 
@@ -17,6 +17,8 @@ const ENTRY_TTL_SECONDS = 60 * 60 * 24 * 35;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const UNLIMITED_AGGREGATE_KEY = 'unlimited:aggregate';
 const PROFILE_KEY_PREFIX = 'profile:';
+const TELEGRAM_INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
+const TELEGRAM_ID_RE = /^[1-9]\d{0,19}$/;
 const UA_WORD_RE = /^[а-щьюяєіїґ]{5}$/u;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const VARIETY_RE = /^\d{8,18}$/;
@@ -44,6 +46,91 @@ function json(data, status = 200) {
     });
 }
 
+function cleanTelegramId(value) {
+    const id = String(value || '').trim();
+    return TELEGRAM_ID_RE.test(id) ? id : '';
+}
+
+function bytesToHex(bytes) {
+    return Array.from(new Uint8Array(bytes))
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+function constantTimeEqual(left, right) {
+    if (typeof left !== 'string' || typeof right !== 'string' || left.length !== right.length) return false;
+    let difference = 0;
+    for (let index = 0; index < left.length; index += 1) {
+        difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+    }
+    return difference === 0;
+}
+
+async function hmacSha256(key, value) {
+    const encoder = new TextEncoder();
+    const keyData = typeof key === 'string' ? encoder.encode(key) : key;
+    const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+    return crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(value));
+}
+
+function telegramDisplayName(user) {
+    const username = String(user?.username || '').trim();
+    const fullName = [user?.first_name, user?.last_name]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .join(' ');
+    return cleanName(username ? `@${username}` : fullName);
+}
+
+async function validateTelegramUser(request, env) {
+    if (!env.TELEGRAM_BOT_TOKEN) {
+        return { error: 'Telegram score verification is not configured.', status: 503 };
+    }
+
+    const authorization = String(request.headers.get('Authorization') || '');
+    if (!authorization.startsWith('tma ')) {
+        return { error: 'Telegram authorization is required.', status: 401 };
+    }
+
+    const initData = authorization.slice(4);
+    const params = new URLSearchParams(initData);
+    const receivedHash = String(params.get('hash') || '');
+    if (!/^[a-f0-9]{64}$/i.test(receivedHash)) {
+        return { error: 'Telegram authorization is invalid.', status: 401 };
+    }
+
+    params.delete('hash');
+    const dataCheckString = Array.from(params.entries())
+        .map(([key, value]) => `${key}=${value}`)
+        .sort()
+        .join('\n');
+    const secretKey = await hmacSha256('WebAppData', env.TELEGRAM_BOT_TOKEN);
+    const expectedHash = bytesToHex(await hmacSha256(secretKey, dataCheckString));
+    if (!constantTimeEqual(expectedHash, receivedHash.toLowerCase())) {
+        return { error: 'Telegram authorization is invalid.', status: 401 };
+    }
+
+    const authDate = Number(params.get('auth_date'));
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (!Number.isSafeInteger(authDate) || authDate > nowSeconds + 60 || nowSeconds - authDate > TELEGRAM_INIT_DATA_MAX_AGE_SECONDS) {
+        return { error: 'Telegram authorization has expired. Reopen the game from Telegram.', status: 401 };
+    }
+
+    try {
+        const user = JSON.parse(params.get('user') || '');
+        if (!cleanTelegramId(user?.id)) throw new Error('Missing Telegram user id.');
+        return { user };
+    } catch (_) {
+        return { error: 'Telegram user data is invalid.', status: 401 };
+    }
+}
+
 function normalizeWord(value) {
     return String(value || '')
         .trim()
@@ -64,6 +151,30 @@ function playerNameKey(value) {
 
 function samePlayerName(a, b) {
     return playerNameKey(a) === playerNameKey(b);
+}
+
+function playerIdentityKey(entry) {
+    const telegramId = cleanTelegramId(entry?.telegramId);
+    return telegramId ? `telegram:${telegramId}` : `name:${playerNameKey(entry?.name)}`;
+}
+
+function samePlayerIdentity(a, b) {
+    return playerIdentityKey(a) === playerIdentityKey(b);
+}
+
+function publicEntry(entry) {
+    if (!entry) return entry;
+    const { telegramId, ...visibleEntry } = entry;
+    return visibleEntry;
+}
+
+function publicProfile(profile) {
+    if (!profile) return profile;
+    return {
+        ...profile,
+        dailyEntries: Array.isArray(profile.dailyEntries) ? profile.dailyEntries.map(publicEntry) : [],
+        unlimitedEntries: Array.isArray(profile.unlimitedEntries) ? profile.unlimitedEntries.map(publicEntry) : []
+    };
 }
 
 function cleanDifficulty(value) {
@@ -141,6 +252,7 @@ function normalizeEntry(item) {
     const seconds = Math.round(Number(item?.seconds));
     const attempts = Math.round(Number(item?.attempts));
     const styleScore = mode === 'daily' ? cleanStyleScore(item?.styleScore) : null;
+    const telegramId = cleanTelegramId(item?.telegramId);
 
     if (mode !== 'poop' && (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_SECONDS)) return null;
     if (mode === 'poop' && (!Number.isFinite(attempts) || attempts < 1 || attempts > MAX_POOP_ATTEMPTS)) return null;
@@ -148,6 +260,7 @@ function normalizeEntry(item) {
     if (!UA_WORD_RE.test(target)) return null;
     if (mode === 'unlimited' && !VARIETY_RE.test(variation)) return null;
     if (mode === 'poop' && (target !== POOP_TARGET || startWord !== poopStartWordForDate(dateKey))) return null;
+    if (item?.telegramId && !telegramId) return null;
 
     return {
         id: item?.id || crypto.randomUUID(),
@@ -158,6 +271,7 @@ function normalizeEntry(item) {
         startWord: mode === 'poop' ? startWord : '',
         variation: mode === 'unlimited' ? variation : '',
         name: cleanName(item?.name),
+        telegramId,
         seconds: mode === 'poop' ? 0 : seconds,
         attempts: mode === 'poop' ? attempts : null,
         styleScore,
@@ -261,7 +375,7 @@ function mergeWithFirstAttempt(first, entries) {
 }
 
 function sameLeaderboardPlayer(a, b) {
-    if (!a || !b || a.mode !== b.mode || !samePlayerName(a.name, b.name)) return false;
+    if (!a || !b || a.mode !== b.mode || !samePlayerIdentity(a, b)) return false;
     if (a.mode === 'unlimited') {
         return a.difficulty === b.difficulty && a.variation === b.variation;
     }
@@ -316,7 +430,7 @@ function mergeLeaderboardEntry(entries, entry, { allowReplace = false } = {}) {
 }
 
 function unlimitedKey(entry) {
-    return `${entry.name.toLocaleLowerCase('uk-UA')}|${entry.difficulty}|${entry.variation}`;
+    return `${playerIdentityKey(entry)}|${entry.difficulty}|${entry.variation}`;
 }
 
 function upsertUnlimitedEntry(entries, entry) {
@@ -474,14 +588,15 @@ async function readPlayerProfile(env, name, extraEntries = []) {
     return profile;
 }
 
-function summarizeUnlimited(entries, sinceMs = 0) {
+function summarizeUnlimited(entries, sinceMs = 0, includeIdentity = false) {
     const players = new Map();
     entries.forEach(entry => {
         const solvedAt = new Date(entry.solvedAt).getTime();
         if (sinceMs && (!Number.isFinite(solvedAt) || solvedAt < sinceMs)) return;
 
-        const key = entry.name.toLocaleLowerCase('uk-UA');
+        const key = playerIdentityKey(entry);
         const player = players.get(key) || {
+            identity: key,
             name: entry.name,
             total: 0,
             easy: 0,
@@ -506,7 +621,7 @@ function summarizeUnlimited(entries, sinceMs = 0) {
             || a.name.localeCompare(b.name, 'uk-UA')
         ))
         .slice(0, 3)
-        .map(({ latestSolvedAt, ...item }) => item);
+        .map(({ latestSolvedAt, identity, ...item }) => (includeIdentity ? { ...item, identity } : item));
 }
 
 function unlimitedSummary(entries) {
@@ -560,7 +675,7 @@ export default {
             const profileName = url.searchParams.get('profileName');
             if (profileName) {
                 return json({
-                    profile: await readPlayerProfile(env, profileName)
+                    profile: publicProfile(await readPlayerProfile(env, profileName))
                 });
             }
 
@@ -577,7 +692,7 @@ export default {
                 ? entries.findIndex(entry => entry.id === entryId)
                 : -1;
             return json({
-                entries: entries.slice(0, 10),
+                entries: entries.slice(0, 10).map(publicEntry),
                 rank: rankIndex === -1 ? null : rankIndex + 1
             });
         }
@@ -590,7 +705,14 @@ export default {
                 return json({ error: 'Invalid JSON body.' }, 400);
             }
 
-            const entry = normalizeEntry(body);
+            const authorization = await validateTelegramUser(request, env);
+            if (authorization.error) return json({ error: authorization.error }, authorization.status);
+
+            const entry = normalizeEntry({
+                ...body,
+                name: telegramDisplayName(authorization.user),
+                telegramId: String(authorization.user.id)
+            });
             if (!entry) return json({ error: 'Invalid leaderboard entry.' }, 400);
             const allowReplace = body?.replaceExisting === true;
 
@@ -602,9 +724,9 @@ export default {
                     return json({
                         error: 'PLAYER_EXISTS',
                         conflict: true,
-                        existing: merged.existing,
-                        incoming: merged.incoming,
-                        entry: merged.entry,
+                        existing: publicEntry(merged.existing),
+                        incoming: publicEntry(merged.incoming),
+                        entry: publicEntry(merged.entry),
                         styleUpdated: Boolean(merged.styleUpdated)
                     }, 409);
                 }
@@ -612,8 +734,8 @@ export default {
                 const savedEntry = merged.entry;
                 const sortedVariationEntries = sortEntries(merged.entries).slice(0, MAX_STORED_ENTRIES);
                 const unlimitedEntries = upsertUnlimitedEntry(await readUnlimitedEntries(env), savedEntry);
-                const rankIndex = summarizeUnlimited(unlimitedEntries).findIndex(item => (
-                    samePlayerName(item.name, savedEntry.name)
+                const rankIndex = summarizeUnlimited(unlimitedEntries, 0, true).findIndex(item => (
+                    item.identity === playerIdentityKey(savedEntry)
                 ));
 
                 await Promise.all([
@@ -630,12 +752,12 @@ export default {
 
                 return json({
                     ok: true,
-                    entry: savedEntry,
+                    entry: publicEntry(savedEntry),
                     rank: rankIndex === -1 ? null : rankIndex + 1,
                     replaced: Boolean(merged.hadExisting),
                     keptExisting: Boolean(merged.keptExisting),
                     styleUpdated: Boolean(merged.styleUpdated),
-                    profile: await readPlayerProfile(env, savedEntry.name, [savedEntry]),
+                    profile: publicProfile(await readPlayerProfile(env, savedEntry.name, [savedEntry])),
                     ...unlimitedSummary(unlimitedEntries)
                 });
             }
@@ -649,9 +771,9 @@ export default {
                 return json({
                     error: 'PLAYER_EXISTS',
                     conflict: true,
-                    existing: merged.existing,
-                    incoming: merged.incoming,
-                    entry: merged.entry,
+                    existing: publicEntry(merged.existing),
+                    incoming: publicEntry(merged.incoming),
+                    entry: publicEntry(merged.entry),
                     styleUpdated: Boolean(merged.styleUpdated)
                 }, 409);
             }
@@ -668,12 +790,12 @@ export default {
 
             return json({
                 ok: true,
-                entry: savedEntry,
+                entry: publicEntry(savedEntry),
                 rank: rankIndex === -1 ? null : rankIndex + 1,
                 replaced: Boolean(merged.hadExisting),
                 keptExisting: Boolean(merged.keptExisting),
                 styleUpdated: Boolean(merged.styleUpdated),
-                profile: await readPlayerProfile(env, savedEntry.name, [savedEntry])
+                profile: publicProfile(await readPlayerProfile(env, savedEntry.name, [savedEntry]))
             });
         }
 

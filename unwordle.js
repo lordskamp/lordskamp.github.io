@@ -294,6 +294,11 @@
         return String(globalEndpoint || metaEndpoint).trim().replace(/\/$/, '');
     }
 
+    function getTelegramBotUsername() {
+        const username = document.querySelector('meta[name="kobza-telegram-bot"]')?.content || '';
+        return String(username).trim().replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
+    }
+
     function readUrlVariation() {
         const params = new URLSearchParams(window.location.search);
         const value = String(params.get('variety') || '').trim();
@@ -343,6 +348,38 @@
         }
 
         return url.toString();
+    }
+
+    function telegramStartParam({ mode = state.mode, varietyId = state.varietyId, difficulty = state.difficulty } = {}) {
+        if (mode === 'poop') return 'p';
+        if (mode === 'unlimited') {
+            const difficultyKey = { easy: 'e', normal: 'n', hard: 'h' }[difficulty] || 'n';
+            return `u-${difficultyKey}-${varietyId || makeVarietyId()}`;
+        }
+        return 'd';
+    }
+
+    function shareGameUrl(options = {}) {
+        const botUsername = getTelegramBotUsername();
+        if (!botUsername) return gameUrl(options);
+
+        const link = new URL(`https://t.me/${botUsername}`);
+        link.searchParams.set('startapp', telegramStartParam(options));
+        return link.toString();
+    }
+
+    function telegramLaunch() {
+        const param = window.KobzaTelegram?.getStartParam?.();
+        if (param === 'p') return { mode: 'poop' };
+        if (param === 'd') return { mode: 'daily' };
+
+        const unlimited = /^u-([enh])-(\d{8,18})$/.exec(param || '');
+        if (!unlimited) return null;
+        return {
+            mode: 'unlimited',
+            difficulty: { e: 'easy', n: 'normal', h: 'hard' }[unlimited[1]],
+            varietyId: unlimited[2]
+        };
     }
 
     function syncUrlToMode() {
@@ -1966,11 +2003,13 @@
         const url = leaderboardUrl();
         if (!url) return { ok: false, skipped: true };
         try {
+            const telegramInitData = window.KobzaTelegram?.getInitData?.() || '';
             const response = await fetchWithTimeout(url.toString(), {
                 method: 'POST',
                 headers: {
                     Accept: 'application/json',
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    ...(telegramInitData ? { Authorization: `tma ${telegramInitData}` } : {})
                 },
                 body: JSON.stringify({
                     id: entry.id,
@@ -2675,6 +2714,13 @@
 
     function openNameDialog(kind = 'daily') {
         state.nameDialogKind = kind;
+        const telegramName = window.KobzaTelegram?.getPlayerName?.();
+        if (window.KobzaTelegram?.getInitData?.() && telegramName) {
+            if (kind === 'unlimited') void recordUnlimitedName(telegramName);
+            else if (kind === 'poop') void recordPoopName(telegramName);
+            else void recordDailyName(telegramName);
+            return;
+        }
         els.playerName.value = readPlayerName();
         if (kind === 'unlimited') {
             els.nameDialogNote.textContent = 'Введи ім’я для рейтингу цієї варіації.';
@@ -2691,7 +2737,7 @@
 
     function currentShareText() {
         if (state.mode === 'poop') {
-            const url = gameUrl({ mode: 'poop' });
+            const url = shareGameUrl({ mode: 'poop' });
             const attempts = Number(state.poopRecord?.attempts || state.pendingPoopEntry?.attempts || 0);
             if (state.locked && attempts > 0) {
                 return `Я дійшов до ГІМНО за ${attempts} спроб у режимі 💩, зможеш краще? ${url}`;
@@ -2700,7 +2746,7 @@
         }
 
         if (state.mode === 'daily') {
-            const url = gameUrl({ mode: 'daily' });
+            const url = shareGameUrl({ mode: 'daily' });
             if (state.dailyRecord?.solved) {
                 const seconds = Math.max(1, Math.round(currentDailyElapsedMs() / 1000));
                 return `Я розв’язав слово дня за ${formatClock(seconds)}, зможеш краще? ${url}`;
@@ -2708,7 +2754,7 @@
             return `Спробуй слово дня в КОБЗА-НАВПАКИ: ${url}`;
         }
 
-        const url = gameUrl({ mode: 'unlimited' });
+        const url = shareGameUrl({ mode: 'unlimited' });
         const seconds = Number(state.lastUnlimitedEntry?.seconds || state.pendingUnlimitedEntry?.seconds || 0);
         if (state.locked && seconds > 0) {
             return `Я розв’язав варіацію КОБЗА-НАВПАКИ за ${formatClock(seconds)}, зможеш краще? ${url}`;
@@ -2736,10 +2782,10 @@
     async function shareCurrentPuzzle() {
         const text = currentShareText();
         const url = state.mode === 'poop'
-            ? gameUrl({ mode: 'poop' })
+            ? shareGameUrl({ mode: 'poop' })
             : state.mode === 'daily'
-                ? gameUrl({ mode: 'daily' })
-                : gameUrl({ mode: 'unlimited' });
+                ? shareGameUrl({ mode: 'daily' })
+                : shareGameUrl({ mode: 'unlimited' });
         const shareText = text.endsWith(url) ? text.slice(0, -url.length).trim() : text;
 
         if (window.KobzaTelegram?.share(shareText, url)) {
@@ -2924,17 +2970,20 @@
         await loadWords();
 
         consumeDailyResetFlag();
-        const sharedVariety = readUrlVariation();
+        const telegramSharedGame = telegramLaunch();
+        const sharedVariety = telegramSharedGame?.mode === 'unlimited'
+            ? telegramSharedGame.varietyId
+            : readUrlVariation();
         if (sharedVariety) {
             state.mode = 'unlimited';
-            state.difficulty = readUrlDifficulty();
+            state.difficulty = telegramSharedGame?.difficulty || readUrlDifficulty();
             state.varietyId = sharedVariety;
             generatePuzzle();
             startIntervals();
             return;
         }
 
-        if (readUrlMode() === 'poop') {
+        if (telegramSharedGame?.mode === 'poop' || readUrlMode() === 'poop') {
             state.mode = 'poop';
             generatePuzzle();
             startIntervals();
