@@ -500,6 +500,18 @@ button {
     text-align: center;
 }
 
+.game-status a {
+    color: var(--red);
+    font-weight: 800;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 2px;
+}
+
+.game-status a:hover {
+    color: var(--text-color);
+}
+
 .game-grid {
     width: max-content;
     max-width: 100%;

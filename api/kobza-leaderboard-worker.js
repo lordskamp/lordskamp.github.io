@@ -830,7 +830,7 @@ async function createHintInvoice(env, user) {
     );
 
     const invoiceLink = await telegramBotCall(env, 'createInvoiceLink', {
-        title: 'Підказка для КОБЗА-НАВПАКИ',
+        title: 'Підказка',
         description: 'Відкриває один рядок у поточній грі.',
         payload,
         currency: 'XTR',

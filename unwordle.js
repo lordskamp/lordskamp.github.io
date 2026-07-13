@@ -152,7 +152,6 @@
         activeRow: 0,
         activeCol: 0,
         locked: false,
-        revealed: false,
         invalidRow: null,
         invalidAttempts: 0,
         puzzleNumber: 0,
@@ -712,7 +711,6 @@
         state.activeRow = 0;
         state.activeCol = 0;
         state.locked = false;
-        state.revealed = false;
         state.invalidRow = null;
         state.invalidAttempts = 0;
         state.startedAt = null;
@@ -773,7 +771,6 @@
                 state.activeRow = 0;
                 state.activeCol = 0;
                 state.locked = false;
-                state.revealed = false;
                 state.invalidRow = null;
                 state.invalidAttempts = 0;
                 state.startedAt = null;
@@ -832,6 +829,18 @@
 
     function setStatus(message) {
         if (els.status) els.status.textContent = message;
+    }
+
+    function setTelegramHintStatus() {
+        if (!els.status) return;
+
+        const link = document.createElement('a');
+        link.href = 'https://t.me/unwordle_bot?startapp=d';
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'Telegram';
+        link.setAttribute('aria-label', 'Відкрити КОБЗА-НАВПАКИ у Telegram');
+        els.status.replaceChildren('Підказка за ⭐ доступна лише у ', link, '.');
     }
 
     function readDailyRecord() {
@@ -1437,7 +1446,7 @@
                 const recorded = recordUnlimitedSolve();
                 setStatus(recorded
                     ? 'Готово. Завдання розв’язано.'
-                    : 'Готово. Після підказки результат не йде в рейтинг.');
+                    : 'Готово. Результат уже збережено.');
             }
             window.KobzaTelegram?.haptic('success');
         } else {
@@ -1499,18 +1508,21 @@
         const row = state.rows[rowIndex];
         if (!row) return;
 
+        if (state.mode === 'unlimited' && !state.startedAt) state.startedAt = Date.now();
         row.letters = Array.from(row.solution);
         row.locked = true;
-        state.revealed = true;
 
         const next = state.rows.findIndex(item => !item.locked);
         if (next === -1) {
             state.locked = true;
-            setStatus('Підказка відкрила останній рядок. Результат не йде в рейтинг.');
+            const recorded = recordUnlimitedSolve();
+            setStatus(recorded
+                ? 'Підказка відкрила останній рядок. Результат можна додати в рейтинг.'
+                : 'Підказка відкрила останній рядок. Результат уже збережено.');
         } else {
             state.activeRow = next;
             state.activeCol = 0;
-            setStatus('Підказка відкрила один рядок. Результат не піде в рейтинг.');
+            setStatus('Підказка відкрила один рядок. Результат можна додати в рейтинг.');
         }
         render();
     }
@@ -1567,7 +1579,7 @@
     async function requestPaidHint() {
         if (state.mode !== 'unlimited' || state.locked || state.hintPurchasePending) return;
         if (!window.KobzaTelegram?.isAvailable?.() || typeof window.KobzaTelegram?.openInvoice !== 'function') {
-            setStatus('Підказка за ⭐ доступна лише у Telegram.');
+            setTelegramHintStatus();
             return;
         }
 
@@ -2311,7 +2323,7 @@
     }
 
     function recordUnlimitedSolve() {
-        if (state.revealed || state.solvedRecorded || !state.startedAt) return false;
+        if (state.solvedRecorded || !state.startedAt) return false;
         const seconds = Math.max(1, Math.round((Date.now() - state.startedAt) / 1000));
         state.pendingUnlimitedEntry = makePendingUnlimitedEntry(seconds);
         state.solvedRecorded = true;
