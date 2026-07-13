@@ -1648,7 +1648,8 @@
     <script>
     (() => {
         const particlesContainer = document.getElementById('particles-container');
-        if (!particlesContainer) return;
+        if (!particlesContainer || document.documentElement.classList.contains('performance-mode')) return;
+        let particleEffectsEnabled = true;
         const isMobileExperience = window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches;
         const supportsFineHover = !isMobileExperience && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
         const AMBIENT_COUNT = 30;
@@ -1672,6 +1673,7 @@
             particlesContainer.appendChild(p); ambient.push(p);
         }
         function animateAmbient(p) {
+            if (!particleEffectsEnabled) return;
             const sX = Math.random()*100, sY = Math.random()*100;
             const eX = sX + (Math.random()*20-10), eY = sY - Math.random()*30;
             const dur = (Math.random()*10+10)*1000, delay = Math.random()*5000;
@@ -1712,13 +1714,19 @@
         }
         let lastX=innerWidth*.5,lastY=innerHeight*.5,rafPending=false,lastTrailTime=0;
         function tick(){rafPending=false;const now=performance.now();if(now-lastTrailTime>=(1000/TRAIL_MAX_PER_SEC)){spawnTrail(lastX,lastY);lastTrailTime=now;}}
-        function onMove(e){if(e.pointerType&&e.pointerType!=='mouse')return;lastX=e.clientX;lastY=e.clientY;if(!rafPending){rafPending=true;requestAnimationFrame(tick);}}
+        function onMove(e){if(!particleEffectsEnabled||(e.pointerType&&e.pointerType!=='mouse'))return;lastX=e.clientX;lastY=e.clientY;if(!rafPending){rafPending=true;requestAnimationFrame(tick);}}
         if (supportsFineHover) {
             document.addEventListener(moveEvent, onMove, { passive: true });
         }
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) { ambient.forEach(cancelAnimations); trailPool.forEach(cancelAnimations); } else { ambient.forEach(animateAmbient); }
+            if (document.hidden) { ambient.forEach(cancelAnimations); trailPool.forEach(cancelAnimations); } else if (particleEffectsEnabled) { ambient.forEach(animateAmbient); }
         });
+        window.addEventListener('lordskamp:performancemode', () => {
+            particleEffectsEnabled = false;
+            ambient.forEach(cancelAnimations);
+            trailPool.forEach(cancelAnimations);
+            particlesContainer.replaceChildren();
+        }, { once: true });
     })();
     </script>
 
@@ -1726,7 +1734,7 @@
     <script>
     (() => {
         function startParticles() {
-            if (typeof tsParticles === 'undefined') return;
+            if (typeof tsParticles === 'undefined' || document.documentElement.classList.contains('performance-mode')) return;
             tsParticles.load('tsparticles', {
                 fpsLimit: 60,
                 particles: {
@@ -1747,6 +1755,10 @@
         } else {
             window.addEventListener('load', startParticles, { once: true });
         }
+
+        window.addEventListener('lordskamp:performancemode', () => {
+            window.tsParticles?.dom?.().forEach(container => container.destroy());
+        }, { once: true });
     })();
     </script>
 </body>

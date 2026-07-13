@@ -1893,7 +1893,8 @@
         <script>
             (() => {
                 const particlesContainer = document.getElementById('particles-container');
-                if (!particlesContainer) return;
+                if (!particlesContainer || document.documentElement.classList.contains('performance-mode')) return;
+                let particleEffectsEnabled = true;
 
                 const isMobileExperience = window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches;
                 const supportsFineHover = !isMobileExperience && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -1950,6 +1951,7 @@
                 }
 
                 function animateAmbient(p) {
+                    if (!particleEffectsEnabled) return;
                     const startX = Math.random() * 100;
                     const startY = Math.random() * 100;
                     const endX = startX + (Math.random() * 20 - 10);
@@ -2062,6 +2064,7 @@
                 }
 
                 function onMove(e) {
+                    if (!particleEffectsEnabled) return;
                     // Keep original behavior: only react to mouse movement (not touch/pen)
                     if (e.pointerType && e.pointerType !== 'mouse') return;
                     lastX = e.clientX;
@@ -2081,10 +2084,17 @@
                     if (document.hidden) {
                         ambient.forEach(cancelAnimations);
                         trailPool.forEach(cancelAnimations);
-                    } else {
+                    } else if (particleEffectsEnabled) {
                         ambient.forEach(animateAmbient);
                     }
                 });
+
+                window.addEventListener('lordskamp:performancemode', () => {
+                    particleEffectsEnabled = false;
+                    ambient.forEach(cancelAnimations);
+                    trailPool.forEach(cancelAnimations);
+                    particlesContainer.replaceChildren();
+                }, { once: true });
             })();
         </script>
         <script>
@@ -2354,25 +2364,33 @@
             type();
 
             /* ==== Particle Network Background (optimized) ==== */
-            tsParticles.load("tsparticles", {
-                fpsLimit: 60,
-                particles: {
-                    color: { value: "#d7e5fa" },
-                    links: { color: "#d7e5fa", distance: 120, enable: true, opacity: 0.9, width: 3 },
-                    move: { enable: true, speed: 0.8, direction: "none", outModes: "out" },
-                    number: { value: 25, density: { enable: true, area: 900 } },
-                    size: { value: { min: 3, max: 6 } },
-                    opacity: { value: 0.9 }
-                },
-                interactivity: {
-                    detectsOn: "canvas",
-                    events: {
-                        onHover: { enable: false },
-                        onClick: { enable: false }
-                    }
-                },
-                detectRetina: false
-            });
+            function stopParticleNetwork() {
+                window.tsParticles?.dom?.().forEach(container => container.destroy());
+            }
+
+            if (!document.documentElement.classList.contains('performance-mode')) {
+                tsParticles.load("tsparticles", {
+                    fpsLimit: 60,
+                    particles: {
+                        color: { value: "#d7e5fa" },
+                        links: { color: "#d7e5fa", distance: 120, enable: true, opacity: 0.9, width: 3 },
+                        move: { enable: true, speed: 0.8, direction: "none", outModes: "out" },
+                        number: { value: 25, density: { enable: true, area: 900 } },
+                        size: { value: { min: 3, max: 6 } },
+                        opacity: { value: 0.9 }
+                    },
+                    interactivity: {
+                        detectsOn: "canvas",
+                        events: {
+                            onHover: { enable: false },
+                            onClick: { enable: false }
+                        }
+                    },
+                    detectRetina: false
+                });
+            }
+
+            window.addEventListener('lordskamp:performancemode', stopParticleNetwork, { once: true });
 
             /* ==== Respect Reduced Motion ==== */
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {

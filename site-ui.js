@@ -131,6 +131,72 @@
         window.dispatchEvent(new CustomEvent(name, { detail }));
     }
 
+    const PERFORMANCE_SESSION_KEY = 'lordskamp:performance-mode';
+
+    function isPerformanceMode() {
+        return document.documentElement.classList.contains('performance-mode');
+    }
+
+    function enablePerformanceMode(reason) {
+        if (isPerformanceMode()) return;
+
+        document.documentElement.classList.add('performance-mode');
+        try {
+            window.sessionStorage.setItem(PERFORMANCE_SESSION_KEY, '1');
+        } catch (_) {
+            /* Storage can be unavailable in private browsing. */
+        }
+        dispatch('lordskamp:performancemode', { enabled: true, reason });
+    }
+
+    function initPerformanceMode() {
+        try {
+            if (window.sessionStorage.getItem(PERFORMANCE_SESSION_KEY) === '1') {
+                enablePerformanceMode('session');
+                return;
+            }
+        } catch (_) {
+            /* Storage can be unavailable in private browsing. */
+        }
+
+        if (typeof window.requestAnimationFrame !== 'function') return;
+
+        const measureFrameRate = () => {
+            if (document.hidden || isPerformanceMode()) return;
+
+            const startedAt = performance.now();
+            let previousFrame = startedAt;
+            let frameCount = 0;
+            let slowFrameCount = 0;
+
+            const sample = now => {
+                const frameTime = now - previousFrame;
+                previousFrame = now;
+                if (frameCount > 0 && frameTime > 34) slowFrameCount += 1;
+                frameCount += 1;
+
+                if (now - startedAt < 1600) {
+                    window.requestAnimationFrame(sample);
+                    return;
+                }
+
+                // Fewer than 40 frames in 1.6 s, or a sustained rate below ~30 FPS,
+                // means expensive visual effects are more harmful than helpful.
+                if (frameCount < 40 || (frameCount > 1 && slowFrameCount / (frameCount - 1) > 0.72)) {
+                    enablePerformanceMode('slow-frame-rate');
+                }
+            };
+
+            window.requestAnimationFrame(sample);
+        };
+
+        if (document.readyState === 'complete') {
+            window.setTimeout(measureFrameRate, 700);
+        } else {
+            window.addEventListener('load', () => window.setTimeout(measureFrameRate, 700), { once: true });
+        }
+    }
+
     function applyTheme({ emit = false } = {}) {
         const isLight = state.theme === 'light';
         document.documentElement.classList.toggle('light-theme', isLight);
@@ -426,6 +492,9 @@
         ].join(',');
         const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
         let hasMoved = false;
+        let cursorFrame = 0;
+        let pendingX = 0;
+        let pendingY = 0;
 
         function moveCursor(x, y) {
             cursor.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
@@ -473,10 +542,17 @@
             applyBrandColor(color);
         }
 
+        function paintCursor() {
+            cursorFrame = 0;
+            moveCursor(pendingX, pendingY);
+            updateCursorTarget(pendingX, pendingY);
+        }
+
         document.addEventListener(moveEvent, e => {
             if (e.pointerType && e.pointerType !== 'mouse') return;
-            moveCursor(e.clientX, e.clientY);
-            updateCursorTarget(e.clientX, e.clientY);
+            pendingX = e.clientX;
+            pendingY = e.clientY;
+            if (!cursorFrame) cursorFrame = window.requestAnimationFrame(paintCursor);
             if (!hasMoved) {
                 hasMoved = true;
                 document.body.classList.add('custom-cursor-active');
@@ -606,6 +682,7 @@
     }
 
     function init() {
+        initPerformanceMode();
         renderHeader();
         applyLanguage();
         applyTheme();
@@ -618,6 +695,7 @@
         setTheme,
         toggleTheme,
         getLanguage: () => state.language,
+        isPerformanceMode,
         setLanguage,
         toggleLanguage,
         createLazyVideoCard,

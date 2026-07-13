@@ -1,5 +1,57 @@
 /* Shared header, cursor, and lazy-video UI for Home + Portfolio */
 
+/* Automatic fallback for browsers that cannot sustain the full compositing workload.
+   The background still moves, but avoids filters and blend modes that fall back to CPU rendering. */
+html.performance-mode .gradient-sphere {
+    filter: none !important;
+    mix-blend-mode: normal !important;
+    opacity: 0.56 !important;
+}
+
+html.performance-mode .sphere-1 {
+    background: radial-gradient(circle, rgba(255, 0, 128, 0.74) 0%, rgba(255, 60, 172, 0.36) 42%, transparent 72%) !important;
+}
+
+html.performance-mode .sphere-2 {
+    background: radial-gradient(circle, rgba(72, 0, 255, 0.72) 0%, rgba(140, 61, 193, 0.34) 44%, transparent 72%) !important;
+}
+
+html.performance-mode .sphere-3 {
+    background: radial-gradient(circle, rgba(133, 89, 255, 0.62) 0%, rgba(98, 216, 249, 0.3) 44%, transparent 72%) !important;
+}
+
+html.performance-mode .sphere-4 {
+    background: radial-gradient(circle, rgba(255, 0, 200, 0.56) 0%, rgba(140, 61, 193, 0.28) 44%, transparent 72%) !important;
+}
+
+html.performance-mode .glow {
+    filter: none !important;
+    opacity: 0.3 !important;
+}
+
+html.performance-mode .grid-overlay {
+    mix-blend-mode: normal !important;
+    opacity: 0.18 !important;
+}
+
+html.performance-mode #tsparticles,
+html.performance-mode .particles-container,
+html.performance-mode .custom-cursor {
+    display: none !important;
+}
+
+html.performance-mode *,
+html.performance-mode *::before,
+html.performance-mode *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+html.performance-mode body.custom-cursor-active,
+html.performance-mode body.custom-cursor-active * {
+    cursor: auto !important;
+}
+
 .site-header {
     position: fixed;
     top: 0;
