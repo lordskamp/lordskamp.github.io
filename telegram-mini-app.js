@@ -31,6 +31,23 @@
         document.documentElement.dataset.telegramTheme = app.colorScheme || 'dark';
     }
 
+    function updateViewport() {
+        const app = getApp();
+        if (!app) return;
+        const root = document.documentElement;
+        const stableHeight = Number(app.viewportStableHeight || app.viewportHeight || 0);
+        if (stableHeight > 0) root.style.setProperty('--telegram-stable-height', `${stableHeight}px`);
+
+        const safe = app.safeAreaInset || {};
+        const contentSafe = app.contentSafeAreaInset || {};
+        ['top', 'right', 'bottom', 'left'].forEach(side => {
+            const safeValue = Number(safe[side]);
+            const contentValue = Number(contentSafe[side]);
+            if (Number.isFinite(safeValue)) root.style.setProperty(`--telegram-safe-${side}`, `${safeValue}px`);
+            if (Number.isFinite(contentValue)) root.style.setProperty(`--telegram-content-safe-${side}`, `${contentValue}px`);
+        });
+    }
+
     function cloudStorage() {
         return getApp()?.CloudStorage || null;
     }
@@ -165,6 +182,29 @@
         });
     }
 
+    function openLink(url) {
+        const app = getApp();
+        if (!app?.openLink || !url) return false;
+        try {
+            app.openLink(String(url));
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function showConfirm(message) {
+        const app = getApp();
+        if (!app?.showConfirm) return Promise.resolve(window.confirm(String(message || 'Підтвердити дію?')));
+        return new Promise(resolve => {
+            try {
+                app.showConfirm(String(message || 'Підтвердити дію?'), value => resolve(Boolean(value)));
+            } catch (_) {
+                resolve(window.confirm(String(message || 'Підтвердити дію?')));
+            }
+        });
+    }
+
     function setBackHandler(handler) {
         const app = getApp();
         backHandler = typeof handler === 'function' ? handler : null;
@@ -232,8 +272,12 @@
         }
 
         updateTheme();
+        updateViewport();
         try {
             app.onEvent?.('themeChanged', updateTheme);
+            app.onEvent?.('viewportChanged', updateViewport);
+            app.onEvent?.('safeAreaChanged', updateViewport);
+            app.onEvent?.('contentSafeAreaChanged', updateViewport);
         } catch (_) {
             /* Theme variables are still provided by Telegram when events are unavailable. */
         }
@@ -244,7 +288,7 @@
         };
     }
 
-    window.KobzaTelegram = {
+    const adapter = {
         init,
         isAvailable,
         getInitData,
@@ -252,10 +296,15 @@
         getPlayerName,
         haptic,
         share,
+        openLink,
         openInvoice,
+        showConfirm,
         setBackHandler,
         setBackButtonVisible,
         setCloudValue,
         removeCloudValue
     };
+
+    window.SiteTelegram = adapter;
+    window.KobzaTelegram = adapter;
 })();

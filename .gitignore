@@ -1,5 +1,11 @@
 archive/
 .env
 node_modules/
+.wrangler/
+.dev.vars
+wrangler.toml
+.wrangler-test.toml
+coverage/
+outputs/shyfr-private-kv.json
 chat copy.html
 pre-chat.html

@@ -281,7 +281,7 @@
         const page = mount.dataset.sitePage || (location.pathname.includes('portfolio') ? 'portfolio' : 'home');
         document.body.classList.add('has-site-header', `site-page-${page}`);
 
-        const isBackPage = page === 'portfolio' || page === 'unwordle';
+        const isBackPage = page === 'portfolio' || page === 'unwordle' || page === 'shyfr';
         const primary = isBackPage
             ? `<a class="site-header__back" id="backBtn" href="/" data-brand="Portfolio">
                     <i class="fas fa-arrow-left" aria-hidden="true"></i>
@@ -292,7 +292,7 @@
                     <span data-ui-i18n="brand">Lordskamp</span>
                </button>`;
 
-        const actions = page === 'unwordle'
+        const actions = page === 'unwordle' || page === 'shyfr'
             ? `<button class="site-control site-control--theme" id="themeBtn" type="button" data-brand="Theme"></button>`
             : `<button class="site-control site-control--language" id="langBtn" type="button" data-brand="Language">
                     <i class="fas fa-globe" aria-hidden="true"></i>

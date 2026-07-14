@@ -1,3 +1,5 @@
+import { handleShyfrRequest } from './shyfr-api.js';
+
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -953,6 +955,9 @@ async function handleTelegramWebhook(request, env) {
 
 export default {
     async fetch(request, env) {
+        const shyfrResponse = await handleShyfrRequest(request, env);
+        if (shyfrResponse) return shyfrResponse;
+
         if (request.method === 'OPTIONS') {
             return new Response(null, { status: 204, headers: CORS_HEADERS });
         }

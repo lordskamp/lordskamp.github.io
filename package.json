@@ -1,0 +1,20 @@
+{
+  "name": "lordskamp-github-io",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/shyfr-content.mjs build && node scripts/shyfr-content.mjs validate",
+    "lint": "eslint api/shyfr-*.js shyfr/*.js scripts/*.mjs tests/*.mjs eslint.config.js",
+    "typecheck": "node --check api/shyfr-api.js && node --check api/shyfr-core.js && node --check api/kobza-leaderboard-worker.js && node --check shyfr/shyfr.js && node --check telegram-mini-app.js",
+    "test": "node --test tests/*.test.mjs",
+    "validate:shyfr-content": "node scripts/shyfr-content.mjs validate",
+    "build:shyfr-content-index": "node scripts/shyfr-content.mjs build",
+    "build:shyfr-private-kv": "node scripts/shyfr-content.mjs private-kv",
+    "check:shyfr-duplicates": "node scripts/shyfr-content.mjs duplicates"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "eslint": "^9.31.0",
+    "wrangler": "^4.110.0"
+  }
+}
