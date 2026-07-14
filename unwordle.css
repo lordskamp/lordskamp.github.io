@@ -602,6 +602,15 @@ button {
     border-color: rgba(226, 180, 112, 0.62);
 }
 
+/* Keep the controls steady as the word ladder grows; only its rows scroll. */
+.unwordle-card.is-poop-mode .game-grid {
+    height: clamp(10.5rem, 32dvh, 19rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+}
+
 .unwordle-tile.is-active {
     border-color: #111827;
     border-style: dashed;
@@ -1536,6 +1545,10 @@ button {
         height: 46px;
         border-radius: 5px;
         font-size: 0.8rem;
+    }
+
+    .unwordle-card.is-poop-mode .game-grid {
+        height: clamp(10rem, 29dvh, 15rem);
     }
 
     .leaderboard-row {

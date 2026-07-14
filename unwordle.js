@@ -1192,6 +1192,12 @@
         }).join('');
 
         els.grid.innerHTML = rowsHtml;
+        requestAnimationFrame(() => {
+            els.grid.querySelector(`[data-row-wrap="${state.activeRow}"]`)?.scrollIntoView({
+                block: 'nearest',
+                behavior: 'smooth'
+            });
+        });
     }
 
     function renderGrid() {
