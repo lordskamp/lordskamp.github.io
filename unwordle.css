@@ -612,6 +612,7 @@ button {
 .unwordle-card.is-poop-mode .game-grid {
     min-height: 0;
     flex: 1 1 auto;
+    align-content: start;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
