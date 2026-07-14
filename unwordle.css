@@ -603,12 +603,28 @@ button {
 }
 
 /* Keep the controls steady as the word ladder grows; only its rows scroll. */
+.unwordle-card.is-poop-mode {
+    height: calc(var(--app-height) - 7.5rem - var(--safe-top) - var(--safe-bottom));
+    display: flex;
+    flex-direction: column;
+}
+
 .unwordle-card.is-poop-mode .game-grid {
-    height: clamp(10.5rem, 32dvh, 19rem);
+    min-height: 0;
+    flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     -webkit-overflow-scrolling: touch;
+}
+
+.unwordle-card.is-poop-mode .game-grid::-webkit-scrollbar {
+    display: none;
+}
+
+body.telegram-mini-app .unwordle-card.is-poop-mode {
+    height: calc(var(--app-height) - 1.5rem - var(--safe-top) - var(--safe-bottom));
 }
 
 .unwordle-tile.is-active {
@@ -1548,7 +1564,7 @@ button {
     }
 
     .unwordle-card.is-poop-mode .game-grid {
-        height: clamp(10rem, 29dvh, 15rem);
+        min-height: 0;
     }
 
     .leaderboard-row {

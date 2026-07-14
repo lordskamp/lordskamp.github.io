@@ -1194,8 +1194,8 @@
         els.grid.innerHTML = rowsHtml;
         requestAnimationFrame(() => {
             els.grid.querySelector(`[data-row-wrap="${state.activeRow}"]`)?.scrollIntoView({
-                block: 'nearest',
-                behavior: 'smooth'
+                block: 'center',
+                behavior: 'auto'
             });
         });
     }
@@ -2185,6 +2185,56 @@
         }
     }
 
+    async function remoteLeaderboardEntryExists(entry) {
+        const url = leaderboardUrl();
+        if (!url) return null;
+
+        url.searchParams.set('mode', entry.mode);
+        url.searchParams.set('entryId', entry.id);
+        if (entry.mode === 'unlimited') {
+            url.searchParams.set('difficulty', entry.difficulty);
+            url.searchParams.set('variation', entry.variation);
+        } else {
+            url.searchParams.set('dateKey', entry.dateKey);
+            url.searchParams.set('target', entry.target);
+            if (entry.mode === 'poop') url.searchParams.set('startWord', entry.startWord);
+        }
+
+        try {
+            const response = await fetchWithTimeout(url.toString(), {
+                headers: { Accept: 'application/json' }
+            });
+            if (!response.ok) return null;
+            const payload = await response.json();
+            return Number(payload?.rank) > 0;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function queueLegacyLeaderboardEntries() {
+        const entries = readLeaderboard();
+        let changed = false;
+        const queuedEntries = entries.map(entry => {
+            if (
+                !entry
+                || typeof entry !== 'object'
+                || Object.prototype.hasOwnProperty.call(entry, 'remoteSyncPending')
+                || !normalizeLeaderboardEntry(entry)
+            ) return entry;
+
+            changed = true;
+            return { ...entry, remoteSyncPending: true };
+        });
+        if (changed) writeLeaderboard(queuedEntries);
+    }
+
+    function markLeaderboardEntrySynced(entry, profileEntries = []) {
+        const savedEntry = { ...entry, remoteSyncPending: false };
+        const entries = replaceLocalLeaderboardEntry(readLeaderboard(), savedEntry);
+        writeLeaderboard(mergeLocalLeaderboardEntries(entries, profileEntries));
+    }
+
     async function syncPendingLeaderboardEntries() {
         if (
             state.leaderboardSyncInFlight
@@ -2192,6 +2242,7 @@
             || navigator.onLine === false
         ) return { synced: 0, pending: 0 };
 
+        queueLegacyLeaderboardEntries();
         const pendingEntries = readLeaderboard()
             .map(normalizeLeaderboardEntry)
             .filter(entry => entry?.remoteSyncPending)
@@ -2202,6 +2253,14 @@
         let synced = 0;
         try {
             for (const pendingEntry of pendingEntries) {
+                const alreadySaved = await remoteLeaderboardEntryExists(pendingEntry);
+                if (alreadySaved === null) break;
+                if (alreadySaved) {
+                    markLeaderboardEntrySynced(pendingEntry);
+                    synced += 1;
+                    continue;
+                }
+
                 const result = await writeRemoteLeaderboard(pendingEntry);
                 // A conflict needs the player's explicit confirmation, so leave it
                 // in the queue instead of replacing somebody else's result.
@@ -2212,13 +2271,8 @@
                     continue;
                 }
 
-                const savedEntry = {
-                    ...(result.entry || pendingEntry),
-                    remoteSyncPending: false
-                };
                 const profileEntries = profileEntriesFromPayload(result.profile);
-                const entries = replaceLocalLeaderboardEntry(readLeaderboard(), savedEntry);
-                writeLeaderboard(mergeLocalLeaderboardEntries(entries, profileEntries));
+                markLeaderboardEntrySynced(result.entry || pendingEntry, profileEntries);
                 synced += 1;
             }
         } finally {
