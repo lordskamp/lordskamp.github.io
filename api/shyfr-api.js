@@ -1,4 +1,4 @@
-import { shyfrCategories, shyfrLevels } from './shyfr-content.generated.js';
+import { loadPublicShyfrContent } from './shyfr-content.js';
 import {
   SHYFR_CONFIG,
   createInitialRevealed,
@@ -31,6 +31,9 @@ const KYIV_PARTS_FORMATTER = new Intl.DateTimeFormat('en-GB', {
 const PAYMENT_PAYLOAD_RE = /^shyfr:v1:([0-9a-f-]{36})$/iu;
 const TELEGRAM_ID_RE = /^[1-9]\d{0,19}$/u;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const NICKNAME_RE = /^[\p{L}\p{N} _.'’ʼ-]{2,24}$/u;
+const TUTORIAL_HINT_LIMIT = 3;
+const AVATAR_URL_MAX_LENGTH = 2048;
 const KEY = Object.freeze({
   content: 'shyfr:content:catalog',
   session: hash => `shyfr:session:${hash}`,
@@ -199,13 +202,32 @@ function displayName(telegramUser) {
   return (username ? `@${username}` : fullName || 'Гравець').slice(0, 80);
 }
 
-function freshUser({ id, kind, telegramId = null, name, config }) {
+function cleanAvatarUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.length > AVATAR_URL_MAX_LENGTH) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function cleanNickname(value) {
+  const name = String(value || '').trim().replace(/\s+/gu, ' ');
+  return NICKNAME_RE.test(name) ? name : '';
+}
+
+function freshUser({ id, kind, telegramId = null, name, avatarUrl = null, config }) {
   const daily = dailyResetInfo();
   return {
     id,
     kind,
     telegramId,
     name,
+    avatarUrl: cleanAvatarUrl(avatarUrl),
+    nicknameSet: kind === 'telegram',
+    tutorialHintsUsed: 0,
     lives: Math.min(config.initialLives, config.maxLives),
     hints: config.initialHints,
     dailyResetKey: daily.key,
@@ -225,6 +247,9 @@ function normalizeUser(user, config) {
   if (!user) return null;
   return {
     ...user,
+    avatarUrl: cleanAvatarUrl(user.avatarUrl),
+    nicknameSet: user.kind === 'telegram' || Boolean(user.nicknameSet),
+    tutorialHintsUsed: Math.max(0, Math.min(TUTORIAL_HINT_LIMIT, Number(user.tutorialHintsUsed || 0))),
     lives: Math.max(0, Math.min(config.maxLives, Number(user.lives ?? config.initialLives))),
     hints: Math.max(0, Number(user.hints ?? config.initialHints)),
     entitlements: Array.isArray(user.entitlements) ? user.entitlements : [],
@@ -267,11 +292,13 @@ async function telegramLogin(request, env, config) {
   const telegramId = String(validation.user.id);
   const id = `tg:${telegramId}`;
   let user = normalizeUser(await kvGet(env, KEY.user(id)), config);
-  if (!user) user = freshUser({ id, kind: 'telegram', telegramId, name: displayName(validation.user), config });
+  if (!user) user = freshUser({ id, kind: 'telegram', telegramId, name: displayName(validation.user), avatarUrl: validation.user.photo_url, config });
   refreshDailyInventory(user, config);
   user.kind = 'telegram';
   user.telegramId = telegramId;
   user.name = displayName(validation.user);
+  user.avatarUrl = cleanAvatarUrl(validation.user.photo_url);
+  user.nicknameSet = true;
   await saveUser(env, user);
   return { token: await createSession(env, user, config) };
 }
@@ -295,19 +322,21 @@ function validPrivateLevel(level) {
     && level.source && typeof level.source.label === 'string');
 }
 
-async function serverLevels(env) {
+async function serverContent(env) {
+  const publicContent = await loadPublicShyfrContent(env);
   const privateLevels = await kvGet(env, KEY.content);
-  const publicIds = new Set(shyfrLevels.map(level => level.id));
-  return [...shyfrLevels, ...(Array.isArray(privateLevels) ? privateLevels.filter(validPrivateLevel).filter(level => !publicIds.has(level.id)) : [])]
+  const publicIds = new Set(publicContent.levels.map(level => level.id));
+  const levels = [...publicContent.levels, ...(Array.isArray(privateLevels) ? privateLevels.filter(validPrivateLevel).filter(level => !publicIds.has(level.id)) : [])]
     .sort((left, right) => left.categoryId.localeCompare(right.categoryId) || left.order - right.order);
+  return { categories: publicContent.categories, levels };
 }
 
-function categoryFor(categoryId) {
-  return shyfrCategories.find(category => category.id === categoryId) || null;
+function categoryFor(categoryId, categories) {
+  return categories.find(category => category.id === categoryId) || null;
 }
 
-function levelAccess(level, user) {
-  return hasLevelAccess({ level, category: categoryFor(level.categoryId), entitlements: user.entitlements });
+function levelAccess(level, user, categories) {
+  return hasLevelAccess({ level, category: categoryFor(level.categoryId, categories), entitlements: user.entitlements });
 }
 
 function letterCount(text) {
@@ -344,7 +373,7 @@ function ensureAttemptModel(attempt, level) {
   return attempt;
 }
 
-function publicAttempt(attempt, level) {
+function publicAttempt(attempt, level, categories) {
   if (!attempt || !level) return null;
   ensureAttemptModel(attempt, level);
   const substitution = attempt.substitution;
@@ -365,7 +394,7 @@ function publicAttempt(attempt, level) {
     id: attempt.id,
     levelId: attempt.levelId,
     categoryId: attempt.categoryId,
-    categoryTitle: categoryFor(attempt.categoryId)?.title || '',
+    categoryTitle: categoryFor(attempt.categoryId, categories)?.title || '',
     levelNumber: attempt.levelNumber,
     difficultyNumber: attempt.difficultyNumber || attempt.levelNumber,
     hiddenPercent: attempt.hiddenPercent,
@@ -398,19 +427,35 @@ function profileFor(user) {
   const bestSeconds = entries.map(entry => Number(entry.bestSeconds)).filter(Number.isFinite);
   return {
     name: user.name,
+    avatarUrl: cleanAvatarUrl(user.avatarUrl),
+    nicknameSet: Boolean(user.nicknameSet),
     completedLevels: entries.length,
     totalCompletions: entries.reduce((sum, entry) => sum + Number(entry.completions || 0), 0),
     bestSeconds: bestSeconds.length ? Math.min(...bestSeconds) : null
   };
 }
 
+function onboardingFor(user, levels) {
+  const tutorialLevels = levels.filter(level => level.categoryId === 'tutorial');
+  const tutorialCompleted = Boolean(tutorialLevels.length) && tutorialLevels.every(level => user.progress[level.id]);
+  const nicknameRequired = user.kind === 'browser' && tutorialCompleted && !user.nicknameSet;
+  const tutorialHintsUsed = Math.max(0, Math.min(TUTORIAL_HINT_LIMIT, Number(user.tutorialHintsUsed || 0)));
+  return {
+    tutorialCompleted,
+    nicknameRequired,
+    complete: tutorialCompleted && !nicknameRequired,
+    tutorialHintsUsed,
+    tutorialHintsRemaining: TUTORIAL_HINT_LIMIT - tutorialHintsUsed
+  };
+}
+
 async function bootstrap(env, user, config) {
-  const levels = await serverLevels(env);
-  const categories = shyfrCategories.map(category => {
+  const { categories: catalogCategories, levels } = await serverContent(env);
+  const categories = catalogCategories.map(category => {
     const categoryLevels = levels.filter(level => level.categoryId === category.id);
     const completed = categoryLevels.filter(level => user.progress[level.id]).length;
     const categoryUnlocked = category.free || user.entitlements.includes(`category_unlock:${category.id}`);
-    const playableLevels = categoryLevels.filter(level => levelAccess(level, user));
+    const playableLevels = categoryLevels.filter(level => levelAccess(level, user, catalogCategories));
     const nextLevel = playableLevels.find(level => !user.progress[level.id]) || null;
     return {
       ...category,
@@ -429,7 +474,7 @@ async function bootstrap(env, user, config) {
         hiddenPercent: Math.round(hiddenRatioForLevel(level.order) * 100),
         free: level.free || category.free,
         completed: Boolean(user.progress[level.id]),
-        unlocked: levelAccess(level, user),
+        unlocked: levelAccess(level, user, catalogCategories),
         priceStars: config.levelPriceStars
       }))
     };
@@ -438,6 +483,7 @@ async function bootstrap(env, user, config) {
     mode: user.kind,
     telegram: user.kind === 'telegram',
     profile: profileFor(user),
+    onboarding: onboardingFor(user, levels),
     inventory: inventoryFor(user, config),
     categories,
     purchases: user.purchases.slice(0, 10),
@@ -467,24 +513,29 @@ async function enforceRateLimit(env, userId, action, rule) {
 }
 
 async function startAttempt(env, user, body, config) {
-  const levels = await serverLevels(env);
+  const { categories, levels } = await serverContent(env);
   const categoryId = String(body?.categoryId || '');
-  const categoryLevels = levels.filter(level => level.categoryId === categoryId && levelAccess(level, user));
+  const onboarding = onboardingFor(user, levels);
+  if (categoryId !== 'tutorial' && !onboarding.complete) {
+    return json({ error: onboarding.nicknameRequired ? 'NICKNAME_REQUIRED' : 'TUTORIAL_REQUIRED' }, 409);
+  }
+  const categoryLevels = levels.filter(level => level.categoryId === categoryId && levelAccess(level, user, categories));
   if (!categoryLevels.length) return json({ error: 'NO_ACCESSIBLE_LEVELS' }, 403);
   const activeId = user.activeAttempts[categoryId];
   const active = await loadAttempt(env, activeId, user.id);
   if (active?.status === 'active') {
     const activeLevel = levels.find(level => level.id === active.levelId);
-    return json({ ok: true, attempt: publicAttempt(active, activeLevel), inventory: inventoryFor(user, config) });
+    return json({ ok: true, attempt: publicAttempt(active, activeLevel, categories), inventory: inventoryFor(user, config) });
   }
-  if (Number(user.lives) <= 0) return json({ error: 'NO_LIVES', message: 'Життя закінчилися.' }, 409);
+  if (categoryId !== 'tutorial' && Number(user.lives) <= 0) return json({ error: 'NO_LIVES', message: 'Життя закінчилися.' }, 409);
   const level = categoryLevels.find(item => !user.progress[item.id]);
   if (!level) return json({ error: 'CATEGORY_COMPLETED' }, 409);
   const id = crypto.randomUUID();
   const seed = randomToken();
   const substitution = createSubstitution(seed);
   const levelNumber = level.order;
-  const difficultyNumber = categoryId === 'tutorial' ? levelNumber : Object.keys(user.progress).length + 1;
+  const completedGameLevels = levels.filter(item => item.categoryId !== 'tutorial' && user.progress[item.id]).length;
+  const difficultyNumber = categoryId === 'tutorial' ? levelNumber : completedGameLevels + 1;
   const revealed = createInitialRevealed({ text: level.text, substitution, levelNumber: difficultyNumber, seed });
   const difficulty = difficultyForLevel(difficultyNumber, letterCount(level.text));
   const lockRequirements = createLockRequirements({
@@ -520,20 +571,33 @@ async function startAttempt(env, user, body, config) {
   };
   user.activeAttempts[categoryId] = id;
   await Promise.all([kvPut(env, KEY.attempt(id), attempt), saveUser(env, user)]);
-  return json({ ok: true, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
+  return json({ ok: true, attempt: publicAttempt(attempt, level, categories), inventory: inventoryFor(user, config) });
 }
 
 async function updateScore(env, user) {
-  if (user.kind !== 'telegram') return;
+  if (user.kind === 'browser' && !user.nicknameSet) return;
   const profile = profileFor(user);
   await kvPut(env, KEY.score(user.id), {
     userId: user.id,
     name: user.name,
+    avatarUrl: cleanAvatarUrl(user.avatarUrl),
     completedLevels: profile.completedLevels,
     totalCompletions: profile.totalCompletions,
     bestSeconds: profile.bestSeconds,
     updatedAt: new Date().toISOString()
   });
+}
+
+async function updateProfile(env, user, body) {
+  if (user.kind !== 'browser') return json({ error: 'TELEGRAM_PROFILE_MANAGED' }, 409);
+  const { levels } = await serverContent(env);
+  if (!onboardingFor(user, levels).tutorialCompleted) return json({ error: 'TUTORIAL_REQUIRED' }, 409);
+  const name = cleanNickname(body?.name);
+  if (!name) return json({ error: 'INVALID_NICKNAME' }, 400);
+  user.name = name;
+  user.nicknameSet = true;
+  await Promise.all([saveUser(env, user), updateScore(env, user)]);
+  return json({ ok: true, profile: profileFor(user), onboarding: onboardingFor(user, levels) });
 }
 
 function creditCompletion(user, attempt) {
@@ -555,9 +619,10 @@ async function guessAttempt(env, user, attemptId, body, config) {
   await enforceRateLimit(env, user.id, 'guess', config.rateLimits.guess);
   const attempt = await loadAttempt(env, attemptId, user.id);
   if (!attempt) return json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
-  const level = (await serverLevels(env)).find(item => item.id === attempt.levelId);
+  const { categories, levels } = await serverContent(env);
+  const level = levels.find(item => item.id === attempt.levelId);
   if (!level) return json({ error: 'LEVEL_NOT_FOUND' }, 404);
-  if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level) }, 409);
+  if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level, categories) }, 409);
   ensureAttemptModel(attempt, level);
   const lockedPositions = lockedPositionsForAttempt(level.text, attempt.substitution, attempt.revealed, attempt.lockRequirements);
   const result = evaluateGuess(
@@ -573,30 +638,34 @@ async function guessAttempt(env, user, attemptId, body, config) {
   attempt.updatedAt = new Date().toISOString();
   if (result.status === 'lost') {
     attempt.completedAt = attempt.updatedAt;
-    user.lives = Math.max(0, user.lives - 1);
+    if (attempt.categoryId !== 'tutorial') user.lives = Math.max(0, user.lives - 1);
     delete user.activeAttempts[attempt.categoryId];
   } else if (result.status === 'won') {
     attempt.completedAt = attempt.updatedAt;
     creditCompletion(user, attempt);
   }
   await persistAttemptOutcome(env, user, attempt);
-  return json({ ok: result.ok, reason: result.reason, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
+  return json({ ok: result.ok, reason: result.reason, attempt: publicAttempt(attempt, level, categories), inventory: inventoryFor(user, config) });
 }
 
 async function hintAttempt(env, user, attemptId, body, config) {
   await enforceRateLimit(env, user.id, 'hint', config.rateLimits.hint);
   const attempt = await loadAttempt(env, attemptId, user.id);
   if (!attempt) return json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
-  const level = (await serverLevels(env)).find(item => item.id === attempt.levelId);
+  const { categories, levels } = await serverContent(env);
+  const level = levels.find(item => item.id === attempt.levelId);
   if (!level) return json({ error: 'LEVEL_NOT_FOUND' }, 404);
-  if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level) }, 409);
-  if (user.hints <= 0) return json({ error: 'NO_HINTS' }, 409);
+  if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level, categories) }, 409);
+  const tutorial = attempt.categoryId === 'tutorial';
+  if (tutorial && Number(user.tutorialHintsUsed || 0) >= TUTORIAL_HINT_LIMIT) return json({ error: 'TUTORIAL_HINT_LIMIT' }, 409);
+  if (!tutorial && user.hints <= 0) return json({ error: 'NO_HINTS' }, 409);
   ensureAttemptModel(attempt, level);
   const hint = revealHint({ text: level.text, substitution: attempt.substitution, revealed: attempt.revealed }, body?.position);
   if (!hint.ok) return json({ error: hint.reason }, 409);
   attempt.revealed = hint.revealed;
   attempt.hintsUsed += 1;
-  user.hints -= 1;
+  if (tutorial) user.tutorialHintsUsed = Number(user.tutorialHintsUsed || 0) + 1;
+  else user.hints -= 1;
   attempt.updatedAt = new Date().toISOString();
   if (isAttemptSolved(level.text, attempt.substitution, attempt.revealed)) {
     attempt.status = 'won';
@@ -604,22 +673,33 @@ async function hintAttempt(env, user, attemptId, body, config) {
     creditCompletion(user, attempt);
   }
   await persistAttemptOutcome(env, user, attempt);
-  return json({ ok: true, hint: { position: hint.position, code: hint.code, letter: hint.letter }, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
+  return json({
+    ok: true,
+    hint: { position: hint.position, code: hint.code, letter: hint.letter },
+    attempt: publicAttempt(attempt, level, categories),
+    inventory: inventoryFor(user, config),
+    tutorialHints: tutorial ? {
+      used: Number(user.tutorialHintsUsed || 0),
+      remaining: TUTORIAL_HINT_LIMIT - Number(user.tutorialHintsUsed || 0)
+    } : null
+  });
 }
 
 async function surrenderAttempt(env, user, attemptId, config) {
   const attempt = await loadAttempt(env, attemptId, user.id);
   if (!attempt) return json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
-  const level = (await serverLevels(env)).find(item => item.id === attempt.levelId);
+  const { categories, levels } = await serverContent(env);
+  const level = levels.find(item => item.id === attempt.levelId);
   if (!level) return json({ error: 'LEVEL_NOT_FOUND' }, 404);
-  if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level) }, 409);
+  if (attempt.categoryId === 'tutorial') return json({ error: 'TUTORIAL_SURRENDER_DISABLED' }, 409);
+  if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level, categories) }, 409);
   attempt.status = 'surrendered';
   attempt.updatedAt = new Date().toISOString();
   attempt.completedAt = attempt.updatedAt;
   user.lives = Math.max(0, user.lives - 1);
   delete user.activeAttempts[attempt.categoryId];
   await persistAttemptOutcome(env, user, attempt);
-  return json({ ok: true, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
+  return json({ ok: true, attempt: publicAttempt(attempt, level, categories), inventory: inventoryFor(user, config) });
 }
 
 async function leaderboard(env) {
@@ -637,7 +717,8 @@ async function leaderboard(env) {
     || Number(left.bestSeconds || Infinity) - Number(right.bestSeconds || Infinity)
     || String(left.name).localeCompare(String(right.name), 'uk')).slice(0, 50).map((row, index) => ({
       rank: index + 1,
-      name: row.name,
+    name: row.name,
+    avatarUrl: cleanAvatarUrl(row.avatarUrl),
       completedLevels: Number(row.completedLevels || 0),
       totalCompletions: Number(row.totalCompletions || 0)
     }));
@@ -670,8 +751,8 @@ function upsertPurchaseSummary(user, purchase) {
 async function createInvoice(env, user, body, config) {
   if (user.kind !== 'telegram' || !user.telegramId) return json({ error: 'TELEGRAM_REQUIRED' }, 409);
   await enforceRateLimit(env, user.id, 'invoice', config.rateLimits.invoice);
-  const levels = await serverLevels(env);
-  const product = resolveProduct(body?.productKey, { categories: shyfrCategories, levels, config });
+  const { categories, levels } = await serverContent(env);
+  const product = resolveProduct(body?.productKey, { categories, levels, config });
   if (!product) return json({ error: 'PRODUCT_UNAVAILABLE' }, 400);
   const entitlement = `${product.kind}:${product.id}`;
   if ((product.kind === 'category_unlock' || product.kind === 'level_unlock') && user.entitlements.includes(entitlement)) {
@@ -846,6 +927,7 @@ export async function handleShyfrRequest(request, env) {
     const user = authenticated.user;
     if (url.pathname === `${API_PREFIX}/bootstrap` && request.method === 'GET') return json({ ok: true, ...(await bootstrap(env, user, config)) });
     if (url.pathname === `${API_PREFIX}/leaderboard` && request.method === 'GET') return json({ ok: true, leaderboard: await leaderboard(env) });
+    if (url.pathname === `${API_PREFIX}/profile` && request.method === 'POST') return updateProfile(env, user, await parseJson(request));
     if (url.pathname === `${API_PREFIX}/attempts` && request.method === 'POST') return startAttempt(env, user, await parseJson(request), config);
     if (url.pathname === `${API_PREFIX}/invoice` && request.method === 'POST') return createInvoice(env, user, await parseJson(request), config);
     const purchaseMatch = url.pathname.match(/^\/shyfr\/purchases\/([0-9a-f-]{36})$/iu);
@@ -858,8 +940,9 @@ export async function handleShyfrRequest(request, env) {
       const [, attemptId, action] = attemptMatch;
       if (!action && request.method === 'GET') {
         const attempt = await loadAttempt(env, attemptId, user.id);
-        const level = attempt && (await serverLevels(env)).find(item => item.id === attempt.levelId);
-        return attempt && level ? json({ ok: true, attempt: publicAttempt(attempt, level) }) : json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
+        const content = attempt ? await serverContent(env) : null;
+        const level = attempt && content.levels.find(item => item.id === attempt.levelId);
+        return attempt && level ? json({ ok: true, attempt: publicAttempt(attempt, level, content.categories) }) : json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
       }
       if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405);
       if (action === 'guess') return guessAttempt(env, user, attemptId, await parseJson(request), config);

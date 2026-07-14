@@ -9,6 +9,8 @@ id = "<EXISTING_KV_NAMESPACE_ID>"
 
 [vars]
 SHYFR_MINI_APP_URL = "https://lordskamp.github.io/shyfr/"
+SHYFR_CONTENT_BASE_URL = "https://lordskamp.github.io/content/shyfr"
+SHYFR_CONTENT_CACHE_SECONDS = "60"
 SHYFR_PAYMENT_SUPPORT = "@replace_with_support_username"
 SHYFR_DAILY_LIVES = "4"
 SHYFR_DAILY_HINTS = "3"

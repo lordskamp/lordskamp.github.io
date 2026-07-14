@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { clearPublicShyfrContentCache, loadPublicShyfrContent } from '../api/shyfr-content.js';
 import {
   automaticLevelId,
   buildPrivateKv,
@@ -12,6 +13,31 @@ import {
   parseSource,
   validateShyfrContent
 } from '../scripts/shyfr-content.mjs';
+
+test('Worker читає категорії та рівні безпосередньо з публічних JSON', async t => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const categories = [{ id: 'tutorial', title: 'Навчання', color: '#58d6c7', accent: '#167a70', free: true, previewLevels: 0 }];
+  const items = [{ text: 'Це достатньо довгий тестовий рівень для перевірки читання', source: 'Тест' }];
+  globalThis.fetch = async url => {
+    calls.push(String(url));
+    const body = String(url).endsWith('/categories.json') ? categories : items;
+    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; clearPublicShyfrContentCache(); });
+  clearPublicShyfrContentCache();
+  const env = { SHYFR_CONTENT_BASE_URL: 'https://content.test/shyfr', SHYFR_CONTENT_CACHE_SECONDS: '60' };
+  const first = await loadPublicShyfrContent(env);
+  const second = await loadPublicShyfrContent(env);
+  assert.equal(first.categories[0].title, 'Навчання');
+  assert.equal(first.levels[0].text, items[0].text);
+  assert.equal(first.levels[0].categoryId, 'tutorial');
+  assert.equal(second, first);
+  assert.deepEqual(calls, [
+    'https://content.test/shyfr/categories.json',
+    'https://content.test/shyfr/tutorial.json'
+  ]);
+});
 
 test('публічний каталог зберігає у рядку лише text і source', async () => {
   const result = await validateShyfrContent();

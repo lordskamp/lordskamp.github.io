@@ -21,7 +21,8 @@
     sessionToken: '', bootstrap: null, view: 'home', selectedCategoryId: '', attempt: null,
     selectedPosition: null, hintedPosition: null, errorPosition: null, hintMode: false,
     wordCelebrationPositions: [], solveCelebration: false, busy: false, telegram: false,
-    leaderboard: [], historyReady: false, returnView: 'home'
+    leaderboard: [], historyReady: false, returnView: 'home',
+    tutorialSelectedCell: false, tutorialGuessed: false
   };
 
   class ApiError extends Error {
@@ -91,6 +92,23 @@
     state.telegram = Boolean(state.bootstrap.telegram);
   }
 
+  function normalizeAttempt(attempt) {
+    if (!attempt) return null;
+    const legacyCodeModel = (attempt.tokens || []).some(token => token.type === 'letter' && !Number.isSafeInteger(token.position));
+    if (!legacyCodeModel) return { ...attempt, legacyCodeModel: false };
+    const codeRevealed = attempt.revealed || {};
+    const tokens = (attempt.tokens || []).map((token, position) => ({
+      ...token,
+      position,
+      ...(token.locked && !token.lockType ? { lockType: 'single' } : {})
+    }));
+    const revealed = Object.fromEntries(tokens
+      .filter(token => token.type === 'letter' && codeRevealed[token.code])
+      .map(token => [token.position, codeRevealed[token.code]]));
+    const selectedPosition = tokens.find(token => token.type === 'letter' && Number(token.code) === Number(attempt.selectedCode) && !token.locked)?.position;
+    return { ...attempt, tokens, revealed, selectedPosition, legacyCodeModel: true };
+  }
+
   function currentCategory() { return state.bootstrap?.categories?.find(category => category.id === state.selectedCategoryId) || null; }
 
   function inventoryHtml() {
@@ -102,11 +120,28 @@
     return `<div class="topline"><button class="back-button" type="button" data-action="back" aria-label="Назад"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button></div><div class="screen-heading"><h2>${escapeHtml(title)}</h2>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div>`;
   }
 
+  function avatarHtml(person, className = 'avatar') {
+    const name = String(person?.name || 'Гравець');
+    const initial = name.replace('@', '').charAt(0).toLocaleUpperCase('uk-UA') || 'Г';
+    return person?.avatarUrl
+      ? `<span class="${className}"><img src="${escapeHtml(person.avatarUrl)}" alt="Аватар ${escapeHtml(name)}" referrerpolicy="no-referrer"></span>`
+      : `<span class="${className}" aria-hidden="true">${escapeHtml(initial)}</span>`;
+  }
+
+  function renderTutorialIntro() {
+    return `<section class="screen onboarding-screen" data-view="tutorial-intro"><article class="onboarding-card"><span class="onboarding-icon"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i></span><p class="eyebrow">Перший запуск</p><h2>Спочатку коротке навчання</h2><p>Три рівні покажуть, як обирати комірки, користуватися підказкою та відкривати замки. Після них відкриється меню гри.</p><button class="button button--primary button--wide" type="button" data-action="begin-tutorial">Почати навчання</button></article></section>`;
+  }
+
+  function renderNickname() {
+    return `<section class="screen onboarding-screen" data-view="nickname"><form class="nickname-card" data-nickname-form><span class="onboarding-icon"><i class="fa-solid fa-user-pen" aria-hidden="true"></i></span><p class="eyebrow">Навчання завершено</p><h2>Як вас показувати у грі?</h2><p>Введіть нікнейм для профілю та лідерборда. Його можна написати українською або латинкою.</p><label for="nicknameInput">Нікнейм</label><input id="nicknameInput" name="nickname" type="text" minlength="2" maxlength="24" autocomplete="nickname" placeholder="Наприклад, Шифрувальник" required><button class="button button--primary button--wide" type="submit">Відкрити меню</button></form></section>`;
+  }
+
   function renderHome() {
+    if (!state.bootstrap.onboarding?.tutorialCompleted) return renderTutorialIntro();
+    if (state.bootstrap.onboarding?.nicknameRequired) return renderNickname();
     const categories = (state.bootstrap.categories || []).filter(category => category.id !== 'tutorial');
     const tutorial = state.bootstrap.categories?.find(category => category.id === 'tutorial');
     return `<section class="screen screen--home" data-view="home">
-      <div class="topline topline--end"><button class="icon-button" type="button" data-action="profile" aria-label="Відкрити профіль"><i class="fa-solid fa-user" aria-hidden="true"></i></button></div>
       ${tutorial ? `<button class="tutorial-card" style="--category-color:${escapeHtml(tutorial.color)};--category-accent:${escapeHtml(tutorial.accent)}" type="button" data-action="open-tutorial"><span class="tutorial-card__icon"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i></span><span><span class="eyebrow">Навчання</span><strong>Освой усі механіки за 3 рівні</strong><small>Звичайні, замкнені та подвійно замкнені літери</small></span><span class="tutorial-card__progress">${tutorial.completed} / ${tutorial.total}<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span></button>` : ''}
       <div class="section-row"><h3>Категорії</h3><span>${state.bootstrap.profile?.completedLevels || 0} завершено</span></div>
       <div class="category-list">${categories.map(category => {
@@ -170,13 +205,43 @@
 
   function keyboardHtml(attempt) {
     const byLetter = new Map([...letterProgress(attempt).values()].filter(item => item.letter).map(item => [item.letter, item]));
+    const awaitingTutorialCell = attempt.tutorialStep === 1 && !state.tutorialSelectedCell;
     return `<div class="keyboard" role="group" aria-label="Українська клавіатура">${KEYBOARD_ROWS.map(row => `<div class="keyboard-row">${Array.from(row).map(letter => {
       const progress = byLetter.get(letter);
       const complete = Boolean(progress && progress.solved === progress.total);
       const partial = Boolean(progress && !complete);
       const label = complete ? ', розгадана всюди' : partial ? ', розгадана частково' : '';
-      return `<button class="key ${complete ? 'is-complete' : partial ? 'is-partial' : ''}" type="button" data-action="guess" data-letter="${letter}" aria-label="Літера ${letter}${label}" ${complete || state.hintMode ? 'disabled' : ''}>${letter}</button>`;
+      return `<button class="key ${complete ? 'is-complete' : partial ? 'is-partial' : ''}" type="button" data-action="guess" data-letter="${letter}" aria-label="Літера ${letter}${label}" ${complete || state.hintMode || awaitingTutorialCell ? 'disabled' : ''}>${letter}</button>`;
     }).join('')}</div>`).join('')}</div>`;
+  }
+
+  function tutorialCoachFor(attempt) {
+    if (!attempt?.tutorialStep) return null;
+    if (attempt.tutorialStep === 1 && !state.tutorialSelectedCell) return {
+      target: 'cell', title: 'Крок 1 · оберіть комірку',
+      text: 'Натисніть будь-яку незаповнену комірку. Вона отримає кольорову рамку — саме сюди буде введена літера.'
+    };
+    if (attempt.tutorialStep === 1 && !state.tutorialGuessed) return {
+      target: 'keyboard', title: 'Крок 2 · введіть літеру',
+      text: 'Тепер натисніть літеру на клавіатурі. Навіть однакові цифрові коди потрібно заповнювати в кожній комірці окремо.'
+    };
+    if (attempt.tutorialStep === 1) return {
+      target: 'board', title: 'Продовжуйте розгадувати',
+      text: 'Правильна літера відкривається лише в обраному місці. Три помилки завершують спробу, але навчання не витрачає життя.'
+    };
+    const tutorialHintsUsed = Number(state.bootstrap.onboarding?.tutorialHintsUsed || 0);
+    if (attempt.tutorialStep === 2 && tutorialHintsUsed === 0) return {
+      target: 'hint', title: 'Спробуйте підказку',
+      text: 'Натисніть «Підказка», а потім оберіть пунктирну комірку. У навчанні підказки безкоштовні, але доступно не більше трьох.'
+    };
+    if (attempt.tutorialStep === 2) return {
+      target: 'lock', title: 'Одинарний замок',
+      text: 'Замкнена комірка відкриється, щойно буде розгадана літера зліва або справа від неї.'
+    };
+    return {
+      target: 'lock', title: 'Подвійний замок',
+      text: 'Для подвійного замка потрібно правильно відкрити сусідні літери з обох боків.'
+    };
   }
 
   function renderGame() {
@@ -185,18 +250,18 @@
     if (attempt.status === 'won' && !state.solveCelebration) return renderResult();
     if (attempt.status !== 'active' && !(attempt.status === 'won' && state.solveCelebration)) return renderFailure();
     const dots = Array.from({ length: attempt.maxErrors }, (_, index) => `<span class="mistake-dot ${index < attempt.errors ? 'is-used' : ''}" aria-label="${index < attempt.errors ? 'Помилку використано' : 'Помилка доступна'}">${index < attempt.errors ? '×' : ''}</span>`).join('');
-    const tutorial = {
-      1: 'Обирай кожну комірку окремо: однаковий код більше не заповнює інші місця.',
-      2: 'Один замок відкриється, коли буде розгадана літера зліва або справа.',
-      3: 'Подвійний замок потребує розгаданих літер з обох боків.'
-    }[attempt.tutorialStep];
-    const guidance = state.hintMode ? '<strong>Оберіть комірку, яку треба підказати</strong><span>Доступні місця позначено пунктиром. Підказка спишеться після вибору.</span>' : tutorial ? `<strong>Навчання · крок ${attempt.tutorialStep} із 3</strong><span>${escapeHtml(tutorial)}</span>` : '';
+    const coach = tutorialCoachFor(attempt);
+    const guidance = state.hintMode ? '<strong>Оберіть комірку, яку треба підказати</strong><span>Доступні місця позначено пунктиром. У навчанні підказка не витратить ваш запас.</span>' : coach ? `<strong>${escapeHtml(coach.title)}</strong><span>${escapeHtml(coach.text)}</span>` : '';
     const category = currentCategory();
     const theme = `--category-color:${escapeHtml(category?.color || '#e0bbff')};--category-accent:${escapeHtml(category?.accent || '#68308d')}`;
-    return `<section class="screen screen--game ${state.hintMode ? 'is-choosing-hint' : ''} ${state.solveCelebration ? 'is-solve-celebration' : ''}" data-view="game" style="${theme}"><div class="topline"><button class="back-button" type="button" data-action="back" aria-label="Назад до категорій"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button><div class="mistake-stack" aria-label="Помилки"><div class="mistake-row">${dots}</div><span>ПОМИЛКИ</span></div></div>
+    const coachTarget = state.hintMode ? 'hint-cell' : coach?.target || '';
+    const tutorial = Boolean(attempt.tutorialStep);
+    const tutorialHintsRemaining = Number(state.bootstrap.onboarding?.tutorialHintsRemaining ?? 3);
+    const hintLabel = tutorial ? `Підказка · ${tutorialHintsRemaining}/3` : 'Підказка';
+    return `<section class="screen screen--game ${state.hintMode ? 'is-choosing-hint' : ''} ${state.solveCelebration ? 'is-solve-celebration' : ''}" data-view="game" data-tutorial-coach="${coachTarget}" style="${theme}"><div class="topline"><button class="back-button" type="button" data-action="back" aria-label="Назад до категорій"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button><div class="mistake-stack" aria-label="Помилки"><div class="mistake-row">${dots}</div><span>ПОМИЛКИ</span></div></div>
       ${state.solveCelebration ? '<div class="solve-message"><i class="fa-solid fa-sparkles" aria-hidden="true"></i><strong>Шифр розгадано!</strong></div>' : guidance ? `<div class="game-guidance ${state.hintMode ? 'game-guidance--hint' : ''}">${guidance}</div>` : ''}
       <div class="cipher-scroll" tabindex="0" aria-label="Зашифрована фраза"><div class="cipher-board ${state.solveCelebration ? 'is-solved' : ''}">${cipherHtml(attempt)}</div></div>${state.solveCelebration ? '' : keyboardHtml(attempt)}
-      ${state.solveCelebration ? '' : `<div class="game-actions"><button class="button ${state.hintMode ? 'is-active' : ''}" type="button" data-action="hint"><i class="fa-solid fa-lightbulb" aria-hidden="true"></i>${state.hintMode ? 'Скасувати' : 'Підказка'}</button><button class="button button--danger" type="button" data-action="surrender"><i class="fa-solid fa-flag" aria-hidden="true"></i>Здатися</button></div>`}</section>`;
+      ${state.solveCelebration ? '' : `<div class="game-actions"><button class="button ${state.hintMode ? 'is-active' : ''}" type="button" data-action="hint" ${tutorial && tutorialHintsRemaining <= 0 ? 'disabled' : ''}><i class="fa-solid fa-lightbulb" aria-hidden="true"></i>${state.hintMode ? 'Скасувати' : hintLabel}</button><button class="button button--danger" type="button" data-action="surrender" ${tutorial ? 'disabled aria-label="Здатися недоступно у навчанні"' : ''}><i class="fa-solid fa-flag" aria-hidden="true"></i>Здатися</button></div>`}</section>`;
   }
 
   function renderFailure() {
@@ -211,8 +276,11 @@
     const source = result.source || {};
     const category = currentCategory();
     const finished = Boolean(category?.completedAll);
+    const tutorialFinished = state.attempt?.categoryId === 'tutorial' && finished;
     const isIdiomsCategory = state.attempt?.categoryId === 'ukrainian-idioms';
-    return `<section class="screen" data-view="result">${screenHeader(`Рівень ${state.attempt.levelNumber} завершено`, state.attempt.categoryTitle)}<article class="result-card"><p class="eyebrow">Розгадана фраза</p><blockquote>«${escapeHtml(result.text)}»</blockquote><p class="source-line">${isIdiomsCategory ? '<span>Пояснення</span>' : ''}<strong>${escapeHtml(source.label || 'Джерело')}</strong></p>${source.url ? `<button class="button" type="button" data-action="open-source" data-url="${escapeHtml(source.url)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>Відкрити джерело</button>` : ''}<div class="result-stats"><div class="stat"><strong>${formatTime(result.seconds)}</strong><span>час</span></div><div class="stat"><strong>${result.errors}</strong><span>помилки</span></div><div class="stat"><strong>${result.hintsUsed}</strong><span>підказки</span></div></div><div class="action-stack"><button class="button button--primary button--wide" type="button" data-action="${finished ? 'category-complete' : 'next-level'}">${finished ? 'Категорію завершено' : 'Наступний рівень'}</button><button class="button" type="button" data-action="share"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i>Поширити</button></div></article></section>`;
+    const primaryAction = tutorialFinished ? 'finish-tutorial' : finished ? 'category-complete' : 'next-level';
+    const primaryLabel = tutorialFinished ? 'Перейти далі' : finished ? 'Категорію завершено' : 'Наступний рівень';
+    return `<section class="screen" data-view="result">${screenHeader(`Рівень ${state.attempt.levelNumber} завершено`, state.attempt.categoryTitle)}<article class="result-card"><p class="eyebrow">Розгадана фраза</p><blockquote>«${escapeHtml(result.text)}»</blockquote><p class="source-line">${isIdiomsCategory ? '<span>Пояснення</span>' : ''}<strong>${escapeHtml(source.label || 'Джерело')}</strong></p>${source.url ? `<button class="button" type="button" data-action="open-source" data-url="${escapeHtml(source.url)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>Відкрити джерело</button>` : ''}<div class="result-stats"><div class="stat"><strong>${formatTime(result.seconds)}</strong><span>час</span></div><div class="stat"><strong>${result.errors}</strong><span>помилки</span></div><div class="stat"><strong>${result.hintsUsed}</strong><span>підказки</span></div></div><div class="action-stack"><button class="button button--primary button--wide" type="button" data-action="${primaryAction}">${primaryLabel}</button><button class="button" type="button" data-action="share"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i>Поширити</button></div></article></section>`;
   }
 
   function renderStore() {
@@ -235,14 +303,14 @@
     const profile = state.bootstrap.profile;
     const unlocked = state.bootstrap.categories.filter(category => category.unlocked && !category.free).length;
     const best = Number.isFinite(Number(profile.bestSeconds)) ? formatTime(profile.bestSeconds) : '—';
-    return `<section class="screen" data-view="profile">${screenHeader('Прогрес', state.telegram ? 'Профіль прив’язаний до перевіреного Telegram ID.' : 'Гостьовий прогрес зберігається у Cloudflare KV.')}<div class="profile-card"><div class="profile-summary"><div class="avatar">${escapeHtml((profile.name || 'Г').replace('@','').charAt(0).toLocaleUpperCase('uk-UA'))}</div><div><h2>${escapeHtml(profile.name)}</h2><p>${state.telegram ? 'Telegram-гравець' : 'Гостьовий режим'}</p></div></div><div class="profile-grid"><div class="profile-metric"><strong>${profile.completedLevels}</strong><span>рівнів завершено</span></div><div class="profile-metric"><strong>${profile.totalCompletions}</strong><span>усіх проходжень</span></div><div class="profile-metric"><strong>${unlocked}</strong><span>категорій відкрито</span></div><div class="profile-metric"><strong>${best}</strong><span>кращий час</span></div></div></div></section>`;
+    return `<section class="screen" data-view="profile">${screenHeader('Прогрес', state.telegram ? 'Профіль прив’язаний до перевіреного Telegram ID.' : 'Профіль сайту зберігається у Cloudflare KV.')}<div class="profile-card"><div class="profile-summary">${avatarHtml(profile)}<div><h2>${escapeHtml(profile.name)}</h2><p>${state.telegram ? 'Telegram-гравець' : 'Гравець сайту'}</p></div></div><div class="profile-grid"><div class="profile-metric"><strong>${profile.completedLevels}</strong><span>рівнів завершено</span></div><div class="profile-metric"><strong>${profile.totalCompletions}</strong><span>усіх проходжень</span></div><div class="profile-metric"><strong>${unlocked}</strong><span>категорій відкрито</span></div><div class="profile-metric"><strong>${best}</strong><span>кращий час</span></div></div></div></section>`;
   }
 
   function renderLeaderboard() {
-    return `<section class="screen" data-view="leaderboard">${screenHeader('Лідерборд', 'Гравці, які завершили найбільше різних рівнів.')}<div class="leaderboard-card">${state.leaderboard.length ? `<div class="leaderboard-list">${state.leaderboard.map(row => `<div class="leader-row"><span class="leader-rank">#${row.rank}</span><span class="leader-name">${escapeHtml(row.name)}</span><span class="leader-score">${row.completedLevels}<small>рівнів</small></span></div>`).join('')}</div>` : '<p class="notice">Поки що немає результатів Telegram-гравців.</p>'}</div></section>`;
+    return `<section class="screen" data-view="leaderboard">${screenHeader('Лідерборд', 'Гравці, які завершили найбільше різних рівнів.')}<div class="leaderboard-card">${state.leaderboard.length ? `<div class="leaderboard-list">${state.leaderboard.map(row => `<div class="leader-row"><span class="leader-rank">#${row.rank}</span>${avatarHtml(row, 'leader-avatar')}<span class="leader-name">${escapeHtml(row.name)}</span><span class="leader-score">${row.completedLevels}<small>рівнів</small></span></div>`).join('')}</div>` : '<p class="notice">Поки що немає результатів гравців.</p>'}</div></section>`;
   }
 
-  const views = { home: renderHome, game: renderGame, failure: renderFailure, result: renderResult, store: renderStore, resources: renderResources, profile: renderProfile, leaderboard: renderLeaderboard };
+  const views = { home: renderHome, nickname: renderNickname, game: renderGame, failure: renderFailure, result: renderResult, store: renderStore, resources: renderResources, profile: renderProfile, leaderboard: renderLeaderboard };
   function updateBrand() {
     const showLevel = state.view === 'game' && Boolean(state.attempt);
     const category = currentCategory();
@@ -265,7 +333,8 @@
     appRoot.innerHTML = (views[state.view] || renderHome)();
     appRoot.setAttribute('aria-busy', String(state.busy));
     appRoot.querySelectorAll('button').forEach(button => { if (state.busy && button.dataset.action !== 'back') button.disabled = true; });
-    window.SiteTelegram?.setBackButtonVisible?.(state.view !== 'home');
+    if (state.view === 'nickname') window.setTimeout(() => appRoot.querySelector('#nicknameInput')?.focus(), 0);
+    window.SiteTelegram?.setBackButtonVisible?.(!['home', 'nickname'].includes(state.view));
   }
 
   function navigate(view, { push = true } = {}) {
@@ -276,6 +345,7 @@
   }
 
   function goBack({ fromHistory = false } = {}) {
+    if (state.view === 'nickname') return;
     if (state.view === 'resources') navigate(state.returnView || 'home', { push: false });
     else if (['game','failure','result'].includes(state.view)) navigate('home', { push: false });
     else if (state.view !== 'home') navigate('home', { push: false });
@@ -342,7 +412,7 @@
 
   function handleError(error) {
     const code = error?.body?.error;
-    const messages = { NO_LIVES: 'Життя закінчилися.', NO_HINTS: 'Підказки закінчилися.', TELEGRAM_REQUIRED: 'Покупки доступні лише у Telegram.', ALREADY_OWNED: 'Цей товар уже відкрито.', PURCHASE_PENDING: 'Рахунок уже створюється. Спробуйте ще раз за мить.', RATE_LIMITED: 'Забагато дій. Зачекайте кілька секунд.', SESSION_REQUIRED: 'Сесія завершилася. Перезапустіть гру.', LOCKED_CODE: 'Ця комірка ще замкнена.', INVALID_HINT_POSITION: 'Оберіть нерозгадану комірку, позначену пунктиром.', INVALID_GUESS: 'Оберіть доступну комірку й літеру.', CATEGORY_COMPLETED: 'Усі рівні цієї категорії вже завершено.' };
+    const messages = { NO_LIVES: 'Життя закінчилися.', NO_HINTS: 'Підказки закінчилися.', TELEGRAM_REQUIRED: 'Покупки доступні лише у Telegram.', ALREADY_OWNED: 'Цей товар уже відкрито.', PURCHASE_PENDING: 'Рахунок уже створюється. Спробуйте ще раз за мить.', RATE_LIMITED: 'Забагато дій. Зачекайте кілька секунд.', SESSION_REQUIRED: 'Сесія завершилася. Перезапустіть гру.', LOCKED_CODE: 'Ця комірка ще замкнена.', INVALID_HINT_POSITION: 'Оберіть нерозгадану комірку, позначену пунктиром.', INVALID_GUESS: 'Оберіть доступну комірку й літеру.', CATEGORY_COMPLETED: 'Усі рівні цієї категорії вже завершено.', TUTORIAL_REQUIRED: 'Спочатку завершіть навчання.', NICKNAME_REQUIRED: 'Спочатку введіть нікнейм.', INVALID_NICKNAME: 'Нікнейм має містити 2–24 літери або цифри.', TUTORIAL_HINT_LIMIT: 'У навчанні доступно не більше трьох підказок.', TUTORIAL_SURRENDER_DISABLED: 'У навчанні не можна здатися.' };
     showToast(messages[code] || error?.message || 'Сталася помилка.');
     if (code === 'NO_LIVES' || code === 'NO_HINTS') navigate('resources');
   }
@@ -352,16 +422,18 @@
     if (!category) return;
     await withBusy(async () => {
       const response = await api('/attempts', { method: 'POST', body: JSON.stringify({ categoryId: category.id }) });
-      state.attempt = response.attempt;
+      state.attempt = normalizeAttempt(response.attempt);
       state.bootstrap.inventory = response.inventory;
       state.selectedPosition = state.attempt.selectedPosition ?? unknownPositions(state.attempt)[0] ?? null;
       state.hintedPosition = null; state.errorPosition = null; state.hintMode = false;
       state.wordCelebrationPositions = []; state.solveCelebration = false;
+      state.tutorialSelectedCell = false; state.tutorialGuessed = false;
       navigate(state.attempt.status === 'won' ? 'result' : state.attempt.status === 'active' ? 'game' : 'failure');
     });
   }
 
   function openCategory(categoryId) {
+    if (categoryId !== 'tutorial' && !state.bootstrap.onboarding?.complete) { navigate(state.bootstrap.onboarding?.nicknameRequired ? 'nickname' : 'home'); return; }
     state.selectedCategoryId = categoryId;
     const category = currentCategory();
     if (!category?.available) { showToast('Рівні цієї категорії ще готуються.'); return; }
@@ -373,11 +445,15 @@
 
   async function submitGuess(letter) {
     if (state.view !== 'game' || !state.attempt || state.selectedPosition == null || state.hintMode) return;
+    if (state.attempt.tutorialStep === 1 && !state.tutorialSelectedCell) { showToast('Спочатку натисніть комірку в шифрі.'); return; }
+    if (state.attempt.tutorialStep) state.tutorialGuessed = true;
     const position = state.selectedPosition;
     await withBusy(async () => {
       const before = state.attempt;
-      const response = await api(`/attempts/${state.attempt.id}/guess`, { method: 'POST', body: JSON.stringify({ position, letter }) });
-      state.attempt = response.attempt; state.bootstrap.inventory = response.inventory;
+      const selectedToken = state.attempt.tokens.find(token => Number(token.position) === Number(position));
+      const guess = state.attempt.legacyCodeModel ? { code: selectedToken?.code, letter } : { position, letter };
+      const response = await api(`/attempts/${state.attempt.id}/guess`, { method: 'POST', body: JSON.stringify(guess) });
+      state.attempt = normalizeAttempt(response.attempt); state.bootstrap.inventory = response.inventory;
       if (response.ok) {
         announce(`Правильно: ${letter}`);
         state.selectedPosition = positionAfter(state.attempt, position);
@@ -391,7 +467,9 @@
   }
 
   async function useHint() {
-    if (Number(state.bootstrap.inventory?.hints || 0) <= 0) { navigate('resources'); showToast('Підказки закінчилися.'); return; }
+    const tutorial = Boolean(state.attempt?.tutorialStep);
+    if (tutorial && Number(state.bootstrap.onboarding?.tutorialHintsRemaining || 0) <= 0) { showToast('У навчанні вже використано три підказки.'); return; }
+    if (!tutorial && Number(state.bootstrap.inventory?.hints || 0) <= 0) { navigate('resources'); showToast('Підказки закінчилися.'); return; }
     state.hintMode = !state.hintMode;
     state.selectedPosition = null;
     render();
@@ -403,25 +481,47 @@
     await withBusy(async () => {
       const before = state.attempt;
       const response = await api(`/attempts/${state.attempt.id}/hint`, { method: 'POST', body: JSON.stringify({ position }) });
-      state.attempt = response.attempt; state.bootstrap.inventory = response.inventory; state.hintedPosition = response.hint.position;
+      state.attempt = normalizeAttempt(response.attempt); state.bootstrap.inventory = response.inventory;
+      if (response.tutorialHints) {
+        state.bootstrap.onboarding.tutorialHintsUsed = response.tutorialHints.used;
+        state.bootstrap.onboarding.tutorialHintsRemaining = response.tutorialHints.remaining;
+      }
+      const hintedPosition = Number.isSafeInteger(response.hint.position)
+        ? response.hint.position
+        : state.attempt.tokens.find(token => token.type === 'letter' && Number(token.code) === Number(response.hint.code))?.position;
+      state.hintedPosition = hintedPosition;
       state.hintMode = false;
-      state.selectedPosition = positionAfter(state.attempt, response.hint.position);
+      state.selectedPosition = positionAfter(state.attempt, hintedPosition);
       announce(`Підказка: код ${response.hint.code} — літера ${response.hint.letter}.`); feedback('light', 24);
       await celebrateCorrectGuess(before, state.attempt);
     });
   }
 
   async function surrender() {
+    if (state.attempt?.tutorialStep) return;
     const confirmed = await window.SiteTelegram?.showConfirm?.('Здатися? Буде списано одне життя, а відповідь залишиться закритою.');
     if (!confirmed) return;
     await withBusy(async () => {
       const response = await api(`/attempts/${state.attempt.id}/surrender`, { method: 'POST' });
-      state.attempt = response.attempt; state.bootstrap.inventory = response.inventory; window.SiteTelegram?.haptic?.('warning'); navigate('failure');
+      state.attempt = normalizeAttempt(response.attempt); state.bootstrap.inventory = response.inventory; window.SiteTelegram?.haptic?.('warning'); navigate('failure');
     });
   }
 
   async function openLeaderboard() {
     await withBusy(async () => { const response = await api('/leaderboard'); state.leaderboard = response.leaderboard || []; navigate('leaderboard'); });
+  }
+
+  function finishTutorial() {
+    navigate(state.bootstrap.onboarding?.nicknameRequired ? 'nickname' : 'home');
+  }
+
+  async function saveNickname(name) {
+    await withBusy(async () => {
+      await api('/profile', { method: 'POST', body: JSON.stringify({ name }) });
+      await reloadBootstrap();
+      navigate('home');
+      showToast('Нікнейм збережено. Ласкаво просимо!');
+    });
   }
 
   async function pollPurchase(id) {
@@ -462,9 +562,10 @@
     else if (action === 'store') navigate('store');
     else if (action === 'resources') navigate('resources');
     else if (action === 'leaderboard') openLeaderboard();
+    else if (action === 'begin-tutorial') openCategory('tutorial');
     else if (action === 'open-tutorial') openCategory('tutorial');
     else if (action === 'open-category') openCategory(button.dataset.categoryId);
-    else if (action === 'select-position') { state.selectedPosition = Number(button.dataset.position); feedback('selection', 12); render(); }
+    else if (action === 'select-position') { state.selectedPosition = Number(button.dataset.position); if (state.attempt?.tutorialStep) state.tutorialSelectedCell = true; feedback('selection', 12); render(); }
     else if (action === 'choose-hint-position') chooseHint(Number(button.dataset.position));
     else if (action === 'guess') submitGuess(button.dataset.letter);
     else if (action === 'hint') useHint();
@@ -472,6 +573,7 @@
     else if (action === 'retry') startAttempt();
     else if (action === 'next-level') startAttempt();
     else if (action === 'category-complete') navigate('home');
+    else if (action === 'finish-tutorial') finishTutorial();
     else if (action === 'buy') buy(button.dataset.productKey);
     else if (action === 'share') shareResult();
     else if (action === 'open-source') { if (!window.SiteTelegram?.openLink?.(button.dataset.url)) window.open(button.dataset.url, '_blank', 'noopener'); }
@@ -481,6 +583,13 @@
       if (link && !window.SiteTelegram?.openLink?.(link)) window.open(link, '_blank', 'noopener');
       else if (!link) showToast(`Контакт підтримки: ${support}`);
     }
+  });
+
+  document.addEventListener('submit', event => {
+    const form = event.target.closest('[data-nickname-form]');
+    if (!form || state.busy) return;
+    event.preventDefault();
+    saveNickname(new FormData(form).get('nickname'));
   });
 
   document.addEventListener('keydown', event => {
@@ -510,7 +619,12 @@
     try {
       await window.SiteTelegram?.init?.(); window.SiteTelegram?.setBackHandler?.(() => goBack());
       await establishSession(); if (!state.bootstrap) await reloadBootstrap();
-      state.historyReady = true; history.replaceState({ shyfrView: 'home' }, '', window.location.href); appRoot.setAttribute('aria-busy', 'false'); render();
+      state.historyReady = true; history.replaceState({ shyfrView: 'home' }, '', window.location.href); appRoot.setAttribute('aria-busy', 'false');
+      if (!state.bootstrap.onboarding?.tutorialCompleted) {
+        state.selectedCategoryId = 'tutorial';
+        await startAttempt();
+      } else if (state.bootstrap.onboarding?.nicknameRequired) navigate('nickname', { push: false });
+      else render();
     } catch (error) {
       appRoot.setAttribute('aria-busy', 'false');
       appRoot.innerHTML = '<section class="screen"><div class="failure-card"><div class="failure-symbol"><i class="fa-solid fa-cloud-bolt" aria-hidden="true"></i></div><h2>Сервер гри недоступний</h2><p>Cloudflare Worker і KV мають бути розгорнуті та налаштовані.</p><button class="button button--primary button--wide" type="button" data-action="reload">Спробувати знову</button></div></section>';
