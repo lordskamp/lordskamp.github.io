@@ -1,8 +1,8 @@
 import { shyfrCategories, shyfrLevels } from './shyfr-content.generated.js';
 import {
   SHYFR_CONFIG,
-  codesInPhrase,
   createInitialRevealed,
+  createLockRequirements,
   createSubstitution,
   difficultyForLevel,
   encodePhrase,
@@ -11,8 +11,9 @@ import {
   hasLevelAccess,
   hiddenRatioForLevel,
   isAttemptSolved,
-  lockedCodesForAttempt,
-  nextUnknownCode,
+  lockedPositionsForAttempt,
+  lockModeForLevel,
+  nextUnknownPosition,
   normalizeUkrainianLetter,
   resolveProduct,
   revealHint
@@ -21,6 +22,12 @@ import {
 const API_PREFIX = '/shyfr';
 const SESSION_PREFIX = 'Bearer ';
 const TMA_PREFIX = 'tma ';
+const DAILY_RESET_TIME_ZONE = 'Europe/Kyiv';
+const KYIV_PARTS_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+  timeZone: DAILY_RESET_TIME_ZONE,
+  year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+  hourCycle: 'h23'
+});
 const PAYMENT_PAYLOAD_RE = /^shyfr:v1:([0-9a-f-]{36})$/iu;
 const TELEGRAM_ID_RE = /^[1-9]\d{0,19}$/u;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -56,20 +63,72 @@ function positiveInteger(value, fallback) {
 }
 
 export function shyfrConfigForEnv(env = {}) {
-  const livesQuantity = positiveInteger(env.SHYFR_LIVES_PACK_QUANTITY, SHYFR_CONFIG.packs.lives3.quantity);
+  const dailyLives = positiveInteger(env.SHYFR_DAILY_LIVES, SHYFR_CONFIG.dailyLives);
+  const dailyHints = positiveInteger(env.SHYFR_DAILY_HINTS, SHYFR_CONFIG.dailyHints);
   const hintsQuantity = positiveInteger(env.SHYFR_HINTS_PACK_QUANTITY, SHYFR_CONFIG.packs.hints5.quantity);
   return {
     ...SHYFR_CONFIG,
-    initialLives: positiveInteger(env.SHYFR_INITIAL_LIVES, SHYFR_CONFIG.initialLives),
-    maxLives: positiveInteger(env.SHYFR_MAX_LIVES, SHYFR_CONFIG.maxLives),
-    initialHints: positiveInteger(env.SHYFR_INITIAL_HINTS, SHYFR_CONFIG.initialHints),
-    maxHints: positiveInteger(env.SHYFR_MAX_HINTS, SHYFR_CONFIG.maxHints),
+    initialLives: dailyLives,
+    maxLives: dailyLives,
+    dailyLives,
+    initialHints: dailyHints,
+    dailyHints,
     categoryPriceStars: positiveInteger(env.SHYFR_CATEGORY_PRICE_STARS, SHYFR_CONFIG.categoryPriceStars),
     levelPriceStars: positiveInteger(env.SHYFR_LEVEL_PRICE_STARS, SHYFR_CONFIG.levelPriceStars),
     packs: {
-      lives3: { ...SHYFR_CONFIG.packs.lives3, quantity: livesQuantity, stars: positiveInteger(env.SHYFR_LIVES_PACK_STARS, SHYFR_CONFIG.packs.lives3.stars), title: `${livesQuantity} життя` },
+      lives3: { ...SHYFR_CONFIG.packs.lives3, quantity: dailyLives, stars: positiveInteger(env.SHYFR_LIVES_PACK_STARS, SHYFR_CONFIG.packs.lives3.stars), title: 'Повністю відновити життя' },
       hints5: { ...SHYFR_CONFIG.packs.hints5, quantity: hintsQuantity, stars: positiveInteger(env.SHYFR_HINTS_PACK_STARS, SHYFR_CONFIG.packs.hints5.stars), title: `${hintsQuantity} підказок` }
     }
+  };
+}
+
+function kyivDateParts(timestamp) {
+  return Object.fromEntries(KYIV_PARTS_FORMATTER.formatToParts(new Date(timestamp))
+    .filter(part => part.type !== 'literal')
+    .map(part => [part.type, Number(part.value)]));
+}
+
+function kyivOffsetAt(timestamp) {
+  const parts = kyivDateParts(timestamp);
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - timestamp;
+}
+
+function kyivMidnightUtc(year, month, day) {
+  const localMidnight = Date.UTC(year, month - 1, day);
+  let result = localMidnight;
+  for (let index = 0; index < 3; index += 1) result = localMidnight - kyivOffsetAt(result);
+  return result;
+}
+
+export function dailyResetInfo(now = Date.now()) {
+  const parts = kyivDateParts(now);
+  const key = `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+  return {
+    key,
+    resetAt: new Date(kyivMidnightUtc(parts.year, parts.month, parts.day + 1)).toISOString()
+  };
+}
+
+function refreshDailyInventory(user, config, now = Date.now()) {
+  const daily = dailyResetInfo(now);
+  const changed = user.dailyResetKey !== daily.key || user.dailyResetTimeZone !== DAILY_RESET_TIME_ZONE;
+  if (changed) {
+    user.lives = config.dailyLives;
+    user.hints = Math.max(config.dailyHints, Number(user.hints || 0));
+    user.dailyResetKey = daily.key;
+    user.dailyResetTimeZone = DAILY_RESET_TIME_ZONE;
+  }
+  user.dailyResetAt = daily.resetAt;
+  return changed;
+}
+
+function inventoryFor(user, config) {
+  const daily = dailyResetInfo();
+  return {
+    lives: Number(user.lives || 0),
+    hints: Number(user.hints || 0),
+    limits: { lives: config.dailyLives, hints: config.dailyHints },
+    resetAt: user.dailyResetAt || daily.resetAt
   };
 }
 
@@ -141,13 +200,17 @@ function displayName(telegramUser) {
 }
 
 function freshUser({ id, kind, telegramId = null, name, config }) {
+  const daily = dailyResetInfo();
   return {
     id,
     kind,
     telegramId,
     name,
     lives: Math.min(config.initialLives, config.maxLives),
-    hints: Math.min(config.initialHints, config.maxHints),
+    hints: config.initialHints,
+    dailyResetKey: daily.key,
+    dailyResetTimeZone: DAILY_RESET_TIME_ZONE,
+    dailyResetAt: daily.resetAt,
     entitlements: [],
     progress: {},
     activeAttempts: {},
@@ -163,7 +226,7 @@ function normalizeUser(user, config) {
   return {
     ...user,
     lives: Math.max(0, Math.min(config.maxLives, Number(user.lives ?? config.initialLives))),
-    hints: Math.max(0, Math.min(config.maxHints, Number(user.hints ?? config.initialHints))),
+    hints: Math.max(0, Number(user.hints ?? config.initialHints)),
     entitlements: Array.isArray(user.entitlements) ? user.entitlements : [],
     progress: user.progress && typeof user.progress === 'object' ? user.progress : {},
     activeAttempts: user.activeAttempts && typeof user.activeAttempts === 'object' ? user.activeAttempts : {},
@@ -205,6 +268,7 @@ async function telegramLogin(request, env, config) {
   const id = `tg:${telegramId}`;
   let user = normalizeUser(await kvGet(env, KEY.user(id)), config);
   if (!user) user = freshUser({ id, kind: 'telegram', telegramId, name: displayName(validation.user), config });
+  refreshDailyInventory(user, config);
   user.kind = 'telegram';
   user.telegramId = telegramId;
   user.name = displayName(validation.user);
@@ -220,7 +284,9 @@ async function authenticate(request, env, config) {
   const session = await kvGet(env, KEY.session(await sha256Hex(token)));
   if (!session || Number(session.expiresAt) <= Date.now()) return null;
   const user = normalizeUser(await kvGet(env, KEY.user(session.userId)), config);
-  return user ? { session, user } : null;
+  if (!user) return null;
+  if (refreshDailyInventory(user, config)) await saveUser(env, user);
+  return { session, user };
 }
 
 function validPrivateLevel(level) {
@@ -244,8 +310,8 @@ function levelAccess(level, user) {
   return hasLevelAccess({ level, category: categoryFor(level.categoryId), entitlements: user.entitlements });
 }
 
-function uniqueLetterCount(text) {
-  return new Set(Array.from(String(text)).map(normalizeUkrainianLetter).filter(Boolean)).size;
+function letterCount(text) {
+  return Array.from(String(text)).map(normalizeUkrainianLetter).filter(Boolean).length;
 }
 
 async function loadAttempt(env, id, userId) {
@@ -253,22 +319,55 @@ async function loadAttempt(env, id, userId) {
   return attempt?.userId === userId ? attempt : null;
 }
 
+function lockModeForAttempt(level, difficultyNumber = level.order) {
+  if (level.categoryId === 'tutorial') return ['none', 'single', 'double'][level.order - 1] || 'double';
+  return lockModeForLevel(difficultyNumber);
+}
+
+function ensureAttemptModel(attempt, level) {
+  if (attempt.schemaVersion === 2 && attempt.lockRequirements && attempt.revealed) return attempt;
+  const tokens = encodePhrase(level.text, attempt.substitution);
+  const legacyRevealed = attempt.revealed || {};
+  const revealed = Object.fromEntries(tokens
+    .filter(token => token.type === 'letter' && legacyRevealed[token.code])
+    .map(token => [token.position, legacyRevealed[token.code]]));
+  attempt.schemaVersion = 2;
+  attempt.revealed = revealed;
+  attempt.lockRequirements = createLockRequirements({
+    text: level.text,
+    substitution: attempt.substitution,
+    revealed,
+    levelNumber: attempt.difficultyNumber || attempt.levelNumber,
+    seed: attempt.seed,
+    mode: lockModeForAttempt(level, attempt.difficultyNumber || attempt.levelNumber)
+  });
+  return attempt;
+}
+
 function publicAttempt(attempt, level) {
   if (!attempt || !level) return null;
+  ensureAttemptModel(attempt, level);
   const substitution = attempt.substitution;
   const revealed = attempt.revealed || {};
-  const lockedCodes = attempt.status === 'active' ? lockedCodesForAttempt(level.text, substitution, revealed) : [];
-  const locked = new Set(lockedCodes);
+  const lockedPositions = attempt.status === 'active'
+    ? lockedPositionsForAttempt(level.text, substitution, revealed, attempt.lockRequirements)
+    : [];
+  const locked = new Set(lockedPositions);
   const tokens = encodePhrase(level.text, substitution).map(token => token.type === 'letter'
-    ? { ...token, locked: !revealed[token.code] && locked.has(token.code) }
+    ? {
+        ...token,
+        locked: !revealed[token.position] && locked.has(token.position),
+        lockType: locked.has(token.position) ? (Number(attempt.lockRequirements[token.position]) === 2 ? 'double' : 'single') : null
+      }
     : token);
-  const hiddenRemaining = codesInPhrase(level.text, substitution).filter(code => !revealed[code]).length;
+  const hiddenRemaining = tokens.filter(token => token.type === 'letter' && !revealed[token.position]).length;
   const response = {
     id: attempt.id,
     levelId: attempt.levelId,
     categoryId: attempt.categoryId,
     categoryTitle: categoryFor(attempt.categoryId)?.title || '',
     levelNumber: attempt.levelNumber,
+    difficultyNumber: attempt.difficultyNumber || attempt.levelNumber,
     hiddenPercent: attempt.hiddenPercent,
     hiddenTotal: attempt.hiddenTotal,
     hiddenRemaining,
@@ -279,7 +378,8 @@ function publicAttempt(attempt, level) {
     hintsUsed: Number(attempt.hintsUsed || 0),
     status: attempt.status,
     startedAt: attempt.startedAt,
-    selectedCode: nextUnknownCode(tokens, revealed, lockedCodes)
+    selectedPosition: nextUnknownPosition(tokens, revealed, lockedPositions),
+    tutorialStep: attempt.categoryId === 'tutorial' ? attempt.levelNumber : null
   };
   if (attempt.status === 'won') {
     response.result = {
@@ -310,6 +410,8 @@ async function bootstrap(env, user, config) {
     const categoryLevels = levels.filter(level => level.categoryId === category.id);
     const completed = categoryLevels.filter(level => user.progress[level.id]).length;
     const categoryUnlocked = category.free || user.entitlements.includes(`category_unlock:${category.id}`);
+    const playableLevels = categoryLevels.filter(level => levelAccess(level, user));
+    const nextLevel = playableLevels.find(level => !user.progress[level.id]) || null;
     return {
       ...category,
       priceStars: category.priceStars || config.categoryPriceStars,
@@ -318,6 +420,9 @@ async function bootstrap(env, user, config) {
       completed,
       total: categoryLevels.length,
       progress: categoryLevels.length ? completed / categoryLevels.length : 0,
+      attemptId: user.activeAttempts[category.id] || null,
+      nextLevelNumber: nextLevel?.order || null,
+      completedAll: Boolean(categoryLevels.length) && completed === categoryLevels.length,
       levels: categoryLevels.map(level => ({
         id: level.id,
         number: level.order,
@@ -325,7 +430,6 @@ async function bootstrap(env, user, config) {
         free: level.free || category.free,
         completed: Boolean(user.progress[level.id]),
         unlocked: levelAccess(level, user),
-        attemptId: user.activeAttempts[category.id] || null,
         priceStars: config.levelPriceStars
       }))
     };
@@ -334,7 +438,7 @@ async function bootstrap(env, user, config) {
     mode: user.kind,
     telegram: user.kind === 'telegram',
     profile: profileFor(user),
-    inventory: { lives: user.lives, hints: user.hints },
+    inventory: inventoryFor(user, config),
     categories,
     purchases: user.purchases.slice(0, 10),
     shop: {
@@ -362,28 +466,35 @@ async function enforceRateLimit(env, userId, action, rule) {
   if (count > rule.limit) throw Object.assign(new Error('RATE_LIMITED'), { status: 429 });
 }
 
-async function startAttempt(env, user, body) {
+async function startAttempt(env, user, body, config) {
   const levels = await serverLevels(env);
-  const requested = body?.levelId ? levels.find(level => level.id === body.levelId) : null;
-  const categoryId = requested?.categoryId || String(body?.categoryId || '');
+  const categoryId = String(body?.categoryId || '');
   const categoryLevels = levels.filter(level => level.categoryId === categoryId && levelAccess(level, user));
   if (!categoryLevels.length) return json({ error: 'NO_ACCESSIBLE_LEVELS' }, 403);
   const activeId = user.activeAttempts[categoryId];
   const active = await loadAttempt(env, activeId, user.id);
   if (active?.status === 'active') {
     const activeLevel = levels.find(level => level.id === active.levelId);
-    return json({ ok: true, attempt: publicAttempt(active, activeLevel), inventory: { lives: user.lives, hints: user.hints } });
+    return json({ ok: true, attempt: publicAttempt(active, activeLevel), inventory: inventoryFor(user, config) });
   }
   if (Number(user.lives) <= 0) return json({ error: 'NO_LIVES', message: 'Життя закінчилися.' }, 409);
-  const level = requested && levelAccess(requested, user)
-    ? requested
-    : categoryLevels.find(item => !user.progress[item.id]) || categoryLevels[0];
+  const level = categoryLevels.find(item => !user.progress[item.id]);
+  if (!level) return json({ error: 'CATEGORY_COMPLETED' }, 409);
   const id = crypto.randomUUID();
   const seed = randomToken();
   const substitution = createSubstitution(seed);
   const levelNumber = level.order;
-  const revealed = createInitialRevealed({ text: level.text, substitution, levelNumber, seed });
-  const difficulty = difficultyForLevel(levelNumber, uniqueLetterCount(level.text));
+  const difficultyNumber = categoryId === 'tutorial' ? levelNumber : Object.keys(user.progress).length + 1;
+  const revealed = createInitialRevealed({ text: level.text, substitution, levelNumber: difficultyNumber, seed });
+  const difficulty = difficultyForLevel(difficultyNumber, letterCount(level.text));
+  const lockRequirements = createLockRequirements({
+    text: level.text,
+    substitution,
+    revealed,
+    levelNumber: difficultyNumber,
+    seed,
+    mode: lockModeForAttempt(level, difficultyNumber)
+  });
   const now = new Date().toISOString();
   const attempt = {
     id,
@@ -391,9 +502,12 @@ async function startAttempt(env, user, body) {
     levelId: level.id,
     categoryId,
     levelNumber,
+    difficultyNumber,
     seed,
     substitution,
+    schemaVersion: 2,
     revealed,
+    lockRequirements,
     hiddenTotal: difficulty.hiddenCount,
     hiddenPercent: difficulty.percent,
     errors: 0,
@@ -406,7 +520,7 @@ async function startAttempt(env, user, body) {
   };
   user.activeAttempts[categoryId] = id;
   await Promise.all([kvPut(env, KEY.attempt(id), attempt), saveUser(env, user)]);
-  return json({ ok: true, attempt: publicAttempt(attempt, level), inventory: { lives: user.lives, hints: user.hints } });
+  return json({ ok: true, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
 }
 
 async function updateScore(env, user) {
@@ -444,9 +558,15 @@ async function guessAttempt(env, user, attemptId, body, config) {
   const level = (await serverLevels(env)).find(item => item.id === attempt.levelId);
   if (!level) return json({ error: 'LEVEL_NOT_FOUND' }, 404);
   if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level) }, 409);
-  const lockedCodes = lockedCodesForAttempt(level.text, attempt.substitution, attempt.revealed);
-  const result = evaluateGuess({ text: level.text, substitution: attempt.substitution, revealed: attempt.revealed, errors: attempt.errors }, body?.code, body?.letter, { maxErrors: config.mistakesPerAttempt, lockedCodes });
-  if (['INVALID_GUESS', 'LETTER_ALREADY_USED', 'LOCKED_CODE'].includes(result.reason)) return json({ error: result.reason }, 400);
+  ensureAttemptModel(attempt, level);
+  const lockedPositions = lockedPositionsForAttempt(level.text, attempt.substitution, attempt.revealed, attempt.lockRequirements);
+  const result = evaluateGuess(
+    { text: level.text, substitution: attempt.substitution, revealed: attempt.revealed, errors: attempt.errors },
+    body?.position,
+    body?.letter,
+    { maxErrors: config.mistakesPerAttempt, lockedPositions }
+  );
+  if (['INVALID_GUESS', 'LOCKED_CODE'].includes(result.reason)) return json({ error: result.reason }, 400);
   attempt.revealed = result.revealed;
   attempt.errors = result.errors;
   attempt.status = result.status;
@@ -460,10 +580,10 @@ async function guessAttempt(env, user, attemptId, body, config) {
     creditCompletion(user, attempt);
   }
   await persistAttemptOutcome(env, user, attempt);
-  return json({ ok: result.ok, reason: result.reason, attempt: publicAttempt(attempt, level), inventory: { lives: user.lives, hints: user.hints } });
+  return json({ ok: result.ok, reason: result.reason, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
 }
 
-async function hintAttempt(env, user, attemptId, config) {
+async function hintAttempt(env, user, attemptId, body, config) {
   await enforceRateLimit(env, user.id, 'hint', config.rateLimits.hint);
   const attempt = await loadAttempt(env, attemptId, user.id);
   if (!attempt) return json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
@@ -471,7 +591,8 @@ async function hintAttempt(env, user, attemptId, config) {
   if (!level) return json({ error: 'LEVEL_NOT_FOUND' }, 404);
   if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level) }, 409);
   if (user.hints <= 0) return json({ error: 'NO_HINTS' }, 409);
-  const hint = revealHint({ text: level.text, substitution: attempt.substitution, revealed: attempt.revealed }, crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296);
+  ensureAttemptModel(attempt, level);
+  const hint = revealHint({ text: level.text, substitution: attempt.substitution, revealed: attempt.revealed }, body?.position);
   if (!hint.ok) return json({ error: hint.reason }, 409);
   attempt.revealed = hint.revealed;
   attempt.hintsUsed += 1;
@@ -483,10 +604,10 @@ async function hintAttempt(env, user, attemptId, config) {
     creditCompletion(user, attempt);
   }
   await persistAttemptOutcome(env, user, attempt);
-  return json({ ok: true, hint: { code: hint.code, letter: hint.letter }, attempt: publicAttempt(attempt, level), inventory: { lives: user.lives, hints: user.hints } });
+  return json({ ok: true, hint: { position: hint.position, code: hint.code, letter: hint.letter }, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
 }
 
-async function surrenderAttempt(env, user, attemptId) {
+async function surrenderAttempt(env, user, attemptId, config) {
   const attempt = await loadAttempt(env, attemptId, user.id);
   if (!attempt) return json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
   const level = (await serverLevels(env)).find(item => item.id === attempt.levelId);
@@ -498,7 +619,7 @@ async function surrenderAttempt(env, user, attemptId) {
   user.lives = Math.max(0, user.lives - 1);
   delete user.activeAttempts[attempt.categoryId];
   await persistAttemptOutcome(env, user, attempt);
-  return json({ ok: true, attempt: publicAttempt(attempt, level), inventory: { lives: user.lives, hints: user.hints } });
+  return json({ ok: true, attempt: publicAttempt(attempt, level), inventory: inventoryFor(user, config) });
 }
 
 async function leaderboard(env) {
@@ -725,7 +846,7 @@ export async function handleShyfrRequest(request, env) {
     const user = authenticated.user;
     if (url.pathname === `${API_PREFIX}/bootstrap` && request.method === 'GET') return json({ ok: true, ...(await bootstrap(env, user, config)) });
     if (url.pathname === `${API_PREFIX}/leaderboard` && request.method === 'GET') return json({ ok: true, leaderboard: await leaderboard(env) });
-    if (url.pathname === `${API_PREFIX}/attempts` && request.method === 'POST') return startAttempt(env, user, await parseJson(request));
+    if (url.pathname === `${API_PREFIX}/attempts` && request.method === 'POST') return startAttempt(env, user, await parseJson(request), config);
     if (url.pathname === `${API_PREFIX}/invoice` && request.method === 'POST') return createInvoice(env, user, await parseJson(request), config);
     const purchaseMatch = url.pathname.match(/^\/shyfr\/purchases\/([0-9a-f-]{36})$/iu);
     if (purchaseMatch && request.method === 'GET') {
@@ -742,8 +863,8 @@ export async function handleShyfrRequest(request, env) {
       }
       if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405);
       if (action === 'guess') return guessAttempt(env, user, attemptId, await parseJson(request), config);
-      if (action === 'hint') return hintAttempt(env, user, attemptId, config);
-      if (action === 'surrender') return surrenderAttempt(env, user, attemptId);
+      if (action === 'hint') return hintAttempt(env, user, attemptId, await parseJson(request), config);
+      if (action === 'surrender') return surrenderAttempt(env, user, attemptId, config);
     }
     return json({ error: 'NOT_FOUND' }, 404);
   } catch (error) {

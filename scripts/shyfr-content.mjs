@@ -90,12 +90,20 @@ export async function validateShyfrContent({ root = CONTENT_ROOT, privateMode = 
   const ids = new Set();
   const normalized = new Map();
   const colors = new Set();
+  const accents = new Set();
   const categoriesById = new Map(result.categories.map(category => [category.id, category]));
 
   for (const category of result.categories) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(category.id)) errors.push(`Некоректний ID категорії ${category.id}.`);
-    if (colors.has(category.color)) errors.push(`Колір категорії ${category.id} не унікальний.`);
-    colors.add(category.color);
+    const color = String(category.color || '').toLowerCase();
+    const accent = String(category.accent || '').toLowerCase();
+    if (!/^#[0-9a-f]{6}$/u.test(color)) errors.push(`Колір категорії ${category.id} має бути у форматі #RRGGBB.`);
+    if (!/^#[0-9a-f]{6}$/u.test(accent)) errors.push(`Акцент категорії ${category.id} має бути у форматі #RRGGBB.`);
+    if (colors.has(color)) errors.push(`Колір категорії ${category.id} не унікальний.`);
+    if (accents.has(accent)) errors.push(`Акцент категорії ${category.id} не унікальний.`);
+    if (color === accent) errors.push(`Колір і акцент категорії ${category.id} мають відрізнятися.`);
+    colors.add(color);
+    accents.add(accent);
   }
 
   if (privateMode) {

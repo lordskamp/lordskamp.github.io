@@ -20,6 +20,15 @@ test('публічний каталог зберігає у рядку лише 
   for (const level of result.levels) assert.deepEqual(Object.keys(level.__raw).sort(), ['source', 'text']);
 });
 
+test('кожна категорія має власну пару кольорів теми', async () => {
+  const result = await validateShyfrContent();
+  const colors = result.categories.map(category => category.color.toLowerCase());
+  const accents = result.categories.map(category => category.accent.toLowerCase());
+  assert.equal(new Set(colors).size, result.categories.length);
+  assert.equal(new Set(accents).size, result.categories.length);
+  result.categories.forEach(category => assert.notEqual(category.color.toLowerCase(), category.accent.toLowerCase()));
+});
+
 test('ID створюється автоматично зі стабільного нормалізованого тексту', () => {
   assert.equal(normalizeShyfrText('  Слава, Україні! '), 'слава україні');
   assert.equal(automaticLevelId('poetry', 'Той самий текст'), automaticLevelId('poetry', 'Той   самий текст!'));

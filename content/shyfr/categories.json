@@ -1,5 +1,7 @@
 [
+  { "id": "tutorial", "title": "Навчання", "description": "Три короткі рівні: звичайний, замкнений і подвійно замкнений.", "color": "#58d6c7", "accent": "#167a70", "icon": "school", "free": true, "priceStars": 0, "previewLevels": 0 },
   { "id": "poetry", "title": "Уривки з віршів", "description": "Українська класика із суспільного надбання.", "color": "#b77bff", "accent": "#6d36a8", "icon": "feather", "free": true, "priceStars": 0, "previewLevels": 0 },
+  { "id": "ukrainian-idioms", "title": "Українські ідіоми", "description": "Приклади ідіом із поясненнями.", "color": "#25b9a8", "accent": "#13766a", "icon": "book-open", "free": true, "priceStars": 0, "previewLevels": 0 },
   { "id": "memes", "title": "Меми", "description": "Відібрані українські текстові меми.", "color": "#ff9466", "accent": "#a94220", "icon": "spark", "free": false, "priceStars": 200, "previewLevels": 0 },
   { "id": "twitter", "title": "Цитати з Twitter/X", "description": "Публічні дописи з перевіреним джерелом.", "color": "#61b9ff", "accent": "#17639c", "icon": "hash", "free": false, "priceStars": 200, "previewLevels": 0 },
   { "id": "threads", "title": "Пости Threads", "description": "Публічні дописи з посиланням на автора.", "color": "#9f8cff", "accent": "#4c3a9d", "icon": "at", "free": false, "priceStars": 200, "previewLevels": 0 },

@@ -1,10 +1,11 @@
 export const UKRAINIAN_ALPHABET = Object.freeze(Array.from('АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ'));
 
 export const SHYFR_CONFIG = Object.freeze({
-  initialLives: 5,
-  maxLives: 8,
+  initialLives: 4,
+  maxLives: 4,
   initialHints: 3,
-  maxHints: 25,
+  dailyLives: 4,
+  dailyHints: 3,
   mistakesPerAttempt: 3,
   categoryPriceStars: 200,
   levelPriceStars: 10,
@@ -12,7 +13,7 @@ export const SHYFR_CONFIG = Object.freeze({
   initDataMaxAgeSeconds: 60 * 60 * 24,
   invoiceTtlSeconds: 60 * 30,
   packs: Object.freeze({
-    lives3: Object.freeze({ id: 'lives3', kind: 'lives_pack', quantity: 3, stars: 30, title: '3 життя' }),
+    lives3: Object.freeze({ id: 'lives3', kind: 'lives_pack', quantity: 4, stars: 30, title: 'Повністю відновити життя' }),
     hints5: Object.freeze({ id: 'hints5', kind: 'hints_pack', quantity: 5, stars: 20, title: '5 підказок' })
   }),
   rateLimits: Object.freeze({
@@ -60,9 +61,9 @@ export function createSubstitution(seed) {
 }
 
 export function encodePhrase(text, substitution) {
-  return Array.from(String(text || '').normalize('NFC')).map(character => {
+  return Array.from(String(text || '').normalize('NFC')).map((character, position) => {
     const letter = normalizeUkrainianLetter(character);
-    return letter ? { type: 'letter', code: substitution[letter] } : { type: 'literal', value: character };
+    return letter ? { type: 'letter', code: substitution[letter], position } : { type: 'literal', value: character, position };
   });
 }
 
@@ -80,87 +81,123 @@ export function letterForCode(substitution, code) {
 }
 
 export function hiddenRatioForLevel(levelNumber) {
-  const fixed = [0.30, 0.40, 0.50, 0.60, 0.70, 0.78, 0.84, 0.88, 0.92];
   const number = Math.max(1, Number(levelNumber) || 1);
-  return fixed[number - 1] ?? Math.min(0.96, 0.92 + (number - fixed.length) * 0.01);
+  return Number(Math.min(0.98, 0.60 + (number - 1) * 0.02).toFixed(2));
 }
 
-export function difficultyForLevel(levelNumber, totalUniqueLetters) {
-  const total = Math.max(0, Number(totalUniqueLetters) || 0);
+export function difficultyForLevel(levelNumber, totalLetters) {
+  const total = Math.max(0, Number(totalLetters) || 0);
   const ratio = hiddenRatioForLevel(levelNumber);
-  const maximum = total > 1 ? total - 1 : total;
   return {
     ratio,
     percent: Math.round(ratio * 100),
-    hiddenCount: Math.min(maximum, Math.max(total ? 1 : 0, Math.ceil(total * ratio)))
+    hiddenCount: Math.min(total, Math.max(total ? 1 : 0, Math.round(total * ratio)))
   };
 }
 
 export function createInitialRevealed({ text, substitution, levelNumber, seed }) {
-  const codes = codesInPhrase(text, substitution);
-  const { hiddenCount } = difficultyForLevel(levelNumber, codes.length);
-  const shuffled = [...codes];
+  const tokens = encodePhrase(text, substitution);
+  const positions = tokens.filter(token => token.type === 'letter').map(token => token.position);
+  const { hiddenCount } = difficultyForLevel(levelNumber, positions.length);
+  const shuffled = [...positions];
   const random = seededRandom(`${seed}:hidden`);
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(random() * (index + 1));
     [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
   }
   const hidden = new Set(shuffled.slice(0, hiddenCount));
-  return Object.fromEntries(codes.filter(code => !hidden.has(code)).map(code => [code, letterForCode(substitution, code)]));
+  return Object.fromEntries(tokens
+    .filter(token => token.type === 'letter' && !hidden.has(token.position))
+    .map(token => [token.position, letterForCode(substitution, token.code)]));
 }
 
-export function lockedCodesForAttempt(text, substitution, revealed = {}) {
-  const tokens = encodePhrase(text, substitution);
-  const letterIndexes = tokens.map((token, index) => token.type === 'letter' ? index : -1).filter(index => index >= 0);
-  const revealedCodes = new Set(Object.keys(revealed).map(Number));
-  const occurrences = new Map();
-  for (const index of letterIndexes) {
-    const code = tokens[index].code;
-    if (revealedCodes.has(code)) continue;
-    const list = occurrences.get(code) || [];
-    list.push(index);
-    occurrences.set(code, list);
+function neighborPositions(tokens, position) {
+  const neighbors = [];
+  for (const direction of [-1, 1]) {
+    for (let index = position + direction; index >= 0 && index < tokens.length; index += direction) {
+      const token = tokens[index];
+      if (token.type === 'letter') { neighbors.push(token.position); break; }
+      if (/\s/u.test(token.value)) break;
+    }
   }
+  return neighbors;
+}
 
+export function lockModeForLevel(levelNumber) {
+  const number = Math.max(1, Number(levelNumber) || 1);
+  if (number <= 10) return 'none';
+  return number <= 20 ? 'single' : 'double';
+}
+
+export function createLockRequirements({ text, substitution, revealed = {}, levelNumber, seed, mode }) {
+  const tokens = encodePhrase(text, substitution);
+  const lockMode = mode || lockModeForLevel(levelNumber);
+  if (lockMode === 'none') return {};
+  const requirement = lockMode === 'double' ? 2 : 1;
+  const candidates = tokens.filter(token => {
+    if (token.type !== 'letter' || revealed[token.position]) return false;
+    const neighbors = neighborPositions(tokens, token.position);
+    const revealedNeighbors = neighbors.filter(position => revealed[position]).length;
+    return requirement === 2
+      ? neighbors.length === 2 && revealedNeighbors < 2
+      : neighbors.length > 0 && revealedNeighbors === 0;
+  }).map(token => token.position);
+  const random = seededRandom(`${seed}:locks:${lockMode}`);
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+  }
+  const hiddenCount = tokens.filter(token => token.type === 'letter' && !revealed[token.position]).length;
+  const targetCount = Math.min(candidates.length, Math.max(candidates.length ? 1 : 0, Math.ceil(hiddenCount * 0.18)));
+  const selected = [];
+  for (const position of candidates) {
+    if (selected.some(value => neighborPositions(tokens, value).includes(position))) continue;
+    selected.push(position);
+    if (selected.length >= targetCount) break;
+  }
+  return Object.fromEntries(selected.map(position => [position, requirement]));
+}
+
+export function lockedPositionsForAttempt(text, substitution, revealed = {}, requirements = {}) {
+  const tokens = encodePhrase(text, substitution);
   const locked = [];
-  for (const [code, indexes] of occurrences) {
-    const canOpen = indexes.some(index => {
-      let left = index - 1;
-      while (left >= 0 && tokens[left].type !== 'letter') left -= 1;
-      let right = index + 1;
-      while (right < tokens.length && tokens[right].type !== 'letter') right += 1;
-      const neighbors = [left, right].filter(value => value >= 0 && value < tokens.length);
-      return !neighbors.length || neighbors.some(value => revealedCodes.has(tokens[value].code));
-    });
-    if (!canOpen) locked.push(code);
+  for (const [rawPosition, rawRequirement] of Object.entries(requirements)) {
+    const position = Number(rawPosition);
+    if (revealed[position]) continue;
+    const requirement = Number(rawRequirement) === 2 ? 2 : 1;
+    const neighbors = neighborPositions(tokens, position);
+    const revealedNeighbors = neighbors.filter(value => revealed[value]).length;
+    if ((requirement === 1 && revealedNeighbors < 1) || (requirement === 2 && (neighbors.length < 2 || revealedNeighbors < 2))) locked.push(position);
   }
   return locked;
 }
 
-export function isAttemptSolved(text, substitution, revealed = {}) {
-  const known = new Set(Object.keys(revealed).map(Number));
-  return codesInPhrase(text, substitution).every(code => known.has(code));
+export function lockedCodesForAttempt(text, substitution, revealed = {}, requirements = {}) {
+  return lockedPositionsForAttempt(text, substitution, revealed, requirements);
 }
 
-export function evaluateGuess({ text, substitution, revealed = {}, errors = 0 }, code, value, options = {}) {
-  const selectedCode = Number(code);
+export function isAttemptSolved(text, substitution, revealed = {}) {
+  return encodePhrase(text, substitution).every(token => token.type !== 'letter' || Boolean(revealed[token.position]));
+}
+
+export function evaluateGuess({ text, substitution, revealed = {}, errors = 0 }, position, value, options = {}) {
+  const selectedPosition = Number(position);
   const letter = normalizeUkrainianLetter(value);
-  const answer = letterForCode(substitution, selectedCode);
+  const token = encodePhrase(text, substitution)[selectedPosition];
+  const answer = token?.type === 'letter' ? letterForCode(substitution, token.code) : '';
   const maxErrors = options.maxErrors || SHYFR_CONFIG.mistakesPerAttempt;
-  if (new Set(options.lockedCodes || []).has(selectedCode)) {
+  const locked = new Set(options.lockedPositions || options.lockedCodes || []);
+  if (locked.has(selectedPosition)) {
     return { ok: false, reason: 'LOCKED_CODE', revealed, errors, status: 'active' };
   }
-  if (!answer || !letter || revealed[selectedCode]) {
+  if (!answer || !letter || revealed[selectedPosition]) {
     return { ok: false, reason: 'INVALID_GUESS', revealed, errors, status: 'active' };
-  }
-  if (Object.values(revealed).includes(letter)) {
-    return { ok: false, reason: 'LETTER_ALREADY_USED', revealed, errors, status: 'active' };
   }
   if (answer !== letter) {
     const nextErrors = Math.min(maxErrors, errors + 1);
     return { ok: false, reason: 'WRONG_LETTER', revealed, errors: nextErrors, status: nextErrors >= maxErrors ? 'lost' : 'active' };
   }
-  const nextRevealed = { ...revealed, [selectedCode]: answer };
+  const nextRevealed = { ...revealed, [selectedPosition]: answer };
   return {
     ok: true,
     reason: 'CORRECT_LETTER',
@@ -170,22 +207,24 @@ export function evaluateGuess({ text, substitution, revealed = {}, errors = 0 },
   };
 }
 
-export function revealHint({ text, substitution, revealed = {} }, randomValue = Math.random()) {
-  const unknown = codesInPhrase(text, substitution).filter(code => !revealed[code]);
-  if (!unknown.length) return { ok: false, reason: 'NO_UNKNOWN_CODES', revealed };
-  const index = Math.min(unknown.length - 1, Math.floor(Math.max(0, randomValue) * unknown.length));
-  const code = unknown[index];
-  const letter = letterForCode(substitution, code);
-  return { ok: true, code, letter, revealed: { ...revealed, [code]: letter } };
+export function revealHint({ text, substitution, revealed = {} }, position) {
+  const selectedPosition = Number(position);
+  const token = encodePhrase(text, substitution)[selectedPosition];
+  if (!token || token.type !== 'letter' || revealed[selectedPosition]) return { ok: false, reason: 'INVALID_HINT_POSITION', revealed };
+  const letter = letterForCode(substitution, token.code);
+  return { ok: true, position: selectedPosition, code: token.code, letter, revealed: { ...revealed, [selectedPosition]: letter } };
 }
 
-export function nextUnknownCode(tokens, revealed = {}, lockedCodes = []) {
-  const locked = new Set(lockedCodes.map(Number));
-  const unknown = [];
+export function nextUnknownPosition(tokens, revealed = {}, lockedPositions = []) {
+  const locked = new Set(lockedPositions.map(Number));
   for (const token of tokens || []) {
-    if (token.type === 'letter' && !revealed[token.code] && !unknown.includes(token.code)) unknown.push(token.code);
+    if (token.type === 'letter' && !revealed[token.position] && !locked.has(token.position)) return token.position;
   }
-  return unknown.find(code => !locked.has(code)) ?? unknown[0] ?? null;
+  return (tokens || []).find(token => token.type === 'letter' && !revealed[token.position])?.position ?? null;
+}
+
+export function nextUnknownCode(tokens, revealed = {}, lockedPositions = []) {
+  return nextUnknownPosition(tokens, revealed, lockedPositions);
 }
 
 export function parseProductKey(productKey) {
@@ -229,9 +268,9 @@ export function fulfillPurchaseState(user, purchase, config = SHYFR_CONFIG) {
     const key = `${purchase.kind}:${purchase.resourceId}`;
     if (!next.entitlements.includes(key)) next.entitlements.push(key);
   } else if (purchase.kind === 'lives_pack') {
-    next.lives = Math.min(config.maxLives, Number(next.lives || 0) + purchase.quantity);
+    next.lives = config.maxLives;
   } else if (purchase.kind === 'hints_pack') {
-    next.hints = Math.min(config.maxHints, Number(next.hints || 0) + purchase.quantity);
+    next.hints = Math.max(0, Number(next.hints || 0)) + purchase.quantity;
   }
   return next;
 }
