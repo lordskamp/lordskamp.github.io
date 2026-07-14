@@ -168,6 +168,7 @@
         lastUnlimitedEntry: null,
         dailyRankLoading: false,
         dailyRankRequested: false,
+        leaderboardSyncInFlight: false,
         varietyId: '',
         helpSlide: 0,
         activeModal: null,
@@ -1740,7 +1741,8 @@
             seconds: mode === 'poop' ? 0 : Math.max(1, Math.round(seconds)),
             attempts: mode === 'poop' ? attempts : null,
             styleScore: mode === 'daily' ? normalizeStyleScore(item?.styleScore) : null,
-            solvedAt: item?.solvedAt || new Date().toISOString()
+            solvedAt: item?.solvedAt || new Date().toISOString(),
+            remoteSyncPending: item?.remoteSyncPending === true
         };
     }
 
@@ -1843,6 +1845,14 @@
             })
             .sort((a, b) => String(a.solvedAt).localeCompare(String(b.solvedAt)))
             .slice(-MAX_LOCAL_LEADERBOARD_ENTRIES);
+    }
+
+    function replaceLocalLeaderboardEntry(entries, replacement) {
+        const replacementId = String(replacement?.id || '');
+        const withoutPreviousVersion = replacementId
+            ? entries.filter(item => String(item?.id || '') !== replacementId)
+            : entries;
+        return mergeLocalLeaderboardEntries(withoutPreviousVersion, [replacement]);
     }
 
     function findLocalExistingPlayerEntry(entries, entry) {
@@ -2169,6 +2179,55 @@
         }
     }
 
+    async function syncPendingLeaderboardEntries() {
+        if (
+            state.leaderboardSyncInFlight
+            || !REMOTE_LEADERBOARD_ENDPOINT
+            || navigator.onLine === false
+        ) return { synced: 0, pending: 0 };
+
+        const pendingEntries = readLeaderboard()
+            .map(normalizeLeaderboardEntry)
+            .filter(entry => entry?.remoteSyncPending)
+            .slice(0, 25);
+        if (!pendingEntries.length) return { synced: 0, pending: 0 };
+
+        state.leaderboardSyncInFlight = true;
+        let synced = 0;
+        try {
+            for (const pendingEntry of pendingEntries) {
+                const result = await writeRemoteLeaderboard(pendingEntry);
+                // A conflict needs the player's explicit confirmation, so leave it
+                // in the queue instead of replacing somebody else's result.
+                if (!result.ok) {
+                    // A transport or server failure affects the rest of the queue
+                    // as well, so retry it later instead of waiting on every item.
+                    if (!result.conflict) break;
+                    continue;
+                }
+
+                const savedEntry = {
+                    ...(result.entry || pendingEntry),
+                    remoteSyncPending: false
+                };
+                const profileEntries = profileEntriesFromPayload(result.profile);
+                const entries = replaceLocalLeaderboardEntry(readLeaderboard(), savedEntry);
+                writeLeaderboard(mergeLocalLeaderboardEntries(entries, profileEntries));
+                synced += 1;
+            }
+        } finally {
+            state.leaderboardSyncInFlight = false;
+        }
+
+        return {
+            synced,
+            pending: readLeaderboard()
+                .map(normalizeLeaderboardEntry)
+                .filter(entry => entry?.remoteSyncPending)
+                .length
+        };
+    }
+
     function profileEntriesFromPayload(profile) {
         return [
             ...(Array.isArray(profile?.dailyEntries) ? profile.dailyEntries : []),
@@ -2223,9 +2282,13 @@
             }
         }
 
-        const savedEntry = remoteResult.entry || entry;
+        const savedEntry = {
+            ...(remoteResult.entry || entry),
+            remoteSyncPending: !remoteResult.ok && !remoteResult.conflict
+        };
         const profileEntries = profileEntriesFromPayload(remoteResult.profile);
-        const mergedEntries = mergeLocalLeaderboardEntries(readLeaderboard(), [savedEntry, ...profileEntries]);
+        const replacedEntries = replaceLocalLeaderboardEntry(readLeaderboard(), savedEntry);
+        const mergedEntries = mergeLocalLeaderboardEntries(replacedEntries, profileEntries);
         writeLeaderboard(mergedEntries);
         writePlayerName(savedEntry.name || entry.name);
 
@@ -2650,8 +2713,6 @@
 
     async function renderLeaderboard() {
         const entries = readLeaderboard();
-        els.clearLeaderboardButton.hidden = entries.length === 0;
-        els.clearLeaderboardButton.textContent = 'Очистити статистику';
 
         if (state.mode === 'poop') {
             els.leaderboardTitle.textContent = 'Рейтинг режиму 💩';
@@ -3006,8 +3067,9 @@
 
         els.shareButton.addEventListener('click', shareCurrentPuzzle);
 
-        els.leaderboardButton.addEventListener('click', () => {
-            renderLeaderboard();
+        els.leaderboardButton.addEventListener('click', async () => {
+            await syncPendingLeaderboardEntries();
+            await renderLeaderboard();
             openModal(els.leaderboardDialog);
         });
 
@@ -3027,12 +3089,6 @@
             renderHelp();
         });
 
-        els.clearLeaderboardButton.addEventListener('click', () => {
-            writeLeaderboard([]);
-            writePlayerName('');
-            renderLeaderboard();
-        });
-
         els.nameForm.addEventListener('submit', event => {
             event.preventDefault();
             if (state.nameDialogKind === 'unlimited') recordUnlimitedName(els.playerName.value);
@@ -3049,6 +3105,9 @@
         window.addEventListener('beforeunload', () => {
             persistDailyRecord(true);
             persistPoopRecord();
+        });
+        window.addEventListener('online', () => {
+            void syncPendingLeaderboardEntries();
         });
     }
 
@@ -3076,7 +3135,6 @@
         els.leaderboardTitle = document.getElementById('leaderboardTitle');
         els.leaderboardNote = document.getElementById('leaderboardNote');
         els.leaderboardContent = document.getElementById('leaderboardContent');
-        els.clearLeaderboardButton = document.getElementById('clearLeaderboardButton');
         els.nameDialog = document.getElementById('nameDialog');
         els.nameDialogNote = document.getElementById('nameDialogNote');
         els.nameForm = document.getElementById('nameForm');
@@ -3113,6 +3171,7 @@
         });
         renderKeyboard();
         await loadWords();
+        void syncPendingLeaderboardEntries();
 
         consumeDailyResetFlag();
         const telegramSharedGame = telegramLaunch();

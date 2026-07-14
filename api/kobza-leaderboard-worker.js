@@ -1027,15 +1027,30 @@ export default {
                 return json({ error: 'Invalid JSON body.' }, 400);
             }
 
-            const authorization = await validateTelegramUser(request, env);
-            if (authorization.error) return json({ error: authorization.error }, authorization.status);
-
-            const entry = normalizeEntry({
+            // Scores submitted from the regular website have no Telegram WebApp
+            // initData. Keep accepting those entries by their entered name, while
+            // preserving Telegram's verified identity when it is available.
+            const hasTelegramAuthorization = request.headers.has('Authorization');
+            let entryInput = {
                 ...body,
-                name: telegramDisplayName(authorization.user),
-                telegramId: String(authorization.user.id),
-                avatarUrl: cleanAvatarUrl(authorization.user.photo_url)
-            });
+                // Do not allow the public website to claim a Telegram identity.
+                telegramId: '',
+                avatarUrl: ''
+            };
+
+            if (hasTelegramAuthorization) {
+                const authorization = await validateTelegramUser(request, env);
+                if (authorization.error) return json({ error: authorization.error }, authorization.status);
+
+                entryInput = {
+                    ...body,
+                    name: telegramDisplayName(authorization.user),
+                    telegramId: String(authorization.user.id),
+                    avatarUrl: cleanAvatarUrl(authorization.user.photo_url)
+                };
+            }
+
+            const entry = normalizeEntry(entryInput);
             if (!entry) return json({ error: 'Invalid leaderboard entry.' }, 400);
             const allowReplace = body?.replaceExisting === true;
 
