@@ -468,6 +468,7 @@
     await withBusy(async () => {
       const response = await api('/attempts', { method: 'POST', body: JSON.stringify({ categoryId: category.id }) });
       state.attempt = normalizeAttempt(response.attempt);
+      if (!state.attempt) throw new Error('Сервер не зміг відкрити рівень. Спробуйте ще раз.');
       state.bootstrap.inventory = response.inventory;
       state.selectedPosition = state.attempt.tutorialStep === 1
         ? null

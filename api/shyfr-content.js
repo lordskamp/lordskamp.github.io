@@ -87,7 +87,8 @@ export async function loadPublicShyfrContent(env = {}) {
       category.id,
       await fetchJson(`${baseUrl}/${category.id}.json`, ttl, { optional: true })
     ]));
-    const value = { categories, levels: levelsFromJson(categories, Object.fromEntries(entries)) };
+    const manualAccess = await fetchJson(`${baseUrl}/manual-access.json`, ttl, { optional: true });
+    const value = { categories, levels: levelsFromJson(categories, Object.fromEntries(entries)), manualAccess };
     cachedPublicContent = { baseUrl, expiresAt: now + ttl * 1000, value };
     return value;
   } catch (error) {

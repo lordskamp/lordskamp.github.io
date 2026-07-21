@@ -1,0 +1,9 @@
+{
+  "_comment": "Дозволені grants: all; category_unlock:<category-id>; level_unlock:<level-id>. Telegram username вказуйте без @.",
+  "users": [
+    {
+      "telegramUsername": "Lordskamp",
+      "grants": ["all"]
+    }
+  ]
+}

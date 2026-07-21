@@ -25,8 +25,8 @@ class MemoryKv {
   }
 }
 
-function testEnv(kv = new MemoryKv()) {
-  return { KOBZA_LEADERBOARD: kv, SHYFR_PUBLIC_CONTENT: TEST_PUBLIC_CONTENT };
+function testEnv(kv = new MemoryKv(), content = TEST_PUBLIC_CONTENT) {
+  return { KOBZA_LEADERBOARD: kv, SHYFR_PUBLIC_CONTENT: content };
 }
 
 async function json(response) {
@@ -112,6 +112,66 @@ test('Worker не віддає відповідь активного рівня'
   assert.equal('result' in started.body.attempt, false);
   assert.equal(startedText.includes('substitution'), false);
   assert.equal(startedText.includes('source'), false);
+});
+
+test('a stale active attempt does not block opening its category', async () => {
+  const kv = new MemoryKv();
+  const env = testEnv(kv);
+  const token = await guest(env);
+  await markTutorialDone(env);
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const userKey = [...kv.values.keys()].find(key => key.startsWith('shyfr:user:'));
+  const user = await kv.get(userKey, 'json');
+  const categoryId = 'ukrainian-idioms';
+  const staleAttemptId = '00000000-0000-4000-8000-000000000000';
+  user.activeAttempts[categoryId] = staleAttemptId;
+  await kv.put(userKey, JSON.stringify(user));
+  await kv.put(`shyfr:attempt:${staleAttemptId}`, JSON.stringify({
+    id: staleAttemptId,
+    userId: user.id,
+    categoryId,
+    levelId: 'shyfr-ukrainian-idioms-removed-level',
+    status: 'active'
+  }));
+
+  const response = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+    method: 'POST', headers, body: JSON.stringify({ categoryId })
+  }), env));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.attempt.categoryId, categoryId);
+  assert.notEqual(response.body.attempt.id, staleAttemptId);
+});
+
+test('manual access unlocks the owner and paid categories follow free ones by content size', async () => {
+  const kv = new MemoryKv();
+  const content = {
+    ...TEST_PUBLIC_CONTENT,
+    manualAccess: { users: [{ telegramUsername: 'Lordskamp', grants: ['all'] }] }
+  };
+  const env = testEnv(kv, content);
+  const token = await guest(env);
+  await markTutorialDone(env);
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const userKey = [...kv.values.keys()].find(key => key.startsWith('shyfr:user:'));
+  const user = await kv.get(userKey, 'json');
+  user.kind = 'telegram';
+  user.telegramUsername = 'Lordskamp';
+  user.name = '@Lordskamp';
+  await kv.put(userKey, JSON.stringify(user));
+
+  const bootstrap = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/bootstrap', { headers }), env));
+  const firstPaidIndex = bootstrap.body.categories.findIndex(category => !category.free);
+  const songLyrics = bootstrap.body.categories.find(category => category.id === 'song-lyrics');
+  assert.ok(bootstrap.body.categories.slice(0, firstPaidIndex).every(category => category.free));
+  assert.equal(bootstrap.body.categories[firstPaidIndex].id, 'song-lyrics');
+  assert.equal(songLyrics.unlocked, true);
+
+  const started = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+    method: 'POST', headers, body: JSON.stringify({ categoryId: 'song-lyrics' })
+  }), env));
+  assert.equal(started.status, 200);
+  assert.equal(started.body.attempt.categoryId, 'song-lyrics');
 });
 
 test('помилки, життя, здача та підказка змінюються лише через Worker', async () => {

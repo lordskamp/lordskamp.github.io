@@ -34,6 +34,7 @@ const TELEGRAM_ID_RE = /^[1-9]\d{0,19}$/u;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const NICKNAME_RE = /^[\p{L}\p{N} _.'’ʼ-]{2,24}$/u;
 const TUTORIAL_HINT_LIMIT = 3;
+const MANUAL_ENTITLEMENT_RE = /^(?:all|category_unlock:[a-z0-9-]+|level_unlock:shyfr-[a-z0-9-]+)$/iu;
 const AVATAR_URL_MAX_LENGTH = 2048;
 const KEY = Object.freeze({
   content: 'shyfr:content:catalog',
@@ -219,12 +220,13 @@ function cleanNickname(value) {
   return NICKNAME_RE.test(name) ? name : '';
 }
 
-function freshUser({ id, kind, telegramId = null, name, avatarUrl = null, config }) {
+function freshUser({ id, kind, telegramId = null, telegramUsername = null, name, avatarUrl = null, config }) {
   const daily = dailyResetInfo();
   return {
     id,
     kind,
     telegramId,
+    telegramUsername: String(telegramUsername || '').trim() || null,
     name,
     avatarUrl: cleanAvatarUrl(avatarUrl),
     nicknameSet: kind === 'telegram',
@@ -248,6 +250,7 @@ function normalizeUser(user, config) {
   if (!user) return null;
   return {
     ...user,
+    telegramUsername: String(user.telegramUsername || '').trim() || null,
     avatarUrl: cleanAvatarUrl(user.avatarUrl),
     nicknameSet: user.kind === 'telegram' || Boolean(user.nicknameSet),
     tutorialHintsUsed: Math.max(0, Math.min(TUTORIAL_HINT_LIMIT, Number(user.tutorialHintsUsed || 0))),
@@ -293,10 +296,11 @@ async function telegramLogin(request, env, config) {
   const telegramId = String(validation.user.id);
   const id = `tg:${telegramId}`;
   let user = normalizeUser(await kvGet(env, KEY.user(id)), config);
-  if (!user) user = freshUser({ id, kind: 'telegram', telegramId, name: displayName(validation.user), avatarUrl: validation.user.photo_url, config });
+  if (!user) user = freshUser({ id, kind: 'telegram', telegramId, telegramUsername: validation.user.username, name: displayName(validation.user), avatarUrl: validation.user.photo_url, config });
   refreshDailyInventory(user, config);
   user.kind = 'telegram';
   user.telegramId = telegramId;
+  user.telegramUsername = String(validation.user.username || '').trim() || null;
   user.name = displayName(validation.user);
   user.avatarUrl = cleanAvatarUrl(validation.user.photo_url);
   user.nicknameSet = true;
@@ -329,15 +333,32 @@ async function serverContent(env) {
   const publicIds = new Set(publicContent.levels.map(level => level.id));
   const levels = [...publicContent.levels, ...(Array.isArray(privateLevels) ? privateLevels.filter(validPrivateLevel).filter(level => !publicIds.has(level.id)) : [])]
     .sort((left, right) => left.categoryId.localeCompare(right.categoryId) || left.order - right.order);
-  return { categories: publicContent.categories, levels };
+  return { categories: publicContent.categories, levels, manualAccess: publicContent.manualAccess };
 }
 
 function categoryFor(categoryId, categories) {
   return categories.find(category => category.id === categoryId) || null;
 }
 
-function levelAccess(level, user, categories) {
-  return hasLevelAccess({ level, category: categoryFor(level.categoryId, categories), entitlements: user.entitlements });
+function usernameKey(value) {
+  return String(value || '').trim().replace(/^@/u, '').toLocaleLowerCase('en-US');
+}
+
+function effectiveEntitlements(user, manualAccess, categories) {
+  const usernames = new Set([usernameKey(user.telegramUsername), usernameKey(user.name)].filter(Boolean));
+  const grants = Array.isArray(manualAccess?.users)
+    ? manualAccess.users
+      .filter(entry => usernames.has(usernameKey(entry?.telegramUsername)))
+      .flatMap(entry => Array.isArray(entry?.grants) ? entry.grants : [])
+      .map(grant => String(grant || '').trim())
+      .filter(grant => MANUAL_ENTITLEMENT_RE.test(grant))
+    : [];
+  if (grants.includes('all')) grants.push(...categories.map(category => `category_unlock:${category.id}`));
+  return [...new Set([...(user.entitlements || []), ...grants])];
+}
+
+function levelAccess(level, user, categories, manualAccess) {
+  return hasLevelAccess({ level, category: categoryFor(level.categoryId, categories), entitlements: effectiveEntitlements(user, manualAccess, categories) });
 }
 
 function letterCount(text) {
@@ -451,12 +472,13 @@ function onboardingFor(user, levels) {
 }
 
 async function bootstrap(env, user, config) {
-  const { categories: catalogCategories, levels } = await serverContent(env);
+  const { categories: catalogCategories, levels, manualAccess } = await serverContent(env);
+  const entitlements = effectiveEntitlements(user, manualAccess, catalogCategories);
   const categories = catalogCategories.map(category => {
     const categoryLevels = levels.filter(level => level.categoryId === category.id);
     const completed = categoryLevels.filter(level => user.progress[level.id]).length;
-    const categoryUnlocked = category.free || user.entitlements.includes(`category_unlock:${category.id}`);
-    const playableLevels = categoryLevels.filter(level => levelAccess(level, user, catalogCategories));
+    const categoryUnlocked = category.free || entitlements.includes(`category_unlock:${category.id}`);
+    const playableLevels = categoryLevels.filter(level => levelAccess(level, user, catalogCategories, manualAccess));
     const nextLevel = playableLevels.find(level => !user.progress[level.id]) || null;
     return {
       ...category,
@@ -475,10 +497,13 @@ async function bootstrap(env, user, config) {
         hiddenPercent: Math.round(hiddenRatioForLevel(level.order) * 100),
         free: level.free || category.free,
         completed: Boolean(user.progress[level.id]),
-        unlocked: levelAccess(level, user, catalogCategories),
+        unlocked: levelAccess(level, user, catalogCategories, manualAccess),
         priceStars: config.levelPriceStars
       }))
     };
+  }).sort((left, right) => {
+    if (left.free !== right.free) return Number(right.free) - Number(left.free);
+    return left.free ? 0 : right.total - left.total;
   });
   return {
     mode: user.kind,
@@ -514,19 +539,25 @@ async function enforceRateLimit(env, userId, action, rule) {
 }
 
 async function startAttempt(env, user, body, config) {
-  const { categories, levels } = await serverContent(env);
+  const { categories, levels, manualAccess } = await serverContent(env);
   const categoryId = String(body?.categoryId || '');
   const onboarding = onboardingFor(user, levels);
   if (categoryId !== 'tutorial' && !onboarding.complete) {
     return json({ error: onboarding.nicknameRequired ? 'NICKNAME_REQUIRED' : 'TUTORIAL_REQUIRED' }, 409);
   }
-  const categoryLevels = levels.filter(level => level.categoryId === categoryId && levelAccess(level, user, categories));
+  const categoryLevels = levels.filter(level => level.categoryId === categoryId && levelAccess(level, user, categories, manualAccess));
   if (!categoryLevels.length) return json({ error: 'NO_ACCESSIBLE_LEVELS' }, 403);
   const activeId = user.activeAttempts[categoryId];
   const active = await loadAttempt(env, activeId, user.id);
   if (active?.status === 'active') {
     const activeLevel = levels.find(level => level.id === active.levelId);
-    return json({ ok: true, attempt: publicAttempt(active, activeLevel, categories), inventory: inventoryFor(user, config) });
+    if (activeLevel) {
+      return json({ ok: true, attempt: publicAttempt(active, activeLevel, categories), inventory: inventoryFor(user, config) });
+    }
+    // Content IDs are derived from the phrase text. If that text is edited or
+    // removed, an older active attempt can no longer be rendered. Discard only
+    // its active pointer and start the next available level below.
+    delete user.activeAttempts[categoryId];
   }
   if (categoryId !== 'tutorial' && Number(user.lives) <= 0) return json({ error: 'NO_LIVES', message: 'Життя закінчилися.' }, 409);
   const level = categoryLevels.find(item => !user.progress[item.id]);
@@ -755,11 +786,11 @@ function upsertPurchaseSummary(user, purchase) {
 async function createInvoice(env, user, body, config) {
   if (user.kind !== 'telegram' || !user.telegramId) return json({ error: 'TELEGRAM_REQUIRED' }, 409);
   await enforceRateLimit(env, user.id, 'invoice', config.rateLimits.invoice);
-  const { categories, levels } = await serverContent(env);
+  const { categories, levels, manualAccess } = await serverContent(env);
   const product = resolveProduct(body?.productKey, { categories, levels, config });
   if (!product) return json({ error: 'PRODUCT_UNAVAILABLE' }, 400);
   const entitlement = `${product.kind}:${product.id}`;
-  if ((product.kind === 'category_unlock' || product.kind === 'level_unlock') && user.entitlements.includes(entitlement)) {
+  if ((product.kind === 'category_unlock' || product.kind === 'level_unlock') && effectiveEntitlements(user, manualAccess, categories).includes(entitlement)) {
     return json({ error: 'ALREADY_OWNED' }, 409);
   }
   const pendingKey = KEY.pending(user.id, body.productKey);
