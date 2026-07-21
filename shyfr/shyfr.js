@@ -152,14 +152,24 @@
     </section>`;
   }
 
-  function groupTokens(tokens) {
-    const groups = []; let current = [];
+  function tokenLines(tokens) {
+    const lines = [[]]; let current = [];
+    const finishWord = () => {
+      if (current.length) lines.at(-1).push(current);
+      current = [];
+    };
     for (const token of tokens || []) {
-      if (token.type === 'literal' && /\s/u.test(token.value)) { if (current.length) groups.push(current); current = []; }
+      if (token.type === 'literal' && /[\r\n\u2028\u2029]/u.test(token.value)) {
+        finishWord(); lines.push([]);
+      } else if (token.type === 'literal' && /\s/u.test(token.value)) finishWord();
       else current.push(token);
     }
-    if (current.length) groups.push(current);
-    return groups;
+    finishWord();
+    return lines;
+  }
+
+  function groupTokens(tokens) {
+    return tokenLines(tokens).flat();
   }
 
   function letterProgress(attempt) {
@@ -187,7 +197,7 @@
   function cipherHtml(attempt) {
     const revealed = attempt.revealed || {};
     const progress = letterProgress(attempt);
-    return groupTokens(attempt.tokens).map(group => `<span class="cipher-word">${group.map(token => {
+    return tokenLines(attempt.tokens).map(line => `<span class="cipher-line">${line.map(group => `<span class="cipher-word">${group.map(token => {
       if (token.type === 'literal') return `<span class="cipher-literal" aria-hidden="true">${escapeHtml(token.value)}</span>`;
       const letter = revealed[token.position] || '';
       const selected = state.selectedPosition != null && Number(state.selectedPosition) === Number(token.position);
@@ -195,13 +205,15 @@
       const codeComplete = Boolean(status?.letter && status.solved === status.total);
       const celebrationIndex = state.wordCelebrationPositions.indexOf(token.position);
       const hintTarget = state.hintMode && !letter;
-      const classes = ['cipher-cell', selected ? 'is-selected' : '', letter ? 'is-revealed' : '', codeComplete ? 'is-code-complete' : '', token.locked ? `is-locked is-locked--${token.lockType || 'single'}` : '', hintTarget ? 'is-hint-target' : '', Number(state.hintedPosition) === Number(token.position) ? 'is-hinted' : '', Number(state.errorPosition) === Number(token.position) ? 'is-error' : '', celebrationIndex >= 0 ? 'is-word-complete' : ''].filter(Boolean).join(' ');
+      const hinted = state.hintedPosition != null && Number(state.hintedPosition) === Number(token.position);
+      const errored = state.errorPosition != null && Number(state.errorPosition) === Number(token.position);
+      const classes = ['cipher-cell', selected ? 'is-selected' : '', letter ? 'is-revealed' : '', codeComplete ? 'is-code-complete' : '', token.locked ? `is-locked is-locked--${token.lockType || 'single'}` : '', hintTarget ? 'is-hint-target' : '', hinted ? 'is-hinted' : '', errored ? 'is-error' : '', celebrationIndex >= 0 ? 'is-word-complete' : ''].filter(Boolean).join(' ');
       const lockLabel = token.lockType === 'double' ? 'подвійно замкнено, потрібні літери з обох боків' : 'замкнено до відкриття сусідньої літери';
       const label = token.locked ? `Код ${token.code}, ${lockLabel}` : `Код ${token.code}${letter ? `, літера ${letter}` : ', не розгадано'}`;
       const lockIcon = token.lockType === 'double' ? '<span class="lock-stack" aria-hidden="true"><i class="fa-solid fa-lock"></i><i class="fa-solid fa-lock"></i></span>' : '<i class="fa-solid fa-lock" aria-hidden="true"></i>';
       const unavailable = Boolean(letter) || (token.locked && !state.hintMode);
       return `<button class="${classes}" style="--celebration-index:${Math.max(0, celebrationIndex)};--cell-index:${token.position}" type="button" data-action="${hintTarget ? 'choose-hint-position' : 'select-position'}" data-position="${token.position}" aria-label="${escapeHtml(state.hintMode && !letter ? `${label}. Підказати цю комірку` : label)}" aria-pressed="${selected}" ${unavailable ? 'disabled' : ''}><span class="cipher-cell__letter">${token.locked && !letter ? lockIcon : escapeHtml(letter)}</span><span class="cipher-cell__line"></span><span class="cipher-cell__code">${codeComplete ? '&nbsp;' : token.code}</span></button>`;
-    }).join('')}</span>`).join('');
+    }).join('')}</span>`).join('')}</span>`).join('');
   }
 
   function keyboardHtml(attempt) {
@@ -271,6 +283,25 @@
     return `<section class="screen" data-view="failure">${screenHeader(surrendered ? 'Спробу завершено' : 'Три помилки')}<div class="failure-card"><div class="failure-symbol"><i class="fa-solid ${surrendered ? 'fa-flag' : 'fa-xmark'}" aria-hidden="true"></i></div><h2>${surrendered ? 'Ви здалися' : 'Цього разу не вийшло'}</h2><p>Відповідь і джерело залишаються закритими. Нова спроба отримає інший шифр.</p><div class="action-stack"><button class="button button--primary button--wide" type="button" data-action="retry" ${noLives ? 'disabled' : ''}>Спробувати ще раз</button>${noLives ? '<button class="button button--wide" type="button" data-action="store">Поповнити життя</button>' : ''}</div></div></section>`;
   }
 
+  function spotifyEmbedUrl(url) {
+    try {
+      const parsed = new URL(url);
+      const match = parsed.hostname === 'open.spotify.com'
+        && parsed.pathname.match(/^\/(?:intl-[a-z]{2}\/)?(track|episode|album|playlist)\/([A-Za-z0-9]+)$/u);
+      return match ? `https://open.spotify.com/embed/${match[1]}/${match[2]}?utm_source=generator` : '';
+    } catch {
+      return '';
+    }
+  }
+
+  function sourceHtml(source, isIdiomsCategory) {
+    const embedUrl = spotifyEmbedUrl(source.url);
+    if (embedUrl) {
+      return `<div class="spotify-widget"><span class="spotify-widget__label"><i class="fa-brands fa-spotify" aria-hidden="true"></i>Слухати в Spotify</span><iframe class="spotify-widget__player" src="${embedUrl}" title="Плеєр Spotify" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe></div><button class="button button--wide" type="button" data-action="open-source" data-url="${escapeHtml(source.url)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>Відкрити в Spotify</button>`;
+    }
+    return `<p class="source-line">${isIdiomsCategory ? '<span>Пояснення</span>' : ''}<strong>${escapeHtml(source.label || 'Джерело')}</strong></p>${source.url ? `<button class="button" type="button" data-action="open-source" data-url="${escapeHtml(source.url)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>Відкрити джерело</button>` : ''}`;
+  }
+
   function renderResult() {
     const result = state.attempt?.result;
     if (!result) return renderHome();
@@ -281,7 +312,7 @@
     const isIdiomsCategory = state.attempt?.categoryId === 'ukrainian-idioms';
     const primaryAction = tutorialFinished ? 'finish-tutorial' : finished ? 'category-complete' : 'next-level';
     const primaryLabel = tutorialFinished ? 'Перейти далі' : finished ? 'Категорію завершено' : 'Наступний рівень';
-    return `<section class="screen" data-view="result">${screenHeader(`Рівень ${state.attempt.levelNumber} завершено`, state.attempt.categoryTitle)}<article class="result-card"><p class="eyebrow">Розгадана фраза</p><blockquote>«${escapeHtml(result.text)}»</blockquote><p class="source-line">${isIdiomsCategory ? '<span>Пояснення</span>' : ''}<strong>${escapeHtml(source.label || 'Джерело')}</strong></p>${source.url ? `<button class="button" type="button" data-action="open-source" data-url="${escapeHtml(source.url)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>Відкрити джерело</button>` : ''}<div class="result-stats"><div class="stat"><strong>${formatTime(result.seconds)}</strong><span>час</span></div><div class="stat"><strong>${result.errors}</strong><span>помилки</span></div><div class="stat"><strong>${result.hintsUsed}</strong><span>підказки</span></div></div><div class="action-stack"><button class="button button--primary button--wide" type="button" data-action="${primaryAction}">${primaryLabel}</button><button class="button" type="button" data-action="share"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i>Поширити</button></div></article></section>`;
+    return `<section class="screen" data-view="result">${screenHeader(`Рівень ${state.attempt.levelNumber} завершено`, state.attempt.categoryTitle)}<article class="result-card"><p class="eyebrow">Розгадана фраза</p><blockquote>«${escapeHtml(result.text)}»</blockquote>${sourceHtml(source, isIdiomsCategory)}<div class="result-stats"><div class="stat"><strong>${formatTime(result.seconds)}</strong><span>час</span></div><div class="stat"><strong>${result.errors}</strong><span>помилки</span></div><div class="stat"><strong>${result.hintsUsed}</strong><span>підказки</span></div></div><div class="action-stack"><button class="button button--primary button--wide" type="button" data-action="${primaryAction}">${primaryLabel}</button><button class="button" type="button" data-action="share"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i>Поширити</button></div></article></section>`;
   }
 
   function renderStore() {
@@ -478,6 +509,7 @@
         // A preceding wrong attempt may still have a pending shake timeout.
         // Clear it immediately so a correctly revealed cell never keeps the
         // red error outline.
+        state.hintedPosition = null;
         state.errorPosition = null;
         announce(`Правильно: ${letter}`);
         state.selectedPosition = positionAfter(state.attempt, position);
@@ -517,6 +549,11 @@
       state.hintMode = false;
       state.selectedPosition = positionAfter(state.attempt, hintedPosition);
       announce(`Підказка: код ${response.hint.code} — літера ${response.hint.letter}.`); feedback('light', 24);
+      window.setTimeout(() => {
+        if (Number(state.hintedPosition) !== hintedPosition) return;
+        state.hintedPosition = null;
+        render();
+      }, 650);
       await celebrateCorrectGuess(before, state.attempt);
     });
   }

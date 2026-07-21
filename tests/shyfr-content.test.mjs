@@ -59,6 +59,7 @@ test('ID створюється автоматично зі стабільног
   assert.equal(normalizeShyfrText('  Слава, Україні! '), 'слава україні');
   assert.equal(automaticLevelId('poetry', 'Той самий текст'), automaticLevelId('poetry', 'Той   самий текст!'));
   assert.deepEqual(parseSource('Автор | https://example.com/source'), { label: 'Автор', url: 'https://example.com/source' });
+  assert.deepEqual(parseSource('https://open.spotify.com/track/29IxfhWiWURtUiEOWOhO9W'), { label: 'open.spotify.com', url: 'https://open.spotify.com/track/29IxfhWiWURtUiEOWOhO9W' });
 });
 
 test('валідатор відхиляє зайві поля у рівні', async () => {

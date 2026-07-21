@@ -28,7 +28,15 @@ export function automaticLevelId(categoryId, text) {
 export function parseSource(value) {
   const source = String(value || '').trim();
   const separator = source.lastIndexOf(' | ');
-  if (separator < 0) return { label: source, url: null };
+  if (separator < 0) {
+    try {
+      const url = new URL(source);
+      if (url.protocol === 'https:') return { label: url.hostname.replace(/^www\./u, ''), url: source };
+    } catch (_error) {
+      // A source may also be a plain-text attribution.
+    }
+    return { label: source, url: null };
+  }
   return { label: source.slice(0, separator).trim(), url: source.slice(separator + 3).trim() || null };
 }
 
