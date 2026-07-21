@@ -475,6 +475,10 @@
       const response = await api(`/attempts/${state.attempt.id}/guess`, { method: 'POST', body: JSON.stringify(guess) });
       state.attempt = normalizeAttempt(response.attempt); state.bootstrap.inventory = response.inventory;
       if (response.ok) {
+        // A preceding wrong attempt may still have a pending shake timeout.
+        // Clear it immediately so a correctly revealed cell never keeps the
+        // red error outline.
+        state.errorPosition = null;
         announce(`Правильно: ${letter}`);
         state.selectedPosition = positionAfter(state.attempt, position);
         await celebrateCorrectGuess(before, state.attempt);
