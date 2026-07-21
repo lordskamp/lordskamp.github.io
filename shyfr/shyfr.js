@@ -15,6 +15,12 @@
   const apiBase = mayUseLocalOverride ? localApiOverride.replace(/\/$/u, '') : configuredApiBase;
   const SESSION_KEY = 'lordskamp:shyfr:session:v2';
   const KEYBOARD_ROWS = ['ЙЦУКЕНГШЩЗХЇ', 'ФІВАПРОЛДЖЄ', 'ЯЧСМИТЬБЮҐ'];
+  const PHYSICAL_UKRAINIAN_KEYS = {
+    Backquote: 'Ґ',
+    KeyQ: 'Й', KeyW: 'Ц', KeyE: 'У', KeyR: 'К', KeyT: 'Е', KeyY: 'Н', KeyU: 'Г', KeyI: 'Ш', KeyO: 'Щ', KeyP: 'З', BracketLeft: 'Х', BracketRight: 'Ї',
+    KeyA: 'Ф', KeyS: 'І', KeyD: 'В', KeyF: 'А', KeyG: 'П', KeyH: 'Р', KeyJ: 'О', KeyK: 'Л', KeyL: 'Д', Semicolon: 'Ж', Quote: 'Є',
+    KeyZ: 'Я', KeyX: 'Ч', KeyC: 'С', KeyV: 'М', KeyB: 'И', KeyN: 'Т', KeyM: 'Ь', Comma: 'Б', Period: 'Ю'
+  };
   const ICONS = { school: 'fa-graduation-cap', feather: 'fa-feather-pointed', 'book-open': 'fa-book-open', spark: 'fa-wand-magic-sparkles', hash: 'fa-hashtag', at: 'fa-at', shield: 'fa-shield-halved', note: 'fa-music', calendar: 'fa-calendar-days' };
 
   const state = {
@@ -273,7 +279,7 @@
     const hintLabel = tutorial ? `Підказка · ${tutorialHintsRemaining}/3` : 'Підказка';
     return `<section class="screen screen--game ${state.hintMode ? 'is-choosing-hint' : ''} ${state.solveCelebration ? 'is-solve-celebration' : ''}" data-view="game" data-tutorial-coach="${coachTarget}" style="${theme}"><div class="topline"><button class="back-button" type="button" data-action="back" aria-label="Назад до категорій"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button><div class="mistake-stack" aria-label="Помилки"><div class="mistake-row">${dots}</div><span>ПОМИЛКИ</span></div></div>
       ${state.solveCelebration ? '<div class="solve-message"><i class="fa-solid fa-sparkles" aria-hidden="true"></i><strong>Шифр розгадано!</strong></div>' : guidance ? `<div class="game-guidance ${state.hintMode ? 'game-guidance--hint' : ''}">${guidance}</div>` : ''}
-      <div class="cipher-scroll" tabindex="0" aria-label="Зашифрована фраза"><div class="cipher-board ${state.solveCelebration ? 'is-solved' : ''}">${cipherHtml(attempt)}</div></div>${state.solveCelebration ? '' : keyboardHtml(attempt)}
+      <div class="cipher-scroll-wrap"><div class="cipher-scroll" tabindex="0" aria-label="Зашифрована фраза"><div class="cipher-board ${state.solveCelebration ? 'is-solved' : ''}">${cipherHtml(attempt)}</div></div><span class="cipher-scroll-indicator" aria-hidden="true"><span class="cipher-scroll-indicator__thumb"></span></span></div>${state.solveCelebration ? '' : keyboardHtml(attempt)}
       ${state.solveCelebration ? '' : `<div class="game-actions"><button class="button ${state.hintMode ? 'is-active' : ''}" type="button" data-action="hint" ${tutorial && tutorialHintsRemaining <= 0 ? 'disabled' : ''}><i class="fa-solid fa-lightbulb" aria-hidden="true"></i>${state.hintMode ? 'Скасувати' : hintLabel}</button><button class="button button--danger" type="button" data-action="surrender" ${tutorial ? 'disabled aria-label="Здатися недоступно у навчанні"' : ''}><i class="fa-solid fa-flag" aria-hidden="true"></i>Здатися</button></div>`}</section>`;
   }
 
@@ -355,6 +361,25 @@
     }
   }
 
+  function updateCipherScrollIndicator() {
+    const cipherScroll = appRoot.querySelector('.cipher-scroll');
+    const scrollWrap = appRoot.querySelector('.cipher-scroll-wrap');
+    const indicator = scrollWrap?.querySelector('.cipher-scroll-indicator');
+    const thumb = indicator?.querySelector('.cipher-scroll-indicator__thumb');
+    if (!cipherScroll || !scrollWrap || !indicator || !thumb) return;
+
+    const scrollRange = cipherScroll.scrollHeight - cipherScroll.clientHeight;
+    const isScrollable = scrollRange > 1;
+    scrollWrap.classList.toggle('is-scrollable', isScrollable);
+    if (!isScrollable) return;
+
+    const trackHeight = Math.max(1, indicator.clientHeight);
+    const thumbHeight = Math.min(trackHeight, Math.max(20, Math.round(trackHeight * cipherScroll.clientHeight / cipherScroll.scrollHeight)));
+    const thumbOffset = Math.round((trackHeight - thumbHeight) * cipherScroll.scrollTop / scrollRange);
+    thumb.style.height = `${thumbHeight}px`;
+    thumb.style.transform = `translateY(${thumbOffset}px)`;
+  }
+
   function render() {
     if (!state.bootstrap) return;
     // The game board is rebuilt after every choice and guess. Preserve its
@@ -380,6 +405,8 @@
     }
     appRoot.setAttribute('aria-busy', String(state.busy));
     appRoot.querySelectorAll('button').forEach(button => { if (state.busy && button.dataset.action !== 'back') button.disabled = true; });
+    updateCipherScrollIndicator();
+    window.requestAnimationFrame(updateCipherScrollIndicator);
     if (state.view === 'nickname') window.setTimeout(() => appRoot.querySelector('#nicknameInput')?.focus(), 0);
     window.SiteTelegram?.setBackButtonVisible?.(!['home', 'nickname'].includes(state.view));
   }
@@ -682,10 +709,24 @@
     saveNickname(form.querySelector('[name="nickname"]')?.value);
   });
 
+  appRoot.addEventListener('scroll', event => {
+    if (event.target?.classList?.contains('cipher-scroll')) updateCipherScrollIndicator();
+  }, true);
+
+  window.addEventListener('resize', () => window.requestAnimationFrame(updateCipherScrollIndicator));
+  window.visualViewport?.addEventListener('resize', () => window.requestAnimationFrame(updateCipherScrollIndicator));
+
+  function keyboardLetterFromEvent(event) {
+    return PHYSICAL_UKRAINIAN_KEYS[event.code] || (() => {
+      const letter = String(event.key || '').toLocaleUpperCase('uk-UA');
+      return KEYBOARD_ROWS.join('').includes(letter) ? letter : '';
+    })();
+  }
+
   document.addEventListener('keydown', event => {
     if (state.view !== 'game' || state.busy || state.hintMode || event.ctrlKey || event.metaKey || event.altKey) return;
-    const letter = String(event.key || '').toLocaleUpperCase('uk-UA');
-    if (KEYBOARD_ROWS.join('').includes(letter)) { event.preventDefault(); submitGuess(letter); return; }
+    const letter = keyboardLetterFromEvent(event);
+    if (letter) { event.preventDefault(); submitGuess(letter); return; }
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       event.preventDefault(); const values = unknownPositions(state.attempt); if (!values.length) return;
       const current = values.indexOf(Number(state.selectedPosition)); const direction = event.key === 'ArrowRight' ? 1 : -1;
