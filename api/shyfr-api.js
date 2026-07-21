@@ -205,11 +205,46 @@ function sessionPayloadDecode(value) {
 }
 
 async function kvGet(env, key) {
-  return env.KOBZA_LEADERBOARD.get(key, 'json');
+  const value = await kvGetRaw(env, key);
+  if (value == null) return null;
+  try { return JSON.parse(value); } catch (_error) { return null; }
 }
 
 async function kvPut(env, key, value, options) {
-  return env.KOBZA_LEADERBOARD.put(key, JSON.stringify(value), options);
+  return kvPutRaw(env, key, JSON.stringify(value), options);
+}
+
+async function d1StateRow(env, key) {
+  if (!env.SHYFR_STATE) return null;
+  return env.SHYFR_STATE.prepare('SELECT value, expires_at FROM shyfr_state WHERE key = ?').bind(key).first();
+}
+
+async function kvGetRaw(env, key) {
+  const row = await d1StateRow(env, key);
+  if (row) {
+    if (row.expires_at && Number(row.expires_at) <= Date.now()) return null;
+    return String(row.value);
+  }
+  return env.KOBZA_LEADERBOARD.get(key);
+}
+
+async function kvPutRaw(env, key, value, options = {}) {
+  if (env.SHYFR_STATE) {
+    const expiresAt = Number(options.expirationTtl) > 0 ? Date.now() + Number(options.expirationTtl) * 1000 : null;
+    await env.SHYFR_STATE.prepare(
+      'INSERT INTO shyfr_state (key, value, expires_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at'
+    ).bind(key, String(value), expiresAt).run();
+    return;
+  }
+  await env.KOBZA_LEADERBOARD.put(key, String(value), options);
+}
+
+async function kvDelete(env, key) {
+  if (env.SHYFR_STATE) {
+    await env.SHYFR_STATE.prepare('DELETE FROM shyfr_state WHERE key = ?').bind(key).run();
+    return;
+  }
+  await env.KOBZA_LEADERBOARD.delete(key);
 }
 
 function displayName(telegramUser) {
@@ -618,8 +653,8 @@ async function parseJson(request) {
 async function enforceRateLimit(env, userId, action, rule) {
   const bucket = Math.floor(Date.now() / (rule.windowSeconds * 1000));
   const key = KEY.rate(userId, action, bucket);
-  const count = Number(await env.KOBZA_LEADERBOARD.get(key) || 0) + 1;
-  await env.KOBZA_LEADERBOARD.put(key, String(count), { expirationTtl: rule.windowSeconds * 2 });
+  const count = Number(await kvGetRaw(env, key) || 0) + 1;
+  await kvPutRaw(env, key, String(count), { expirationTtl: rule.windowSeconds * 2 });
   if (count > rule.limit) throw Object.assign(new Error('RATE_LIMITED'), { status: 429 });
 }
 
@@ -909,14 +944,25 @@ async function surrenderAttempt(env, user, attemptId, config) {
 
 async function leaderboard(env) {
   const rows = [];
+  const rowByUserId = new Map();
+  if (env.SHYFR_STATE) {
+    const stored = await env.SHYFR_STATE.prepare("SELECT key, value FROM shyfr_state WHERE key LIKE 'shyfr:score:%'").all();
+    for (const row of stored.results || []) {
+      try {
+        const value = JSON.parse(row.value);
+        if (value) rowByUserId.set(value.userId || row.key, value);
+      } catch (_error) { /* Skip malformed legacy data. */ }
+    }
+  }
   let cursor;
   for (let page = 0; page < 5; page += 1) {
     const listed = await env.KOBZA_LEADERBOARD.list({ prefix: 'shyfr:score:', limit: 200, ...(cursor ? { cursor } : {}) });
-    const values = await Promise.all((listed.keys || []).map(item => kvGet(env, item.name)));
-    rows.push(...values.filter(Boolean));
+    const values = await Promise.all((listed.keys || []).map(async item => ({ key: item.name, value: await kvGet(env, item.name) })));
+    for (const { key, value } of values) if (value && !rowByUserId.has(value.userId || key)) rowByUserId.set(value.userId || key, value);
     if (listed.list_complete || !listed.cursor) break;
     cursor = listed.cursor;
   }
+  rows.push(...rowByUserId.values());
   return rows.sort((left, right) => Number(right.completedLevels) - Number(left.completedLevels)
     || Number(right.totalCompletions) - Number(left.totalCompletions)
     || Number(left.bestSeconds || Infinity) - Number(right.bestSeconds || Infinity)
@@ -964,13 +1010,13 @@ async function createInvoice(env, user, body, config) {
     return json({ error: 'ALREADY_OWNED' }, 409);
   }
   const pendingKey = KEY.pending(user.id, body.productKey);
-  const pendingId = await env.KOBZA_LEADERBOARD.get(pendingKey);
+  const pendingId = await kvGetRaw(env, pendingKey);
   if (pendingId) {
     const pending = await kvGet(env, KEY.purchase(pendingId));
     const fresh = pending?.status === 'pending' && Number(pending.expiresAt) > Date.now();
     if (fresh && pending.invoiceLink) return json({ ok: true, purchaseId: pending.id, invoiceLink: pending.invoiceLink, reused: true });
     if (fresh) return json({ error: 'PURCHASE_PENDING' }, 409);
-    await env.KOBZA_LEADERBOARD.delete(pendingKey);
+    await kvDelete(env, pendingKey);
   }
   const id = crypto.randomUUID();
   const purchase = {
@@ -989,7 +1035,7 @@ async function createInvoice(env, user, body, config) {
     createdAt: new Date().toISOString(),
     expiresAt: Date.now() + config.invoiceTtlSeconds * 1000
   };
-  await Promise.all([kvPut(env, KEY.purchase(id), purchase), env.KOBZA_LEADERBOARD.put(pendingKey, id, { expirationTtl: config.invoiceTtlSeconds })]);
+  await Promise.all([kvPut(env, KEY.purchase(id), purchase), kvPutRaw(env, pendingKey, id, { expirationTtl: config.invoiceTtlSeconds })]);
   try {
     purchase.invoiceLink = await telegramBotCall(env, 'createInvoiceLink', {
       title: product.title.slice(0, 32),
@@ -1004,7 +1050,7 @@ async function createInvoice(env, user, body, config) {
   } catch (_error) {
     purchase.status = 'rejected';
     upsertPurchaseSummary(user, purchase);
-    await Promise.all([kvPut(env, KEY.purchase(id), purchase), saveUser(env, user), env.KOBZA_LEADERBOARD.delete(pendingKey)]);
+    await Promise.all([kvPut(env, KEY.purchase(id), purchase), saveUser(env, user), kvDelete(env, pendingKey)]);
     return json({ error: 'INVOICE_CREATE_FAILED' }, 502);
   }
 }
@@ -1054,7 +1100,7 @@ async function successfulPayment(update, env, config) {
     kvPut(env, KEY.purchase(id), purchase),
     kvPut(env, KEY.charge(chargeId), { purchaseId: id, userId: user.id }, { expirationTtl: 60 * 60 * 24 * 365 }),
     kvPut(env, KEY.update(String(update.update_id)), { purchaseId: id }, { expirationTtl: 60 * 60 * 24 * 30 }),
-    env.KOBZA_LEADERBOARD.delete(KEY.pending(user.id, purchase.productKey))
+    kvDelete(env, KEY.pending(user.id, purchase.productKey))
   ]);
 }
 
