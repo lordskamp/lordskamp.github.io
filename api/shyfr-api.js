@@ -34,6 +34,8 @@ const TELEGRAM_ID_RE = /^[1-9]\d{0,19}$/u;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const NICKNAME_RE = /^[\p{L}\p{N} _.'’ʼ-]{2,24}$/u;
 const TUTORIAL_HINT_LIMIT = 3;
+const OFFLINE_ACTIONS_LIMIT = 360;
+const OFFLINE_PLAY_SECONDS_LIMIT = 24 * 60 * 60;
 const MANUAL_ENTITLEMENT_RE = /^(?:all|category_unlock:[a-z0-9-]+|level_unlock:shyfr-[a-z0-9-]+)$/iu;
 const AVATAR_URL_MAX_LENGTH = 2048;
 const KEY = Object.freeze({
@@ -395,6 +397,13 @@ function ensureAttemptModel(attempt, level) {
   return attempt;
 }
 
+function completionSeconds(attempt) {
+  const syncedSeconds = Number(attempt?.playedSeconds);
+  return Number.isSafeInteger(syncedSeconds) && syncedSeconds > 0
+    ? syncedSeconds
+    : Math.max(1, Math.round((Date.parse(attempt.completedAt) - Date.parse(attempt.startedAt)) / 1000));
+}
+
 function publicAttempt(attempt, level, categories) {
   if (!attempt || !level) return null;
   ensureAttemptModel(attempt, level);
@@ -436,12 +445,34 @@ function publicAttempt(attempt, level, categories) {
     response.result = {
       text: level.text,
       source: level.source,
-      seconds: Math.max(1, Math.round((Date.parse(attempt.completedAt) - Date.parse(attempt.startedAt)) / 1000)),
+      seconds: completionSeconds(attempt),
       errors: response.errors,
       hintsUsed: response.hintsUsed
     };
   }
   return response;
+}
+
+// The game itself is deliberately evaluated in the browser so a started level
+// keeps working without a connection. The Worker still replays this exact
+// sequence of actions before it updates progress or the leaderboard.
+function offlineAttempt(attempt, level, config) {
+  ensureAttemptModel(attempt, level);
+  return {
+    version: 1,
+    text: level.text,
+    source: level.source,
+    substitution: attempt.substitution,
+    lockRequirements: attempt.lockRequirements,
+    maxErrors: config.mistakesPerAttempt
+  };
+}
+
+function attemptPayload(attempt, level, categories, config) {
+  return {
+    attempt: publicAttempt(attempt, level, categories),
+    offline: offlineAttempt(attempt, level, config)
+  };
 }
 
 function profileFor(user) {
@@ -552,7 +583,7 @@ async function startAttempt(env, user, body, config) {
   if (active?.status === 'active') {
     const activeLevel = levels.find(level => level.id === active.levelId);
     if (activeLevel) {
-      return json({ ok: true, attempt: publicAttempt(active, activeLevel, categories), inventory: inventoryFor(user, config) });
+      return json({ ok: true, ...attemptPayload(active, activeLevel, categories, config), inventory: inventoryFor(user, config) });
     }
     // Content IDs are derived from the phrase text. If that text is edited or
     // removed, an older active attempt can no longer be rendered. Discard only
@@ -606,7 +637,7 @@ async function startAttempt(env, user, body, config) {
   };
   user.activeAttempts[categoryId] = id;
   await Promise.all([kvPut(env, KEY.attempt(id), attempt), saveUser(env, user)]);
-  return json({ ok: true, attempt: publicAttempt(attempt, level, categories), inventory: inventoryFor(user, config) });
+  return json({ ok: true, ...attemptPayload(attempt, level, categories, config), inventory: inventoryFor(user, config) });
 }
 
 async function updateScore(env, user) {
@@ -637,7 +668,7 @@ async function updateProfile(env, user, body) {
 
 function creditCompletion(user, attempt) {
   if (attempt.credited) return;
-  const seconds = Math.max(1, Math.round((Date.parse(attempt.completedAt) - Date.parse(attempt.startedAt)) / 1000));
+  const seconds = completionSeconds(attempt);
   const previous = user.progress[attempt.levelId];
   user.progress[attempt.levelId] = previous
     ? { completions: Number(previous.completions || 0) + 1, bestSeconds: Math.min(Number(previous.bestSeconds || seconds), seconds) }
@@ -647,7 +678,92 @@ function creditCompletion(user, attempt) {
 }
 
 async function persistAttemptOutcome(env, user, attempt) {
-  await Promise.all([kvPut(env, KEY.attempt(attempt.id), attempt), saveUser(env, user), updateScore(env, user)]);
+  const writes = [kvPut(env, KEY.attempt(attempt.id), attempt), saveUser(env, user)];
+  if (attempt.status === 'won') writes.push(updateScore(env, user));
+  await Promise.all(writes);
+}
+
+function validOfflineActions(value) {
+  if (!Array.isArray(value) || value.length > OFFLINE_ACTIONS_LIMIT) return null;
+  const actions = [];
+  for (const action of value) {
+    if (!action || typeof action !== 'object') return null;
+    if (action.type === 'guess') {
+      if (!Number.isSafeInteger(action.position) || typeof action.letter !== 'string') return null;
+      actions.push({ type: 'guess', position: action.position, letter: action.letter });
+    } else if (action.type === 'hint') {
+      if (!Number.isSafeInteger(action.position)) return null;
+      actions.push({ type: 'hint', position: action.position });
+    } else if (action.type === 'surrender') {
+      actions.push({ type: 'surrender' });
+    } else return null;
+  }
+  return actions;
+}
+
+function offlinePlayedSeconds(value) {
+  const seconds = Math.round(Number(value));
+  return Number.isSafeInteger(seconds) && seconds > 0
+    ? Math.min(seconds, OFFLINE_PLAY_SECONDS_LIMIT)
+    : null;
+}
+
+async function completeAttempt(env, user, attemptId, body, config) {
+  const actions = validOfflineActions(body?.actions);
+  if (!actions) return json({ error: 'INVALID_ACTION_LOG' }, 400);
+  const attempt = await loadAttempt(env, attemptId, user.id);
+  if (!attempt) return json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
+  const { categories, levels } = await serverContent(env);
+  const level = levels.find(item => item.id === attempt.levelId);
+  if (!level) return json({ error: 'LEVEL_NOT_FOUND' }, 404);
+  if (attempt.status !== 'active') return json({ error: 'ATTEMPT_FINISHED', attempt: publicAttempt(attempt, level, categories) }, 409);
+  ensureAttemptModel(attempt, level);
+
+  for (const action of actions) {
+    if (attempt.status !== 'active') return json({ error: 'INVALID_ACTION_LOG' }, 409);
+    if (action.type === 'guess') {
+      const lockedPositions = lockedPositionsForAttempt(level.text, attempt.substitution, attempt.revealed, attempt.lockRequirements);
+      const result = evaluateGuess(
+        { text: level.text, substitution: attempt.substitution, revealed: attempt.revealed, errors: attempt.errors },
+        action.position,
+        action.letter,
+        { maxErrors: config.mistakesPerAttempt, lockedPositions }
+      );
+      if (['INVALID_GUESS', 'LOCKED_CODE'].includes(result.reason)) return json({ error: 'INVALID_ACTION_LOG' }, 409);
+      attempt.revealed = result.revealed;
+      attempt.errors = result.errors;
+      attempt.status = result.status;
+      continue;
+    }
+    if (action.type === 'hint') {
+      const tutorial = attempt.categoryId === 'tutorial';
+      if (tutorial && Number(user.tutorialHintsUsed || 0) >= TUTORIAL_HINT_LIMIT) return json({ error: 'TUTORIAL_HINT_LIMIT' }, 409);
+      if (!tutorial && user.hints <= 0) return json({ error: 'NO_HINTS' }, 409);
+      const hint = revealHint({ text: level.text, substitution: attempt.substitution, revealed: attempt.revealed }, action.position);
+      if (!hint.ok) return json({ error: 'INVALID_ACTION_LOG' }, 409);
+      attempt.revealed = hint.revealed;
+      attempt.hintsUsed += 1;
+      if (tutorial) user.tutorialHintsUsed = Number(user.tutorialHintsUsed || 0) + 1;
+      else user.hints -= 1;
+      if (isAttemptSolved(level.text, attempt.substitution, attempt.revealed)) attempt.status = 'won';
+      continue;
+    }
+    if (attempt.categoryId === 'tutorial') return json({ error: 'TUTORIAL_SURRENDER_DISABLED' }, 409);
+    attempt.status = 'surrendered';
+  }
+
+  if (attempt.status === 'active') return json({ error: 'ATTEMPT_NOT_FINISHED' }, 409);
+  attempt.updatedAt = new Date().toISOString();
+  attempt.completedAt = attempt.updatedAt;
+  attempt.playedSeconds = offlinePlayedSeconds(body?.playedSeconds);
+  if (attempt.status === 'lost' || attempt.status === 'surrendered') {
+    if (attempt.categoryId !== 'tutorial') user.lives = Math.max(0, user.lives - 1);
+    delete user.activeAttempts[attempt.categoryId];
+  } else if (attempt.status === 'won') {
+    creditCompletion(user, attempt);
+  }
+  await persistAttemptOutcome(env, user, attempt);
+  return json({ ok: true, attempt: publicAttempt(attempt, level, categories), inventory: inventoryFor(user, config) });
 }
 
 async function guessAttempt(env, user, attemptId, body, config) {
@@ -970,23 +1086,28 @@ export async function handleShyfrRequest(request, env) {
       const purchase = await kvGet(env, KEY.purchase(purchaseMatch[1]));
       return purchase?.userId === user.id ? json({ ok: true, purchase: purchaseSummary(purchase) }) : json({ error: 'PURCHASE_NOT_FOUND' }, 404);
     }
-    const attemptMatch = url.pathname.match(/^\/shyfr\/attempts\/([0-9a-f-]{36})(?:\/(guess|hint|surrender))?$/iu);
+    const attemptMatch = url.pathname.match(/^\/shyfr\/attempts\/([0-9a-f-]{36})(?:\/(guess|hint|surrender|complete))?$/iu);
     if (attemptMatch) {
       const [, attemptId, action] = attemptMatch;
       if (!action && request.method === 'GET') {
         const attempt = await loadAttempt(env, attemptId, user.id);
         const content = attempt ? await serverContent(env) : null;
         const level = attempt && content.levels.find(item => item.id === attempt.levelId);
-        return attempt && level ? json({ ok: true, attempt: publicAttempt(attempt, level, content.categories) }) : json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
+        return attempt && level ? json({ ok: true, ...attemptPayload(attempt, level, content.categories, config) }) : json({ error: 'ATTEMPT_NOT_FOUND' }, 404);
       }
       if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405);
-      if (action === 'guess') return guessAttempt(env, user, attemptId, await parseJson(request), config);
-      if (action === 'hint') return hintAttempt(env, user, attemptId, await parseJson(request), config);
-      if (action === 'surrender') return surrenderAttempt(env, user, attemptId, config);
+        if (action === 'guess') return guessAttempt(env, user, attemptId, await parseJson(request), config);
+        if (action === 'hint') return hintAttempt(env, user, attemptId, await parseJson(request), config);
+        if (action === 'surrender') return surrenderAttempt(env, user, attemptId, config);
+        if (action === 'complete') return completeAttempt(env, user, attemptId, await parseJson(request), config);
     }
     return json({ error: 'NOT_FOUND' }, 404);
   } catch (error) {
     if (error?.message === 'RATE_LIMITED') return json({ error: 'RATE_LIMITED' }, error.status || 429);
+    console.error('Shyfr request failed', {
+      path: url.pathname,
+      message: error instanceof Error ? error.message : String(error)
+    });
     return json({ error: 'SHYFR_REQUEST_FAILED' }, 500);
   }
 }

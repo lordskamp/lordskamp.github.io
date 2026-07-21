@@ -14,6 +14,8 @@
     && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/shyfr$/iu.test(localApiOverride || '');
   const apiBase = mayUseLocalOverride ? localApiOverride.replace(/\/$/u, '') : configuredApiBase;
   const SESSION_KEY = 'lordskamp:shyfr:session:v2';
+  const BOOTSTRAP_CACHE_KEY = 'lordskamp:shyfr:bootstrap:v1';
+  const OFFLINE_ATTEMPT_KEY = 'lordskamp:shyfr:offline-attempt:v1';
   const KEYBOARD_ROWS = ['ЙЦУКЕНГШЩЗХЇ', 'ФІВАПРОЛДЖЄ', 'ЯЧСМИТЬБЮҐ'];
   const PHYSICAL_UKRAINIAN_KEYS = {
     Backquote: 'Ґ',
@@ -28,8 +30,71 @@
     selectedPosition: null, hintedPosition: null, errorPosition: null, hintMode: false,
     celebrationPositions: [], codeCelebrationPositions: [], solveCelebration: false, busy: false, telegram: false,
     leaderboard: [], historyReady: false, returnView: 'home',
-    tutorialSelectedCell: false, tutorialGuessed: false
+    tutorialSelectedCell: false, tutorialGuessed: false,
+    offlineActions: [], offlineStartedAt: 0, syncPending: false
   };
+  let gameCorePromise;
+
+  function storageGet(key) {
+    try { return JSON.parse(window.localStorage.getItem(key) || 'null'); } catch { return null; }
+  }
+
+  function storageSet(key, value) {
+    try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* The game remains playable for this visit. */ }
+  }
+
+  function storageRemove(key) {
+    try { window.localStorage.removeItem(key); } catch { /* Nothing to clean up. */ }
+  }
+
+  function offlineRecord() {
+    const record = storageGet(OFFLINE_ATTEMPT_KEY);
+    return record?.attempt?.id && record?.attempt?.offline ? record : null;
+  }
+
+  function persistOfflineAttempt() {
+    if (!state.attempt?.offline) return;
+    storageSet(OFFLINE_ATTEMPT_KEY, {
+      attempt: state.attempt,
+      actions: state.offlineActions,
+      startedAt: state.offlineStartedAt,
+      inventory: state.bootstrap?.inventory,
+      onboarding: state.bootstrap?.onboarding,
+      pending: state.syncPending
+    });
+  }
+
+  function clearOfflineAttempt() {
+    state.offlineActions = [];
+    state.offlineStartedAt = 0;
+    state.syncPending = false;
+    storageRemove(OFFLINE_ATTEMPT_KEY);
+  }
+
+  function restoreOfflineAttempt(record = offlineRecord()) {
+    if (!record) return false;
+    state.attempt = normalizeAttempt(record.attempt);
+    state.offlineActions = Array.isArray(record.actions) ? record.actions : [];
+    state.offlineStartedAt = Number(record.startedAt) || Date.now();
+    state.syncPending = Boolean(record.pending || state.attempt.status !== 'active');
+    if (state.bootstrap && record.inventory) state.bootstrap.inventory = record.inventory;
+    if (state.bootstrap && record.onboarding) state.bootstrap.onboarding = { ...state.bootstrap.onboarding, ...record.onboarding };
+    return true;
+  }
+
+  function cacheBootstrap() {
+    if (state.bootstrap) storageSet(BOOTSTRAP_CACHE_KEY, state.bootstrap);
+  }
+
+  function cachedBootstrap() {
+    const cached = storageGet(BOOTSTRAP_CACHE_KEY);
+    return cached?.categories && cached?.inventory ? cached : null;
+  }
+
+  function gameCore() {
+    gameCorePromise ||= import('../api/shyfr-core.js');
+    return gameCorePromise;
+  }
 
   class ApiError extends Error {
     constructor(message, status, body) { super(message); this.status = status; this.body = body; }
@@ -96,6 +161,7 @@
   async function reloadBootstrap() {
     state.bootstrap = await api('/bootstrap');
     state.telegram = Boolean(state.bootstrap.telegram);
+    cacheBootstrap();
   }
 
   function normalizeAttempt(attempt) {
@@ -113,6 +179,43 @@
       .map(token => [token.position, codeRevealed[token.code]]));
     const selectedPosition = tokens.find(token => token.type === 'letter' && Number(token.code) === Number(attempt.selectedCode) && !token.locked)?.position;
     return { ...attempt, tokens, revealed, selectedPosition, legacyCodeModel: true };
+  }
+
+  function localAttemptWithLocks(attempt, core) {
+    if (!attempt?.offline) return attempt;
+    const locked = new Set(core.lockedPositionsForAttempt(
+      attempt.offline.text,
+      attempt.offline.substitution,
+      attempt.revealed || {},
+      attempt.offline.lockRequirements || {}
+    ));
+    const tokens = core.encodePhrase(attempt.offline.text, attempt.offline.substitution).map(token => token.type === 'letter'
+      ? {
+          ...token,
+          locked: !attempt.revealed?.[token.position] && locked.has(token.position),
+          lockType: locked.has(token.position) ? (Number(attempt.offline.lockRequirements?.[token.position]) === 2 ? 'double' : 'single') : null
+        }
+      : token);
+    return {
+      ...attempt,
+      tokens,
+      hiddenRemaining: tokens.filter(token => token.type === 'letter' && !attempt.revealed?.[token.position]).length,
+      selectedPosition: core.nextUnknownPosition(tokens, attempt.revealed || {}, [...locked])
+    };
+  }
+
+  function offlineSeconds() {
+    return Math.max(1, Math.round((Date.now() - state.offlineStartedAt) / 1000));
+  }
+
+  function localResult(attempt) {
+    return {
+      text: attempt.offline.text,
+      source: attempt.offline.source,
+      seconds: offlineSeconds(),
+      errors: Number(attempt.errors || 0),
+      hintsUsed: Number(attempt.hintsUsed || 0)
+    };
   }
 
   function currentCategory() { return state.bootstrap?.categories?.find(category => category.id === state.selectedCategoryId) || null; }
@@ -501,7 +604,7 @@
       feedback('success', [55, 45, 110]);
       await pause(880);
       state.solveCelebration = false;
-      await reloadBootstrap();
+      await syncCompletedAttempt();
       navigate('result');
     } else if (!celebrationPositions.length) {
       feedback('selection', 18);
@@ -523,12 +626,75 @@
     if (code === 'NO_LIVES' || code === 'NO_HINTS') navigate('resources');
   }
 
+  function resetAttemptUi() {
+    state.selectedPosition = state.attempt.tutorialStep === 1
+      ? null
+      : state.attempt.selectedPosition ?? unknownPositions(state.attempt)[0] ?? null;
+    state.hintedPosition = null; state.errorPosition = null; state.hintMode = false;
+    state.celebrationPositions = []; state.codeCelebrationPositions = []; state.solveCelebration = false;
+    state.tutorialSelectedCell = false; state.tutorialGuessed = false;
+  }
+
+  async function beginOfflineAttempt(response) {
+    if (!response?.attempt || !response?.offline?.text) throw new Error('Unable to prepare this level for offline play.');
+    const core = await gameCore();
+    state.attempt = localAttemptWithLocks(normalizeAttempt({ ...response.attempt, offline: response.offline }), core);
+    state.offlineActions = [];
+    state.offlineStartedAt = Date.now();
+    state.syncPending = false;
+    resetAttemptUi();
+    persistOfflineAttempt();
+  }
+
+  function finalizeLocalAttempt() {
+    if (!state.attempt || state.attempt.status === 'active') return;
+    if (state.attempt.status === 'won') state.attempt.result = localResult(state.attempt);
+    if (['lost', 'surrendered'].includes(state.attempt.status) && !state.attempt.tutorialStep) {
+      state.bootstrap.inventory.lives = Math.max(0, Number(state.bootstrap.inventory?.lives || 0) - 1);
+    }
+    state.syncPending = true;
+    persistOfflineAttempt();
+  }
+
+  async function syncCompletedAttempt({ quiet = true } = {}) {
+    if (!state.attempt?.offline || state.attempt.status === 'active' || !state.syncPending || !navigator.onLine) return false;
+    try {
+      const localAttempt = state.attempt;
+      const response = await api(`/attempts/${localAttempt.id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ actions: state.offlineActions, playedSeconds: offlineSeconds() })
+      });
+      state.attempt = normalizeAttempt({ ...response.attempt, offline: localAttempt.offline });
+      state.bootstrap.inventory = response.inventory;
+      clearOfflineAttempt();
+      try { await reloadBootstrap(); } catch { cacheBootstrap(); }
+      return true;
+    } catch (error) {
+      persistOfflineAttempt();
+      if (!quiet) handleError(error);
+      return false;
+    }
+  }
+
+  function scheduleCompletedAttemptSync() {
+    window.setTimeout(() => { syncCompletedAttempt(); }, 0);
+  }
+
   async function startAttempt() {
     const category = currentCategory();
     if (!category) return;
+    const saved = offlineRecord();
+    if (saved?.attempt?.categoryId === category.id) {
+      restoreOfflineAttempt(saved);
+      state.selectedCategoryId = category.id;
+      resetAttemptUi();
+      navigate(state.attempt.status === 'won' ? 'result' : state.attempt.status === 'active' ? 'game' : 'failure');
+      scheduleCompletedAttemptSync();
+      return;
+    }
     await withBusy(async () => {
       const response = await api('/attempts', { method: 'POST', body: JSON.stringify({ categoryId: category.id }) });
-      state.attempt = normalizeAttempt(response.attempt);
+      await beginOfflineAttempt(response);
       if (!state.attempt) throw new Error('Сервер не зміг відкрити рівень. Спробуйте ще раз.');
       state.bootstrap.inventory = response.inventory;
       state.selectedPosition = state.attempt.tutorialStep === 1
@@ -563,11 +729,18 @@
     const position = state.selectedPosition;
     await withBusy(async () => {
       const before = state.attempt;
-      const selectedToken = state.attempt.tokens.find(token => Number(token.position) === Number(position));
-      const guess = state.attempt.legacyCodeModel ? { code: selectedToken?.code, letter } : { position, letter };
-      const response = await api(`/attempts/${state.attempt.id}/guess`, { method: 'POST', body: JSON.stringify(guess) });
-      state.attempt = normalizeAttempt(response.attempt); state.bootstrap.inventory = response.inventory;
-      if (response.ok) {
+      const core = await gameCore();
+      const lockedPositions = state.attempt.tokens.filter(token => token.type === 'letter' && token.locked).map(token => token.position);
+      const result = core.evaluateGuess(
+        { text: state.attempt.offline.text, substitution: state.attempt.offline.substitution, revealed: state.attempt.revealed, errors: state.attempt.errors },
+        position,
+        letter,
+        { maxErrors: state.attempt.offline.maxErrors, lockedPositions }
+      );
+      if (['INVALID_GUESS', 'LOCKED_CODE'].includes(result.reason)) return;
+      state.attempt = localAttemptWithLocks({ ...state.attempt, revealed: result.revealed, errors: result.errors, status: result.status }, core);
+      state.offlineActions.push({ type: 'guess', position, letter });
+      if (result.ok) {
         // A preceding wrong attempt may still have a pending shake timeout.
         // Clear it immediately so a correctly revealed cell never keeps the
         // red error outline.
@@ -575,11 +748,14 @@
         state.errorPosition = null;
         announce(`Правильно: ${letter}`);
         state.selectedPosition = positionAfter(state.attempt, position);
+        if (state.attempt.status !== 'active') { finalizeLocalAttempt(); scheduleCompletedAttemptSync(); }
+        else persistOfflineAttempt();
         await celebrateCorrectGuess(before, state.attempt);
       } else {
         state.errorPosition = position; announce(`Неправильна літера ${letter}. Помилка ${state.attempt.errors} з ${state.attempt.maxErrors}.`); feedback('error', [55, 35, 55]);
-        if (state.attempt.status !== 'active') { await reloadBootstrap(); navigate('failure'); }
+        if (state.attempt.status !== 'active') { finalizeLocalAttempt(); scheduleCompletedAttemptSync(); navigate('failure'); }
         else window.setTimeout(() => { state.errorPosition = null; render(); }, 360);
+        persistOfflineAttempt();
       }
     });
   }
@@ -598,24 +774,33 @@
     if (!state.hintMode || state.attempt?.revealed?.[position]) return;
     await withBusy(async () => {
       const before = state.attempt;
-      const response = await api(`/attempts/${state.attempt.id}/hint`, { method: 'POST', body: JSON.stringify({ position }) });
-      state.attempt = normalizeAttempt(response.attempt); state.bootstrap.inventory = response.inventory;
-      if (response.tutorialHints) {
-        state.bootstrap.onboarding.tutorialHintsUsed = response.tutorialHints.used;
-        state.bootstrap.onboarding.tutorialHintsRemaining = response.tutorialHints.remaining;
-      }
-      const hintedPosition = Number.isSafeInteger(response.hint.position)
-        ? response.hint.position
-        : state.attempt.tokens.find(token => token.type === 'letter' && Number(token.code) === Number(response.hint.code))?.position;
+      const core = await gameCore();
+      const hint = core.revealHint({ text: state.attempt.offline.text, substitution: state.attempt.offline.substitution, revealed: state.attempt.revealed }, position);
+      if (!hint.ok) return;
+      state.attempt = localAttemptWithLocks({
+        ...state.attempt,
+        revealed: hint.revealed,
+        hintsUsed: Number(state.attempt.hintsUsed || 0) + 1,
+        status: core.isAttemptSolved(state.attempt.offline.text, state.attempt.offline.substitution, hint.revealed) ? 'won' : 'active'
+      }, core);
+      const tutorial = Boolean(state.attempt.tutorialStep);
+      if (tutorial) {
+        state.bootstrap.onboarding.tutorialHintsUsed = Number(state.bootstrap.onboarding?.tutorialHintsUsed || 0) + 1;
+        state.bootstrap.onboarding.tutorialHintsRemaining = Math.max(0, Number(state.bootstrap.onboarding?.tutorialHintsRemaining || 0) - 1);
+      } else state.bootstrap.inventory.hints = Math.max(0, Number(state.bootstrap.inventory?.hints || 0) - 1);
+      state.offlineActions.push({ type: 'hint', position });
+      const hintedPosition = hint.position;
       state.hintedPosition = hintedPosition;
       state.hintMode = false;
       state.selectedPosition = positionAfter(state.attempt, hintedPosition);
-      announce(`Підказка: код ${response.hint.code} — літера ${response.hint.letter}.`); feedback('light', 24);
+      announce(`Підказка: код ${hint.code} — літера ${hint.letter}.`); feedback('light', 24);
       window.setTimeout(() => {
         if (Number(state.hintedPosition) !== hintedPosition) return;
         state.hintedPosition = null;
         render();
       }, 650);
+      if (state.attempt.status !== 'active') { finalizeLocalAttempt(); scheduleCompletedAttemptSync(); }
+      else persistOfflineAttempt();
       await celebrateCorrectGuess(before, state.attempt);
     });
   }
@@ -625,8 +810,11 @@
     const confirmed = await window.SiteTelegram?.showConfirm?.('Здатися? Буде списано одне життя, а відповідь залишиться закритою.');
     if (!confirmed) return;
     await withBusy(async () => {
-      const response = await api(`/attempts/${state.attempt.id}/surrender`, { method: 'POST' });
-      state.attempt = normalizeAttempt(response.attempt); state.bootstrap.inventory = response.inventory; window.SiteTelegram?.haptic?.('warning'); navigate('failure');
+      state.attempt = { ...state.attempt, status: 'surrendered' };
+      state.offlineActions.push({ type: 'surrender' });
+      finalizeLocalAttempt();
+      scheduleCompletedAttemptSync();
+      window.SiteTelegram?.haptic?.('warning'); navigate('failure');
     });
   }
 
@@ -755,6 +943,12 @@
   });
 
   window.addEventListener('popstate', () => goBack({ fromHistory: true }));
+  window.addEventListener('online', () => { syncCompletedAttempt(); });
+
+  function registerOfflineSupport() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+  }
 
   let refreshedResetAt = '';
   window.setInterval(async () => {
@@ -766,13 +960,34 @@
   }, 1000);
 
   async function init() {
+    registerOfflineSupport();
     try {
       await window.SiteTelegram?.init?.(); window.SiteTelegram?.setBackHandler?.(() => goBack());
       await establishSession(); if (!state.bootstrap) await reloadBootstrap();
       state.historyReady = true; history.replaceState({ shyfrView: 'home' }, '', window.location.href); appRoot.setAttribute('aria-busy', 'false');
+      const pending = offlineRecord();
+      if (pending?.attempt?.status !== 'active') {
+        restoreOfflineAttempt(pending);
+        state.selectedCategoryId = state.attempt.categoryId;
+        scheduleCompletedAttemptSync();
+      }
       if (state.bootstrap.onboarding?.nicknameRequired) navigate('nickname', { push: false });
       else render();
     } catch (error) {
+      const cached = cachedBootstrap();
+      const saved = offlineRecord();
+      if (cached && saved) {
+        state.bootstrap = cached;
+        state.telegram = Boolean(cached.telegram);
+        restoreOfflineAttempt(saved);
+        state.selectedCategoryId = state.attempt.categoryId;
+        state.historyReady = true;
+        history.replaceState({ shyfrView: 'game' }, '', window.location.href);
+        appRoot.setAttribute('aria-busy', 'false');
+        navigate(state.attempt.status === 'won' ? 'result' : state.attempt.status === 'active' ? 'game' : 'failure', { push: false });
+        showToast('Гра продовжується на пристрої. Результат синхронізується, коли мережа повернеться.', 4600);
+        return;
+      }
       appRoot.setAttribute('aria-busy', 'false');
       appRoot.innerHTML = '<section class="screen"><div class="failure-card"><div class="failure-symbol"><i class="fa-solid fa-cloud-bolt" aria-hidden="true"></i></div><h2>Сервер гри недоступний</h2><p>Cloudflare Worker і KV мають бути розгорнуті та налаштовані.</p><button class="button button--primary button--wide" type="button" data-action="reload">Спробувати знову</button></div></section>';
       appRoot.querySelector('[data-action="reload"]')?.addEventListener('click', () => window.location.reload()); handleError(error);

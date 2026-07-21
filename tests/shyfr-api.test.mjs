@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { dailyResetInfo, handleShyfrRequest } from '../api/shyfr-api.js';
+import { encodePhrase, evaluateGuess, lockedPositionsForAttempt } from '../api/shyfr-core.js';
 import { loadShyfrContent } from '../scripts/shyfr-content.mjs';
 
 const loadedContent = await loadShyfrContent();
@@ -99,19 +100,60 @@ test('щоденне поновлення прив’язане до опівн�
   });
 });
 
-test('Worker не віддає відповідь активного рівня', async () => {
+test('Worker gives the active level to the offline game, while the public attempt stays encrypted', async () => {
   const env = testEnv();
   const token = await guest(env);
   const { level, started } = await startFirstLevel(env, token);
   assert.equal(level.hiddenPercent, 60);
-  const startedText = JSON.stringify(started.body);
+  const publicAttemptText = JSON.stringify(started.body.attempt);
   assert.equal(started.status, 200);
   assert.equal(started.body.attempt.levelNumber, 1);
   assert.equal(started.body.attempt.hiddenPercent, 60);
   assert.ok(started.body.attempt.tokens.some(item => item.type === 'letter'));
   assert.equal('result' in started.body.attempt, false);
-  assert.equal(startedText.includes('substitution'), false);
-  assert.equal(startedText.includes('source'), false);
+  assert.equal(publicAttemptText.includes('substitution'), false);
+  assert.equal(publicAttemptText.includes('source'), false);
+  assert.equal(typeof started.body.offline.text, 'string');
+  assert.ok(started.body.offline.text.length > 0);
+  assert.ok(started.body.offline.substitution);
+  assert.equal(typeof started.body.offline.source.label, 'string');
+});
+
+test('offline action log completes a level with one final Worker request', async () => {
+  const kv = new MemoryKv();
+  const env = testEnv(kv);
+  const token = await guest(env);
+  const { headers, started } = await startFirstLevel(env, token);
+  const initial = started.body.attempt;
+  const internal = await kv.get(`shyfr:attempt:${initial.id}`, 'json');
+  let revealed = initial.revealed;
+  let errors = initial.errors;
+  let status = 'active';
+  const actions = [];
+  for (let step = 0; step < 200 && status === 'active'; step += 1) {
+    const locked = lockedPositionsForAttempt(initial.offline?.text || started.body.offline.text, internal.substitution, revealed, internal.lockRequirements);
+    const target = encodePhrase(started.body.offline.text, internal.substitution)
+      .find(token => token.type === 'letter' && !revealed[token.position] && !locked.includes(token.position));
+    assert.ok(target, 'offline game has a selectable cell until completion');
+    const letter = Object.entries(internal.substitution).find(([, code]) => code === target.code)?.[0];
+    const result = evaluateGuess({ text: started.body.offline.text, substitution: internal.substitution, revealed, errors }, target.position, letter, { lockedPositions: locked });
+    actions.push({ type: 'guess', position: target.position, letter });
+    revealed = result.revealed;
+    errors = result.errors;
+    status = result.status;
+  }
+  assert.equal(status, 'won');
+  const completed = await json(await handleShyfrRequest(new Request(`https://worker.test/shyfr/attempts/${initial.id}/complete`, {
+    method: 'POST', headers, body: JSON.stringify({ actions, playedSeconds: 42 })
+  }), env));
+  assert.equal(completed.status, 200);
+  assert.equal(completed.body.attempt.status, 'won');
+  assert.equal(completed.body.attempt.result.seconds, 42);
+  assert.equal([...kv.values.keys()].some(key => key.startsWith('shyfr:rate:')), false);
+  const repeated = await json(await handleShyfrRequest(new Request(`https://worker.test/shyfr/attempts/${initial.id}/complete`, {
+    method: 'POST', headers, body: JSON.stringify({ actions, playedSeconds: 42 })
+  }), env));
+  assert.equal(repeated.status, 409);
 });
 
 test('a stale active attempt does not block opening its category', async () => {
