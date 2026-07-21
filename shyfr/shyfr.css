@@ -161,7 +161,8 @@ body:not(.telegram-mini-app) .shyfr-page { padding-top: calc(4.7rem + var(--safe
 .cipher-cell.is-selected { border-color: var(--category-color); background: color-mix(in srgb, var(--category-accent) 24%, transparent); }
 .cipher-cell.is-selected .cipher-cell__line { background: var(--category-color); }
 .cipher-cell.is-revealed .cipher-cell__letter { color: var(--category-color); }
-.cipher-cell.is-code-complete .cipher-cell__code { color: transparent; }
+.cipher-cell.is-code-complete:not(.is-code-completing) .cipher-cell__code { color: transparent; }
+.cipher-cell.is-code-completing .cipher-cell__code { animation: code-vanish .42s cubic-bezier(.2,.9,.2,1) both; }
 .cipher-cell.is-hinted { border-style: dashed; border-color: var(--warning); }
 .cipher-cell.is-hint-target { border-style: dashed; border-color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); animation: hint-pulse 1.2s ease-in-out infinite; }
 .cipher-cell.is-error { border-color: var(--danger); animation: shake .28s ease; }
@@ -268,6 +269,7 @@ body.telegram-mini-app .game-brand { padding-top: .55rem; }
 @keyframes hint-pulse { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 18%, transparent); } }
 @keyframes tutorial-pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--category-color) 0%, transparent); } 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--category-color) 35%, transparent); border-color: var(--category-color); } }
 @keyframes word-pop { 0% { transform: translateY(0) scale(1); } 42% { transform: translateY(-7px) scale(1.12); color: var(--focus); } 100% { transform: translateY(0) scale(1); } }
+@keyframes code-vanish { from { transform: scale(1); opacity: 1; } to { transform: scale(0); opacity: 0; } }
 @keyframes solve-wave { 0% { transform: translateY(0) rotate(0); } 42% { transform: translateY(-9px) rotate(-3deg) scale(1.13); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--success) 70%, transparent)); } 100% { transform: translateY(0) rotate(0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 

@@ -26,7 +26,7 @@
   const state = {
     sessionToken: '', bootstrap: null, view: 'home', selectedCategoryId: '', attempt: null,
     selectedPosition: null, hintedPosition: null, errorPosition: null, hintMode: false,
-    wordCelebrationPositions: [], solveCelebration: false, busy: false, telegram: false,
+    celebrationPositions: [], codeCelebrationPositions: [], solveCelebration: false, busy: false, telegram: false,
     leaderboard: [], historyReady: false, returnView: 'home',
     tutorialSelectedCell: false, tutorialGuessed: false
   };
@@ -200,6 +200,15 @@
     }).map(group => group.filter(token => token.type === 'letter').map(token => token.position));
   }
 
+  function completedCodePositions(attempt) {
+    const completeCodes = new Set([...letterProgress(attempt).entries()]
+      .filter(([, progress]) => progress.letter && progress.solved === progress.total)
+      .map(([code]) => code));
+    return [...completeCodes].map(code => (attempt?.tokens || [])
+      .filter(token => token.type === 'letter' && token.code === code)
+      .map(token => token.position));
+  }
+
   function cipherHtml(attempt) {
     const revealed = attempt.revealed || {};
     const progress = letterProgress(attempt);
@@ -209,16 +218,17 @@
       const selected = state.selectedPosition != null && Number(state.selectedPosition) === Number(token.position);
       const status = progress.get(token.code);
       const codeComplete = Boolean(status?.letter && status.solved === status.total);
-      const celebrationIndex = state.wordCelebrationPositions.indexOf(token.position);
+      const celebrationIndex = state.celebrationPositions.indexOf(token.position);
+      const codeCelebrating = state.codeCelebrationPositions.includes(token.position);
       const hintTarget = state.hintMode && !letter;
       const hinted = state.hintedPosition != null && Number(state.hintedPosition) === Number(token.position);
       const errored = state.errorPosition != null && Number(state.errorPosition) === Number(token.position);
-      const classes = ['cipher-cell', selected ? 'is-selected' : '', letter ? 'is-revealed' : '', codeComplete ? 'is-code-complete' : '', token.locked ? `is-locked is-locked--${token.lockType || 'single'}` : '', hintTarget ? 'is-hint-target' : '', hinted ? 'is-hinted' : '', errored ? 'is-error' : '', celebrationIndex >= 0 ? 'is-word-complete' : ''].filter(Boolean).join(' ');
+      const classes = ['cipher-cell', selected ? 'is-selected' : '', letter ? 'is-revealed' : '', codeComplete ? 'is-code-complete' : '', codeCelebrating ? 'is-code-completing' : '', token.locked ? `is-locked is-locked--${token.lockType || 'single'}` : '', hintTarget ? 'is-hint-target' : '', hinted ? 'is-hinted' : '', errored ? 'is-error' : '', celebrationIndex >= 0 ? 'is-word-complete' : ''].filter(Boolean).join(' ');
       const lockLabel = token.lockType === 'double' ? 'подвійно замкнено, потрібні літери з обох боків' : 'замкнено до відкриття сусідньої літери';
       const label = token.locked ? `Код ${token.code}, ${lockLabel}` : `Код ${token.code}${letter ? `, літера ${letter}` : ', не розгадано'}`;
       const lockIcon = token.lockType === 'double' ? '<span class="lock-stack" aria-hidden="true"><i class="fa-solid fa-lock"></i><i class="fa-solid fa-lock"></i></span>' : '<i class="fa-solid fa-lock" aria-hidden="true"></i>';
       const unavailable = Boolean(letter) || (token.locked && !state.hintMode);
-      return `<button class="${classes}" style="--celebration-index:${Math.max(0, celebrationIndex)};--cell-index:${token.position}" type="button" data-action="${hintTarget ? 'choose-hint-position' : 'select-position'}" data-position="${token.position}" aria-label="${escapeHtml(state.hintMode && !letter ? `${label}. Підказати цю комірку` : label)}" aria-pressed="${selected}" ${unavailable ? 'disabled' : ''}><span class="cipher-cell__letter">${token.locked && !letter ? lockIcon : escapeHtml(letter)}</span><span class="cipher-cell__line"></span><span class="cipher-cell__code">${codeComplete ? '&nbsp;' : token.code}</span></button>`;
+      return `<button class="${classes}" style="--celebration-index:${Math.max(0, celebrationIndex)};--cell-index:${token.position}" type="button" data-action="${hintTarget ? 'choose-hint-position' : 'select-position'}" data-position="${token.position}" aria-label="${escapeHtml(state.hintMode && !letter ? `${label}. Підказати цю комірку` : label)}" aria-pressed="${selected}" ${unavailable ? 'disabled' : ''}><span class="cipher-cell__letter">${token.locked && !letter ? lockIcon : escapeHtml(letter)}</span><span class="cipher-cell__line"></span><span class="cipher-cell__code">${codeComplete && !codeCelebrating ? '&nbsp;' : token.code}</span></button>`;
     }).join('')}</span>`).join('')}</span>`).join('');
   }
 
@@ -467,15 +477,24 @@
     return completedWordPositions(after).filter(positions => !beforeWords.has(positions.join(','))).flat();
   }
 
+  function newCompletedCodePositions(before, after) {
+    const beforeCodes = new Set(completedCodePositions(before).map(positions => positions.join(',')));
+    return completedCodePositions(after).filter(positions => !beforeCodes.has(positions.join(','))).flat();
+  }
+
   async function celebrateCorrectGuess(before, after) {
     const wordPositions = newCompletedWordPositions(before, after);
+    const codePositions = newCompletedCodePositions(before, after);
+    const celebrationPositions = [...new Set([...wordPositions, ...codePositions])];
     if (after.status === 'won') state.solveCelebration = true;
-    if (wordPositions.length) {
-      state.wordCelebrationPositions = wordPositions;
+    if (celebrationPositions.length) {
+      state.celebrationPositions = celebrationPositions;
+      state.codeCelebrationPositions = codePositions;
       render();
-      feedbackForWordLetters(wordPositions.length);
+      feedbackForWordLetters(celebrationPositions.length);
       await pause(after.status === 'won' ? 420 : 560);
-      state.wordCelebrationPositions = [];
+      state.celebrationPositions = [];
+      state.codeCelebrationPositions = [];
     }
     if (after.status === 'won') {
       render();
@@ -484,7 +503,7 @@
       state.solveCelebration = false;
       await reloadBootstrap();
       navigate('result');
-    } else if (!wordPositions.length) {
+    } else if (!celebrationPositions.length) {
       feedback('selection', 18);
     }
   }
@@ -516,7 +535,7 @@
         ? null
         : state.attempt.selectedPosition ?? unknownPositions(state.attempt)[0] ?? null;
       state.hintedPosition = null; state.errorPosition = null; state.hintMode = false;
-      state.wordCelebrationPositions = []; state.solveCelebration = false;
+      state.celebrationPositions = []; state.codeCelebrationPositions = []; state.solveCelebration = false;
       state.tutorialSelectedCell = false; state.tutorialGuessed = false;
       navigate(state.attempt.status === 'won' ? 'result' : state.attempt.status === 'active' ? 'game' : 'failure');
     });
