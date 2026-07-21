@@ -357,12 +357,27 @@
 
   function render() {
     if (!state.bootstrap) return;
+    // The game board is rebuilt after every choice and guess. Preserve its
+    // internal scroll position so interacting with a lower cell does not
+    // return the player to the beginning of a long phrase.
+    const previousCipherScroll = state.view === 'game' ? appRoot.querySelector('.cipher-scroll') : null;
+    const cipherScrollPosition = previousCipherScroll && {
+      left: previousCipherScroll.scrollLeft,
+      top: previousCipherScroll.scrollTop
+    };
     updateBrand();
     if (inventoryMount) {
       inventoryMount.innerHTML = inventoryHtml();
       inventoryMount.querySelectorAll('button').forEach(button => { button.disabled = state.busy; });
     }
     appRoot.innerHTML = (views[state.view] || renderHome)();
+    if (cipherScrollPosition) {
+      const cipherScroll = appRoot.querySelector('.cipher-scroll');
+      if (cipherScroll) {
+        cipherScroll.scrollLeft = cipherScrollPosition.left;
+        cipherScroll.scrollTop = cipherScrollPosition.top;
+      }
+    }
     appRoot.setAttribute('aria-busy', String(state.busy));
     appRoot.querySelectorAll('button').forEach(button => { if (state.busy && button.dataset.action !== 'back') button.disabled = true; });
     if (state.view === 'nickname') window.setTimeout(() => appRoot.querySelector('#nicknameInput')?.focus(), 0);
