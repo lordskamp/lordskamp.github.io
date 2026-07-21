@@ -951,7 +951,7 @@
 
   function registerOfflineSupport() {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=20260721-v3', { scope: './' }).catch(() => {});
   }
 
   let refreshedResetAt = '';
@@ -970,7 +970,7 @@
       await establishSession(); if (!state.bootstrap) await reloadBootstrap();
       state.historyReady = true; history.replaceState({ shyfrView: 'home' }, '', window.location.href); appRoot.setAttribute('aria-busy', 'false');
       const pending = offlineRecord();
-      if (pending?.attempt?.status !== 'active') {
+      if (pending && pending.attempt.status !== 'active') {
         restoreOfflineAttempt(pending);
         state.selectedCategoryId = state.attempt.categoryId;
         scheduleCompletedAttemptSync();

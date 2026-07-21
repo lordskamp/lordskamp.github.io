@@ -1,6 +1,6 @@
 /* global self, caches */
 
-const CACHE_NAME = 'shyfr-offline-v2';
+const CACHE_NAME = 'shyfr-offline-v3';
 const APP_SHELL = [
   './',
   './index.html',
