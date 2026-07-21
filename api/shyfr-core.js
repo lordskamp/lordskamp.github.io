@@ -39,6 +39,12 @@ function hashSeed(value) {
   return hash >>> 0;
 }
 
+// The level identity and its current text define a stable pseudo-random layout.
+// This keeps the initially revealed cells identical for every player and retry.
+export function levelSeed(level) {
+  return `level:${String(level?.id || '')}:${String(level?.text || '').normalize('NFC')}`;
+}
+
 export function seededRandom(seed) {
   let value = hashSeed(seed) || 0x6d2b79f5;
   return () => {

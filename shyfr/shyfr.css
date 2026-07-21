@@ -107,6 +107,7 @@ body:not(.telegram-mini-app) .shyfr-page { padding-top: calc(4.7rem + var(--safe
 .hero-card h2 { max-width: 500px; margin: .45rem 0; font-size: clamp(1.4rem, 6vw, 2.2rem); line-height: 1.05; }
 .hero-card > p:last-child { margin: 0; color: var(--text-muted); font-size: .84rem; line-height: 1.5; }
 .tutorial-card { width: 100%; padding: .85rem; display: grid; grid-template-columns: 46px minmax(0,1fr) auto; align-items: center; gap: .72rem; border: 1px solid color-mix(in srgb, var(--category-color) 42%, var(--glass-border)); border-radius: 20px; color: inherit; text-align: left; background: linear-gradient(110deg, color-mix(in srgb, var(--category-color) 18%, var(--glass)), var(--glass)); cursor: pointer; }
+.tutorial-card.is-complete { cursor: default; }
 .tutorial-card__icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; color: var(--category-color); background: color-mix(in srgb, var(--category-accent) 42%, transparent); font-size: 1.05rem; }
 .tutorial-card > span:nth-child(2) { min-width: 0; display: grid; gap: .22rem; }
 .tutorial-card strong { font-size: .92rem; }
@@ -141,8 +142,9 @@ body:not(.telegram-mini-app) .shyfr-page { padding-top: calc(4.7rem + var(--safe
 .solve-message { grid-template-columns: auto 1fr; align-items: center; color: #d4ffe6; border-color: color-mix(in srgb, var(--success) 48%, transparent); background: color-mix(in srgb, var(--success) 12%, transparent); font-size: .82rem; }
 .cipher-scroll { flex: 1 1 auto; min-height: 70px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--glass-border); border-radius: 18px; background: rgba(255,255,255,.025); }
 .cipher-board { min-height: 100%; padding: clamp(.55rem, 2.2vh, 1rem); display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: .55rem var(--cipher-cell-width); }
+.cipher-board, .keyboard { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .cipher-word { display: inline-flex; align-items: flex-end; gap: .08rem; white-space: nowrap; }
-.cipher-cell { width: var(--cipher-cell-width); min-width: 25px; height: clamp(48px, 7vh, 60px); padding: 0 1px 2px; display: grid; grid-template-rows: 1fr 2px 17px; align-items: end; border: 1px solid transparent; border-radius: 8px; color: var(--text-color); background: transparent; cursor: pointer; }
+.cipher-cell { width: var(--cipher-cell-width); min-width: 25px; height: clamp(48px, 7vh, 60px); padding: 0 1px 2px; display: grid; grid-template-rows: 1fr 2px 17px; align-items: end; border: 1px solid transparent; border-radius: 8px; color: var(--text-color); background: transparent; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .cipher-cell:disabled { cursor: not-allowed; }
 .cipher-cell__letter { align-self: center; min-height: 1.35em; display: grid; place-items: center; font-size: clamp(1rem, 4.2vw, 1.35rem); font-weight: 900; }
 .cipher-cell__line { width: 100%; height: 2px; border-radius: 2px; background: color-mix(in srgb, var(--text-muted) 65%, transparent); }
@@ -156,6 +158,11 @@ body:not(.telegram-mini-app) .shyfr-page { padding-top: calc(4.7rem + var(--safe
 .cipher-cell.is-error { border-color: var(--danger); animation: shake .28s ease; }
 .cipher-cell.is-locked { opacity: .55; border-color: rgba(255,255,255,.07); background: rgba(255,255,255,.025); }
 .cipher-cell.is-locked .cipher-cell__letter { color: var(--text-muted); font-size: .72rem; }
+.screen--game[data-tutorial-coach="cell"] .cipher-cell:not(.is-revealed):not(:disabled),
+.screen--game[data-tutorial-coach="lock"] .cipher-cell.is-locked,
+.screen--game[data-tutorial-coach="hint-cell"] .cipher-cell.is-hint-target { animation: tutorial-pulse 1.35s ease-in-out infinite; }
+.screen--game[data-tutorial-coach="keyboard"] .key:not(:disabled),
+.screen--game[data-tutorial-coach="hint"] [data-action="hint"] { animation: tutorial-pulse 1.35s ease-in-out infinite; }
 .lock-stack { display: inline-flex; gap: 2px; font-size: .56rem; }
 .cipher-cell.is-word-complete { animation: word-pop .56s cubic-bezier(.2,.9,.2,1) both; animation-delay: calc(var(--celebration-index) * 36ms); }
 .cipher-board.is-solved .cipher-cell { animation: solve-wave .78s cubic-bezier(.2,.9,.2,1) both; animation-delay: calc(var(--cell-index) * 13ms); }
@@ -165,7 +172,18 @@ body:not(.telegram-mini-app) .shyfr-page { padding-top: calc(4.7rem + var(--safe
 .keyboard-row { width: 100%; display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 3px; }
 .keyboard-row:nth-child(2) .key:first-child { grid-column: 2 / span 2; }
 .keyboard-row:last-child .key:first-child { grid-column: 3 / span 2; }
-.key { grid-column: span 2; min-width: 0; height: clamp(34px, 5.7vh, 45px); padding: 0; display: grid; place-items: center; border: 1px solid var(--glass-border); border-radius: 8px; color: var(--text-color); background: var(--glass); cursor: pointer; font-size: clamp(.75rem, 3.3vw, .98rem); font-weight: 850; }
+.key { grid-column: span 2; min-width: 0; height: clamp(34px, 5.7vh, 45px); padding: 0; display: grid; place-items: center; border: 1px solid var(--glass-border); border-radius: 8px; color: var(--text-color); background: var(--glass); cursor: pointer; font-size: clamp(.75rem, 3.3vw, .98rem); font-weight: 850; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+
+/* Shyfr keeps the shared cursor visually static while it moves. */
+body.shyfr-page-body .custom-cursor,
+body.shyfr-page-body .custom-cursor.cursor-hover,
+body.shyfr-page-body .custom-cursor.cursor-click {
+  width: 20px !important;
+  height: 20px !important;
+  background: rgba(255, 255, 255, .56) !important;
+  box-shadow: 0 0 12px rgba(255, 255, 255, .5) !important;
+  transition: opacity .16s ease !important;
+}
 .key.is-partial { color: var(--category-color); border-color: color-mix(in srgb, var(--category-color) 54%, transparent); background: color-mix(in srgb, var(--category-accent) 24%, var(--glass)); }
 .key.is-complete { color: color-mix(in srgb, var(--text-muted) 78%, transparent); border-color: color-mix(in srgb, var(--text-muted) 24%, transparent); background: color-mix(in srgb, var(--text-muted) 12%, var(--glass)); }
 .key:disabled { cursor: not-allowed; opacity: .58; }
@@ -205,6 +223,7 @@ body:not(.telegram-mini-app) .shyfr-page { padding-top: calc(4.7rem + var(--safe
 .resource-card p { margin: .65rem 0; color: var(--text-muted); font-size: .72rem; line-height: 1.45; }
 .profile-summary { justify-content: flex-start; }
 .avatar { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 16px; color: #fff; background: linear-gradient(145deg, #a75ce0, #613194); font-weight: 900; }
+.avatar img, .leader-avatar img { width: 100%; height: 100%; display: block; border-radius: inherit; object-fit: cover; }
 .profile-summary h2, .profile-summary p { margin: 0; }
 .profile-summary p { color: var(--text-muted); font-size: .72rem; }
 .profile-grid { grid-template-columns: repeat(2,1fr); }
@@ -212,12 +231,21 @@ body:not(.telegram-mini-app) .shyfr-page { padding-top: calc(4.7rem + var(--safe
 .leader-row { min-height: 48px; padding: .5rem .6rem; border-bottom: 1px solid var(--glass-border); }
 .leader-row:last-child { border-bottom: 0; }
 .leader-rank { width: 30px; color: var(--warning); font-weight: 900; }
+.leader-avatar { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; overflow: hidden; border-radius: 11px; color: #fff; background: linear-gradient(145deg, #a75ce0, #613194); font-size: .8rem; font-weight: 900; }
 .leader-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 760; }
 .leader-score { text-align: right; font-weight: 900; }
 .leader-score small { display: block; color: var(--text-muted); font-size: .56rem; font-weight: 500; }
 
 .shyfr-footer { flex: 0 0 auto; display: flex; justify-content: space-between; padding: .1rem .25rem 0; color: var(--text-muted); font-size: .63rem; }
 .toast { position: fixed; left: 50%; bottom: calc(.75rem + var(--safe-bottom)); z-index: 20; width: min(calc(100% - 1.4rem), 430px); padding: .72rem .9rem; transform: translateX(-50%); border: 1px solid var(--glass-border); border-radius: 14px; color: var(--text-color); background: color-mix(in srgb, var(--bg) 88%, transparent); box-shadow: 0 15px 50px rgba(0,0,0,.4); backdrop-filter: blur(18px); text-align: center; font-size: .76rem; }
+.onboarding-screen { justify-content: center; }
+.onboarding-card, .nickname-card { width: min(100%, 430px); margin: auto; padding: 1.2rem; display: grid; gap: .72rem; border: 1px solid color-mix(in srgb, var(--focus) 34%, var(--glass-border)); border-radius: 22px; background: linear-gradient(145deg, color-mix(in srgb, var(--focus) 12%, var(--glass)), var(--glass)); text-align: center; }
+.onboarding-card h2, .nickname-card h2 { margin: 0; font-size: clamp(1.35rem, 5.8vw, 1.8rem); }
+.onboarding-card > p:not(.eyebrow), .nickname-card > p:not(.eyebrow) { margin: 0; color: var(--text-muted); font-size: .82rem; line-height: 1.5; }
+.onboarding-icon { width: 56px; height: 56px; margin: 0 auto .15rem; display: grid; place-items: center; border-radius: 18px; color: #fff; background: linear-gradient(145deg, #a75ce0, #613194); font-size: 1.35rem; }
+.nickname-card label { text-align: left; color: var(--text-muted); font-size: .72rem; font-weight: 800; }
+.nickname-card input { min-height: 44px; padding: .65rem .78rem; border: 1px solid var(--glass-border); border-radius: 13px; outline: none; color: var(--text-color); background: rgba(0,0,0,.15); font: inherit; }
+.nickname-card input:focus { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
 
 body.telegram-mini-app .shyfr-page { width: 100%; padding-top: max(.25rem, var(--safe-top)); }
 body.telegram-mini-app #siteHeaderMount, body.telegram-mini-app .shyfr-footer { display: none; }
@@ -226,6 +254,7 @@ body.telegram-mini-app .game-brand { padding-top: .55rem; }
 
 @keyframes shake { 0%,100% { transform: translateX(0); } 30% { transform: translateX(-4px); } 70% { transform: translateX(4px); } }
 @keyframes hint-pulse { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 18%, transparent); } }
+@keyframes tutorial-pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--category-color) 0%, transparent); } 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--category-color) 35%, transparent); border-color: var(--category-color); } }
 @keyframes word-pop { 0% { transform: translateY(0) scale(1); } 42% { transform: translateY(-7px) scale(1.12); color: var(--focus); } 100% { transform: translateY(0) scale(1); } }
 @keyframes solve-wave { 0% { transform: translateY(0) rotate(0); } 42% { transform: translateY(-9px) rotate(-3deg) scale(1.13); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--success) 70%, transparent)); } 100% { transform: translateY(0) rotate(0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }

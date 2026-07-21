@@ -12,6 +12,7 @@ import {
   fulfillPurchaseState,
   hasLevelAccess,
   hiddenRatioForLevel,
+  levelSeed,
   lockedPositionsForAttempt,
   lockModeForLevel,
   nextUnknownPosition,
@@ -53,6 +54,12 @@ test('початкове відкриття залежить від номера
   assert.deepEqual(first, repeated);
   assert.equal(Array.from(text).length - Object.keys(first).length, 6);
   assert.ok(Object.keys(later).length < Object.keys(first).length);
+});
+
+test('level seed is stable for the same level content', () => {
+  const level = { id: 'poetry-1', text: 'Слава Україні' };
+  assert.equal(levelSeed(level), levelSeed({ ...level }));
+  assert.notEqual(levelSeed(level), levelSeed({ ...level, text: 'Героям слава' }));
 });
 
 test('однакова літера вводиться окремо в кожну комірку', () => {

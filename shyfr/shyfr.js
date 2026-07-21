@@ -142,7 +142,7 @@
     const categories = (state.bootstrap.categories || []).filter(category => category.id !== 'tutorial');
     const tutorial = state.bootstrap.categories?.find(category => category.id === 'tutorial');
     return `<section class="screen screen--home" data-view="home">
-      ${tutorial ? `<button class="tutorial-card" style="--category-color:${escapeHtml(tutorial.color)};--category-accent:${escapeHtml(tutorial.accent)}" type="button" data-action="open-tutorial"><span class="tutorial-card__icon"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i></span><span><span class="eyebrow">Навчання</span><strong>Освой усі механіки за 3 рівні</strong><small>Звичайні, замкнені та подвійно замкнені літери</small></span><span class="tutorial-card__progress">${tutorial.completed} / ${tutorial.total}<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span></button>` : ''}
+      ${tutorial ? `<article class="tutorial-card is-complete" style="--category-color:${escapeHtml(tutorial.color)};--category-accent:${escapeHtml(tutorial.accent)}"><span class="tutorial-card__icon"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i></span><span><span class="eyebrow">Навчання</span><strong>Усі механіки вже освоєно</strong><small>Звичайні, замкнені та подвійно замкнені літери</small></span><span class="tutorial-card__progress">${tutorial.completed} / ${tutorial.total}<i class="fa-solid fa-check" aria-hidden="true"></i></span></article>` : ''}
       <div class="section-row"><h3>Категорії</h3><span>${state.bootstrap.profile?.completedLevels || 0} завершено</span></div>
       <div class="category-list">${categories.map(category => {
         const status = !category.available ? '<span class="badge badge--soon">Незабаром</span>' : category.free ? '<span class="badge badge--free">Безкоштовно</span>' : category.unlocked ? '<span class="badge badge--free">Відкрито</span>' : `<span class="badge badge--paid">${category.priceStars} ⭐</span>`;
@@ -190,7 +190,7 @@
     return groupTokens(attempt.tokens).map(group => `<span class="cipher-word">${group.map(token => {
       if (token.type === 'literal') return `<span class="cipher-literal" aria-hidden="true">${escapeHtml(token.value)}</span>`;
       const letter = revealed[token.position] || '';
-      const selected = Number(state.selectedPosition) === Number(token.position);
+      const selected = state.selectedPosition != null && Number(state.selectedPosition) === Number(token.position);
       const status = progress.get(token.code);
       const codeComplete = Boolean(status?.letter && status.solved === status.total);
       const celebrationIndex = state.wordCelebrationPositions.indexOf(token.position);
@@ -199,7 +199,8 @@
       const lockLabel = token.lockType === 'double' ? 'подвійно замкнено, потрібні літери з обох боків' : 'замкнено до відкриття сусідньої літери';
       const label = token.locked ? `Код ${token.code}, ${lockLabel}` : `Код ${token.code}${letter ? `, літера ${letter}` : ', не розгадано'}`;
       const lockIcon = token.lockType === 'double' ? '<span class="lock-stack" aria-hidden="true"><i class="fa-solid fa-lock"></i><i class="fa-solid fa-lock"></i></span>' : '<i class="fa-solid fa-lock" aria-hidden="true"></i>';
-      return `<button class="${classes}" style="--celebration-index:${Math.max(0, celebrationIndex)};--cell-index:${token.position}" type="button" data-action="${hintTarget ? 'choose-hint-position' : 'select-position'}" data-position="${token.position}" aria-label="${escapeHtml(state.hintMode && !letter ? `${label}. Підказати цю комірку` : label)}" aria-pressed="${selected}" ${token.locked && !state.hintMode ? 'disabled' : ''}><span class="cipher-cell__letter">${token.locked && !letter ? lockIcon : escapeHtml(letter)}</span><span class="cipher-cell__line"></span><span class="cipher-cell__code">${codeComplete ? '&nbsp;' : token.code}</span></button>`;
+      const unavailable = Boolean(letter) || (token.locked && !state.hintMode);
+      return `<button class="${classes}" style="--celebration-index:${Math.max(0, celebrationIndex)};--cell-index:${token.position}" type="button" data-action="${hintTarget ? 'choose-hint-position' : 'select-position'}" data-position="${token.position}" aria-label="${escapeHtml(state.hintMode && !letter ? `${label}. Підказати цю комірку` : label)}" aria-pressed="${selected}" ${unavailable ? 'disabled' : ''}><span class="cipher-cell__letter">${token.locked && !letter ? lockIcon : escapeHtml(letter)}</span><span class="cipher-cell__line"></span><span class="cipher-cell__code">${codeComplete ? '&nbsp;' : token.code}</span></button>`;
     }).join('')}</span>`).join('');
   }
 
@@ -362,8 +363,9 @@
   function positionAfter(attempt, currentPosition) {
     const values = unknownPositions(attempt);
     if (!values.length) return null;
-    const index = values.indexOf(Number(currentPosition));
-    return values[(index + 1 + values.length) % values.length];
+    // Move forward through the phrase. When a player filled its last available
+    // cell, keep focus on the last remaining cell instead of wrapping around.
+    return values.find(position => position > Number(currentPosition)) ?? values.at(-1);
   }
 
   function pause(milliseconds) {
@@ -373,6 +375,18 @@
   function feedback(kind, pattern) {
     window.SiteTelegram?.haptic?.(kind);
     if (!state.telegram && navigator.vibrate) navigator.vibrate(pattern);
+  }
+
+  function feedbackForWordLetters(count) {
+    const total = Math.max(0, Number(count) || 0);
+    if (!total) return;
+    if (state.telegram) {
+      for (let index = 0; index < total; index += 1) {
+        window.setTimeout(() => window.SiteTelegram?.haptic?.('medium'), index * 36);
+      }
+      return;
+    }
+    if (navigator.vibrate) navigator.vibrate(Array.from({ length: total }, () => [18, 18]).flat());
   }
 
   function newCompletedWordPositions(before, after) {
@@ -386,7 +400,7 @@
     if (wordPositions.length) {
       state.wordCelebrationPositions = wordPositions;
       render();
-      feedback('medium', 45);
+      feedbackForWordLetters(wordPositions.length);
       await pause(after.status === 'won' ? 420 : 560);
       state.wordCelebrationPositions = [];
     }
@@ -424,7 +438,9 @@
       const response = await api('/attempts', { method: 'POST', body: JSON.stringify({ categoryId: category.id }) });
       state.attempt = normalizeAttempt(response.attempt);
       state.bootstrap.inventory = response.inventory;
-      state.selectedPosition = state.attempt.selectedPosition ?? unknownPositions(state.attempt)[0] ?? null;
+      state.selectedPosition = state.attempt.tutorialStep === 1
+        ? null
+        : state.attempt.selectedPosition ?? unknownPositions(state.attempt)[0] ?? null;
       state.hintedPosition = null; state.errorPosition = null; state.hintMode = false;
       state.wordCelebrationPositions = []; state.solveCelebration = false;
       state.tutorialSelectedCell = false; state.tutorialGuessed = false;
@@ -437,7 +453,11 @@
     state.selectedCategoryId = categoryId;
     const category = currentCategory();
     if (!category?.available) { showToast('Рівні цієї категорії ще готуються.'); return; }
-    if (category.completedAll && !category.attemptId) { showToast('Усі рівні цієї категорії вже завершено.'); return; }
+    if (category.completedAll && !category.attemptId) {
+      if (categoryId === 'tutorial') navigate('home');
+      else showToast('Усі рівні цієї категорії вже завершено.');
+      return;
+    }
     const canPlay = category.free || category.unlocked || category.levels.some(level => level.unlocked);
     if (!canPlay) { navigate('store'); showToast('Спочатку відкрийте категорію в магазині.'); return; }
     startAttempt();
@@ -511,8 +531,14 @@
     await withBusy(async () => { const response = await api('/leaderboard'); state.leaderboard = response.leaderboard || []; navigate('leaderboard'); });
   }
 
-  function finishTutorial() {
-    navigate(state.bootstrap.onboarding?.nicknameRequired ? 'nickname' : 'home');
+  async function finishTutorial() {
+    await withBusy(async () => {
+      // Refresh first: completion is persisted on the server and determines
+      // whether categories or browser nickname setup should be shown.
+      await reloadBootstrap();
+      state.selectedCategoryId = '';
+      navigate(state.bootstrap.onboarding?.nicknameRequired ? 'nickname' : 'home');
+    });
   }
 
   async function saveNickname(name) {
@@ -565,7 +591,14 @@
     else if (action === 'begin-tutorial') openCategory('tutorial');
     else if (action === 'open-tutorial') openCategory('tutorial');
     else if (action === 'open-category') openCategory(button.dataset.categoryId);
-    else if (action === 'select-position') { state.selectedPosition = Number(button.dataset.position); if (state.attempt?.tutorialStep) state.tutorialSelectedCell = true; feedback('selection', 12); render(); }
+    else if (action === 'select-position') {
+      const position = Number(button.dataset.position);
+      if (state.attempt?.revealed?.[position]) return;
+      state.selectedPosition = position;
+      if (state.attempt?.tutorialStep) state.tutorialSelectedCell = true;
+      feedback('selection', 12);
+      render();
+    }
     else if (action === 'choose-hint-position') chooseHint(Number(button.dataset.position));
     else if (action === 'guess') submitGuess(button.dataset.letter);
     else if (action === 'hint') useHint();
@@ -589,7 +622,7 @@
     const form = event.target.closest('[data-nickname-form]');
     if (!form || state.busy) return;
     event.preventDefault();
-    saveNickname(new FormData(form).get('nickname'));
+    saveNickname(form.querySelector('[name="nickname"]')?.value);
   });
 
   document.addEventListener('keydown', event => {
@@ -620,10 +653,7 @@
       await window.SiteTelegram?.init?.(); window.SiteTelegram?.setBackHandler?.(() => goBack());
       await establishSession(); if (!state.bootstrap) await reloadBootstrap();
       state.historyReady = true; history.replaceState({ shyfrView: 'home' }, '', window.location.href); appRoot.setAttribute('aria-busy', 'false');
-      if (!state.bootstrap.onboarding?.tutorialCompleted) {
-        state.selectedCategoryId = 'tutorial';
-        await startAttempt();
-      } else if (state.bootstrap.onboarding?.nicknameRequired) navigate('nickname', { push: false });
+      if (state.bootstrap.onboarding?.nicknameRequired) navigate('nickname', { push: false });
       else render();
     } catch (error) {
       appRoot.setAttribute('aria-busy', 'false');

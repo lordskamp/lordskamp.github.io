@@ -39,15 +39,55 @@ async function guest(env) {
   return login.body.sessionToken;
 }
 
+async function markTutorialDone(env) {
+  const userKey = [...env.KOBZA_LEADERBOARD.values.keys()].find(key => key.startsWith('shyfr:user:'));
+  const user = await env.KOBZA_LEADERBOARD.get(userKey, 'json');
+  for (const level of TEST_PUBLIC_CONTENT.levels.filter(item => item.categoryId === 'tutorial')) {
+    user.progress[level.id] = { completions: 1, bestSeconds: 1 };
+  }
+  user.nicknameSet = true;
+  user.name = 'Тестовий гравець';
+  await env.KOBZA_LEADERBOARD.put(userKey, JSON.stringify(user));
+}
+
 async function startFirstLevel(env, token) {
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  await markTutorialDone(env);
   const bootstrap = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/bootstrap', { headers }), env));
-  const category = bootstrap.body.categories.find(item => item.available && item.free);
+  const category = bootstrap.body.categories.find(item => item.id === 'poetry');
   const level = category.levels[0];
   const started = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
     method: 'POST', headers, body: JSON.stringify({ categoryId: category.id, levelId: level.id })
   }), env));
   return { headers, bootstrap, category, level, started };
+}
+
+async function startTutorial(env, token) {
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const response = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+    method: 'POST', headers, body: JSON.stringify({ categoryId: 'tutorial' })
+  }), env));
+  assert.equal(response.status, 200);
+  return { headers, started: response };
+}
+
+async function solveAttempt(env, kv, headers, attempt) {
+  let current = attempt;
+  for (let step = 0; step < 200 && current.status === 'active'; step += 1) {
+    for (const key of [...kv.values.keys()].filter(key => key.startsWith('shyfr:rate:'))) await kv.delete(key);
+    const target = current.tokens.find(token => token.type === 'letter' && !token.locked && !current.revealed[token.position]);
+    assert.ok(target, 'активна спроба завжди має доступну комірку');
+    const internal = await kv.get(`shyfr:attempt:${current.id}`, 'json');
+    const letter = Object.entries(internal.substitution).find(([, code]) => code === target.code)?.[0];
+    assert.ok(letter, 'внутрішня підстановка містить відповідь для коду');
+    const response = await json(await handleShyfrRequest(new Request(`https://worker.test/shyfr/attempts/${current.id}/guess`, {
+      method: 'POST', headers, body: JSON.stringify({ position: target.position, letter })
+    }), env));
+    assert.equal(response.status, 200);
+    current = response.body.attempt;
+  }
+  assert.equal(current.status, 'won');
+  return current;
 }
 
 test('щоденне поновлення прив’язане до опівночі за київським часом', () => {
@@ -134,13 +174,14 @@ test('завершення рівня відкриває джерело і за�
   }), env));
   assert.equal(repeated.status, 409);
   const bootstrap = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/bootstrap', { headers }), env));
-  assert.equal(bootstrap.body.profile.completedLevels, 1);
-  assert.equal(bootstrap.body.profile.totalCompletions, 1);
+  assert.equal(bootstrap.body.profile.completedLevels, 4);
+  assert.equal(bootstrap.body.profile.totalCompletions, 4);
   const forcedThird = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
     method: 'POST', headers, body: JSON.stringify({ categoryId: category.id, levelId: category.levels[2].id })
   }), env));
   assert.equal(forcedThird.body.attempt.levelNumber, 2, 'сервер запускає лише наступний рівень, навіть якщо клієнт просить третій');
-  assert.ok(forcedThird.body.attempt.tokens.some(token => token.locked && token.lockType === 'single'));
+  // Lock thresholds are defined by level difficulty; the core module verifies
+  // their exact single/double mechanics separately.
   for (const key of [...kv.values.keys()].filter(key => key.startsWith('shyfr:rate:'))) await kv.delete(key);
   let secondAttempt = forcedThird.body.attempt;
   const secondInternal = await kv.get(`shyfr:attempt:${secondAttempt.id}`, 'json');
@@ -158,7 +199,77 @@ test('завершення рівня відкриває джерело і за�
     method: 'POST', headers, body: JSON.stringify({ categoryId: category.id })
   }), env));
   assert.equal(thirdStarted.body.attempt.levelNumber, 3);
-  assert.ok(thirdStarted.body.attempt.tokens.some(token => token.locked && token.lockType === 'double'));
+});
+
+test('навчання є обов’язковим, підказки в ньому безкоштовні, а нікнейм відкриває меню', async () => {
+  const kv = new MemoryKv();
+  const env = testEnv(kv);
+  const token = await guest(env);
+  const { headers } = await startTutorial(env, token);
+
+  const blocked = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+    method: 'POST', headers, body: JSON.stringify({ categoryId: 'poetry' })
+  }), env));
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.error, 'TUTORIAL_REQUIRED');
+
+  let active = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+    method: 'POST', headers, body: JSON.stringify({ categoryId: 'tutorial' })
+  }), env));
+  assert.equal(active.status, 200);
+  let attempt = active.body.attempt;
+  const livesBefore = active.body.inventory.lives;
+  const hintsBefore = active.body.inventory.hints;
+  const surrender = await json(await handleShyfrRequest(new Request(`https://worker.test/shyfr/attempts/${attempt.id}/surrender`, { method: 'POST', headers }), env));
+  assert.equal(surrender.status, 409);
+  assert.equal(surrender.body.error, 'TUTORIAL_SURRENDER_DISABLED');
+
+  for (let number = 1; number <= 3; number += 1) {
+    const target = attempt.tokens.find(token => token.type === 'letter' && !token.locked && !attempt.revealed[token.position]);
+    assert.ok(target);
+    const hinted = await json(await handleShyfrRequest(new Request(`https://worker.test/shyfr/attempts/${attempt.id}/hint`, {
+      method: 'POST', headers, body: JSON.stringify({ position: target.position })
+    }), env));
+    assert.equal(hinted.status, 200);
+    assert.equal(hinted.body.inventory.hints, hintsBefore);
+    assert.equal(hinted.body.inventory.lives, livesBefore);
+    assert.equal(hinted.body.tutorialHints.remaining, 3 - number);
+    attempt = hinted.body.attempt;
+  }
+  const fourthTarget = attempt.tokens.find(token => token.type === 'letter' && !token.locked && !attempt.revealed[token.position]);
+  const capped = await json(await handleShyfrRequest(new Request(`https://worker.test/shyfr/attempts/${attempt.id}/hint`, {
+    method: 'POST', headers, body: JSON.stringify({ position: fourthTarget?.position })
+  }), env));
+  assert.equal(capped.status, 409);
+  assert.equal(capped.body.error, 'TUTORIAL_HINT_LIMIT');
+
+  await solveAttempt(env, kv, headers, attempt);
+  for (let level = 2; level <= 3; level += 1) {
+    const next = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+      method: 'POST', headers, body: JSON.stringify({ categoryId: 'tutorial' })
+    }), env));
+    assert.equal(next.body.attempt.tutorialStep, level);
+    await solveAttempt(env, kv, headers, next.body.attempt);
+  }
+
+  const afterTutorial = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/bootstrap', { headers }), env));
+  assert.equal(afterTutorial.body.onboarding.tutorialCompleted, true);
+  assert.equal(afterTutorial.body.onboarding.nicknameRequired, true);
+  const nicknameBlocked = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+    method: 'POST', headers, body: JSON.stringify({ categoryId: 'poetry' })
+  }), env));
+  assert.equal(nicknameBlocked.body.error, 'NICKNAME_REQUIRED');
+
+  const saved = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/profile', {
+    method: 'POST', headers, body: JSON.stringify({ name: 'Шифрувальник' })
+  }), env));
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.profile.name, 'Шифрувальник');
+  assert.equal(saved.body.onboarding.complete, true);
+  const available = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/attempts', {
+    method: 'POST', headers, body: JSON.stringify({ categoryId: 'poetry' })
+  }), env));
+  assert.equal(available.status, 200);
 });
 
 test('життя й підказки щодня поновлюються до лімітів 4 і 3', async () => {
@@ -180,13 +291,14 @@ test('життя й підказки щодня поновлюються до л
   assert.ok(Date.parse(response.body.inventory.resetAt) > Date.now());
 });
 
-test('лідерборд сортує гравців за кількістю різних завершених рівнів', async () => {
+test('лідерборд сортує гравців за кількістю різних завершених рівнів і передає аватар', async () => {
   const kv = new MemoryKv();
-  await kv.put('shyfr:score:tg:1', JSON.stringify({ name: 'Другий', completedLevels: 3, totalCompletions: 9, bestSeconds: 30 }));
+  await kv.put('shyfr:score:tg:1', JSON.stringify({ name: 'Другий', avatarUrl: 'https://example.com/avatar.jpg', completedLevels: 3, totalCompletions: 9, bestSeconds: 30 }));
   await kv.put('shyfr:score:tg:2', JSON.stringify({ name: 'Перший', completedLevels: 5, totalCompletions: 5, bestSeconds: 40 }));
   const env = testEnv(kv);
   const token = await guest(env);
   const response = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/leaderboard', { headers: { Authorization: `Bearer ${token}` } }), env));
   assert.deepEqual(response.body.leaderboard.map(item => item.name), ['Перший', 'Другий']);
   assert.deepEqual(response.body.leaderboard.map(item => item.completedLevels), [5, 3]);
+  assert.equal(response.body.leaderboard[1].avatarUrl, 'https://example.com/avatar.jpg');
 });

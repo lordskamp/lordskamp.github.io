@@ -11,6 +11,7 @@ import {
   hasLevelAccess,
   hiddenRatioForLevel,
   isAttemptSolved,
+  levelSeed,
   lockedPositionsForAttempt,
   lockModeForLevel,
   nextUnknownPosition,
@@ -531,11 +532,14 @@ async function startAttempt(env, user, body, config) {
   const level = categoryLevels.find(item => !user.progress[item.id]);
   if (!level) return json({ error: 'CATEGORY_COMPLETED' }, 409);
   const id = crypto.randomUUID();
-  const seed = randomToken();
+  // A level has one deterministic cipher layout. Do not use an attempt UUID
+  // here: every player must receive the same initially revealed letters.
+  const seed = levelSeed(level);
   const substitution = createSubstitution(seed);
   const levelNumber = level.order;
-  const completedGameLevels = levels.filter(item => item.categoryId !== 'tutorial' && user.progress[item.id]).length;
-  const difficultyNumber = categoryId === 'tutorial' ? levelNumber : completedGameLevels + 1;
+  // Difficulty is tied to the level itself as well, otherwise the same level
+  // could expose a different set of letters for players with different progress.
+  const difficultyNumber = levelNumber;
   const revealed = createInitialRevealed({ text: level.text, substitution, levelNumber: difficultyNumber, seed });
   const difficulty = difficultyForLevel(difficultyNumber, letterCount(level.text));
   const lockRequirements = createLockRequirements({
