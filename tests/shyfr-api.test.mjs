@@ -34,6 +34,20 @@ async function json(response) {
   return { status: response.status, body: await response.json() };
 }
 
+function hex(buffer) {
+  return Buffer.from(buffer).toString('hex');
+}
+
+async function signedTelegramInitData(token, values) {
+  const params = new URLSearchParams(values);
+  const data = [...params.entries()].map(([key, value]) => `${key}=${value}`).sort().join('\n');
+  const encoder = new TextEncoder();
+  const secret = await crypto.subtle.sign('HMAC', await crypto.subtle.importKey('raw', encoder.encode('WebAppData'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']), encoder.encode(token));
+  const signingKey = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  params.set('hash', hex(await crypto.subtle.sign('HMAC', signingKey, encoder.encode(data))));
+  return params.toString();
+}
+
 async function guest(env) {
   const login = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/auth/browser', { method: 'POST' }), env));
   assert.equal(login.status, 200);
@@ -154,6 +168,27 @@ test('offline action log completes a level with one final Worker request', async
     method: 'POST', headers, body: JSON.stringify({ actions, playedSeconds: 42 })
   }), env));
   assert.equal(repeated.status, 409);
+});
+
+test('Telegram authentication uses a signed session without a KV session write', async () => {
+  const kv = new MemoryKv();
+  const env = { ...testEnv(kv), SHYFR_BOT_TOKEN: 'test-telegram-bot-token' };
+  const initData = await signedTelegramInitData(env.SHYFR_BOT_TOKEN, {
+    auth_date: String(Math.floor(Date.now() / 1000)),
+    query_id: 'test-query',
+    user: JSON.stringify({ id: 123456789, first_name: 'Тест' })
+  });
+  const login = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/auth/telegram', {
+    method: 'POST', headers: { Authorization: `tma ${initData}` }
+  }), env));
+  assert.equal(login.status, 200);
+  assert.match(login.body.sessionToken, /^t1\./u);
+  assert.equal([...kv.values.keys()].some(key => key.startsWith('shyfr:session:')), false);
+  const bootstrap = await json(await handleShyfrRequest(new Request('https://worker.test/shyfr/bootstrap', {
+    headers: { Authorization: `Bearer ${login.body.sessionToken}` }
+  }), env));
+  assert.equal(bootstrap.status, 200);
+  assert.equal(bootstrap.body.telegram, true);
 });
 
 test('a stale active attempt does not block opening its category', async () => {

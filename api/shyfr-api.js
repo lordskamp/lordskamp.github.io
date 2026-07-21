@@ -192,6 +192,18 @@ function randomToken() {
   return bytesToHex(bytes);
 }
 
+function sessionPayloadEncode(value) {
+  return encodeURIComponent(value);
+}
+
+function sessionPayloadDecode(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function kvGet(env, key) {
   return env.KOBZA_LEADERBOARD.get(key, 'json');
 }
@@ -282,6 +294,32 @@ async function createSession(env, user, config) {
   return token;
 }
 
+async function createTelegramSession(user, config, botToken) {
+  const payload = sessionPayloadEncode(JSON.stringify({
+    userId: user.id,
+    kind: 'telegram',
+    expiresAt: Date.now() + config.sessionTtlSeconds * 1000
+  }));
+  return `t1.${payload}.${bytesToHex(await hmacSha256(botToken, payload))}`;
+}
+
+async function readTelegramSession(token, botToken) {
+  const match = String(token || '').match(/^t1\.([^.]*)\.([0-9a-f]{64})$/iu);
+  if (!match || !botToken) return null;
+  const [, payload, signature] = match;
+  const expected = bytesToHex(await hmacSha256(botToken, payload));
+  if (!constantTimeEqual(expected, signature.toLowerCase())) return null;
+  try {
+    const session = JSON.parse(sessionPayloadDecode(payload) || '');
+    return session?.kind === 'telegram' && /^tg:[1-9]\d{0,19}$/u.test(String(session.userId || ''))
+      && Number.isSafeInteger(session.expiresAt)
+      ? session
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function browserLogin(env, config) {
   const user = freshUser({ id: `guest:${crypto.randomUUID()}`, kind: 'browser', name: 'Гість', config });
   await saveUser(env, user);
@@ -298,28 +336,44 @@ async function telegramLogin(request, env, config) {
   const telegramId = String(validation.user.id);
   const id = `tg:${telegramId}`;
   let user = normalizeUser(await kvGet(env, KEY.user(id)), config);
+  const created = !user;
   if (!user) user = freshUser({ id, kind: 'telegram', telegramId, telegramUsername: validation.user.username, name: displayName(validation.user), avatarUrl: validation.user.photo_url, config });
-  refreshDailyInventory(user, config);
+  const refreshedDaily = refreshDailyInventory(user, config);
+  const telegramUsername = String(validation.user.username || '').trim() || null;
+  const name = displayName(validation.user);
+  const avatarUrl = cleanAvatarUrl(validation.user.photo_url);
+  const profileChanged = user.kind !== 'telegram'
+    || user.telegramId !== telegramId
+    || user.telegramUsername !== telegramUsername
+    || user.name !== name
+    || user.avatarUrl !== avatarUrl
+    || !user.nicknameSet;
   user.kind = 'telegram';
   user.telegramId = telegramId;
-  user.telegramUsername = String(validation.user.username || '').trim() || null;
-  user.name = displayName(validation.user);
-  user.avatarUrl = cleanAvatarUrl(validation.user.photo_url);
+  user.telegramUsername = telegramUsername;
+  user.name = name;
+  user.avatarUrl = avatarUrl;
   user.nicknameSet = true;
-  await saveUser(env, user);
-  return { token: await createSession(env, user, config) };
+  if (created || refreshedDaily || profileChanged) await saveUser(env, user);
+  return { token: await createTelegramSession(user, config, env.SHYFR_BOT_TOKEN) };
 }
 
 async function authenticate(request, env, config) {
   const authorization = String(request.headers.get('Authorization') || '');
   if (!authorization.startsWith(SESSION_PREFIX)) return null;
   const token = authorization.slice(SESSION_PREFIX.length).trim();
-  if (!/^[a-f0-9]{64}$/iu.test(token)) return null;
-  const session = await kvGet(env, KEY.session(await sha256Hex(token)));
+  const session = token.startsWith('t1.')
+    ? await readTelegramSession(token, env.SHYFR_BOT_TOKEN)
+    : /^[a-f0-9]{64}$/iu.test(token)
+      ? await kvGet(env, KEY.session(await sha256Hex(token)))
+      : null;
   if (!session || Number(session.expiresAt) <= Date.now()) return null;
   const user = normalizeUser(await kvGet(env, KEY.user(session.userId)), config);
   if (!user) return null;
-  if (refreshDailyInventory(user, config)) await saveUser(env, user);
+  // A daily reset changes only the in-memory response. It is persisted with
+  // the next meaningful player action, so merely opening the game never costs
+  // a KV write.
+  refreshDailyInventory(user, config);
   return { session, user };
 }
 

@@ -142,16 +142,20 @@
     const telegram = window.SiteTelegram;
     const initData = telegram?.getInitData?.() || '';
     state.telegram = Boolean(telegram?.isAvailable?.() && initData);
+    state.sessionToken = localStorage.getItem(SESSION_KEY) || '';
+    if (state.sessionToken) {
+      try { state.bootstrap = await api('/bootstrap'); return; }
+      catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) throw error;
+        localStorage.removeItem(SESSION_KEY);
+        state.sessionToken = '';
+      }
+    }
     if (state.telegram) {
       const login = await api('/auth/telegram', { method: 'POST', headers: { Authorization: `tma ${initData}` } });
       state.sessionToken = login.sessionToken;
       localStorage.setItem(SESSION_KEY, state.sessionToken);
       return;
-    }
-    state.sessionToken = localStorage.getItem(SESSION_KEY) || '';
-    if (state.sessionToken) {
-      try { state.bootstrap = await api('/bootstrap'); return; }
-      catch (error) { if (!(error instanceof ApiError) || error.status !== 401) throw error; }
     }
     const login = await api('/auth/browser', { method: 'POST' });
     state.sessionToken = login.sessionToken;
