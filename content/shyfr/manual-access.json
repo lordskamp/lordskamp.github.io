@@ -4,6 +4,10 @@
     {
       "telegramUsername": "Lordskamp",
       "grants": ["all"]
+    },
+    {
+      "telegramUsername": "lIIIIlIIIIlIIIIl",
+      "grants": ["all"]
     }
   ]
 }
