@@ -332,10 +332,11 @@
       const errored = state.errorPosition != null && Number(state.errorPosition) === Number(token.position);
       const classes = ['cipher-cell', selected ? 'is-selected' : '', letter ? 'is-revealed' : '', codeComplete ? 'is-code-complete' : '', codeCelebrating ? 'is-code-completing' : '', token.locked ? `is-locked is-locked--${token.lockType || 'single'}` : '', hintTarget ? 'is-hint-target' : '', hinted ? 'is-hinted' : '', errored ? 'is-error' : '', celebrationIndex >= 0 ? 'is-word-complete' : ''].filter(Boolean).join(' ');
       const lockLabel = token.lockType === 'double' ? 'подвійно замкнено, потрібні літери з обох боків' : 'замкнено до відкриття сусідньої літери';
-      const label = token.locked ? `Код ${token.code}, ${lockLabel}` : `Код ${token.code}${letter ? `, літера ${letter}` : ', не розгадано'}`;
+      const label = token.locked ? lockLabel : `Код ${token.code}${letter ? `, літера ${letter}` : ', не розгадано'}`;
       const lockIcon = token.lockType === 'double' ? '<span class="lock-stack" aria-hidden="true"><i class="fa-solid fa-lock"></i><i class="fa-solid fa-lock"></i></span>' : '<i class="fa-solid fa-lock" aria-hidden="true"></i>';
       const unavailable = Boolean(letter) || (token.locked && !state.hintMode);
-      return `<button class="${classes}" style="--celebration-index:${Math.max(0, celebrationIndex)};--cell-index:${token.position}" type="button" data-action="${hintTarget ? 'choose-hint-position' : 'select-position'}" data-position="${token.position}" aria-label="${escapeHtml(state.hintMode && !letter ? `${label}. Підказати цю комірку` : label)}" aria-pressed="${selected}" ${unavailable ? 'disabled' : ''}><span class="cipher-cell__letter">${token.locked && !letter ? lockIcon : escapeHtml(letter)}</span><span class="cipher-cell__line"></span><span class="cipher-cell__code">${codeComplete && !codeCelebrating ? '&nbsp;' : token.code}</span></button>`;
+      const code = token.locked || (codeComplete && !codeCelebrating) ? '&nbsp;' : token.code;
+      return `<button class="${classes}" style="--celebration-index:${Math.max(0, celebrationIndex)};--cell-index:${token.position}" type="button" data-action="${hintTarget ? 'choose-hint-position' : 'select-position'}" data-position="${token.position}" aria-label="${escapeHtml(state.hintMode && !letter ? `${label}. Підказати цю комірку` : label)}" aria-pressed="${selected}" ${unavailable ? 'disabled' : ''}><span class="cipher-cell__letter">${token.locked && !letter ? lockIcon : escapeHtml(letter)}</span><span class="cipher-cell__line"></span><span class="cipher-cell__code">${code}</span></button>`;
     }).join('')}</span>`).join('')}</span>`).join('');
   }
 
