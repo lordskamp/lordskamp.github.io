@@ -1,63 +1,47 @@
 <!doctype html>
-<html lang="uk">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f3f4ed">
-  <meta name="description" content="Робочий довідник ділянки обпресування: інструмент, екструдери, Сікора та план зміни кольорів.">
-  <title>Обпресування · Робочий довідник</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script>
-  <script type="module" src="./app.js"></script>
-</head>
-<body>
-  <a class="skip-link" href="#main">До налаштувань</a>
-  <header class="topbar">
-    <a class="brand" href="./" aria-label="Обпресування — головна"><span class="brand-mark" aria-hidden="true">◎</span><span>ДІЛЯНКА <b>ОБПРЕСУВАННЯ</b></span></a>
-    <div class="top-actions"><span class="local-badge"><i></i> Робочий довідник</span><a href="../" class="site-link">На сайт ↗</a></div>
-  </header>
-  <main id="main" class="shell">
-    <section class="intro"><div><p class="eyebrow">РОБОЧИЙ ДОВІДНИК</p><h1>Налаштування обпресування</h1><p class="intro-copy">Значення для екрана, інструмент і зміна кольору.</p></div></section>
-    <nav class="tabs" aria-label="Розділи довідника">
-      <button type="button" data-view="setup" aria-current="page"><span>01</span> Налаштування</button>
-      <button type="button" data-view="plan"><span>02</span> План барабанів <b id="drum-count">3</b></button>
-      <button type="button" data-view="reference"><span>03</span> Джерела</button>
-    </nav>
-
-    <section id="view-setup" class="workspace">
-      <aside class="selection-panel panel">
-        <div class="section-heading"><h2>Параметри проводу</h2><span class="tiny-index">01</span></div>
-        <div class="primary-fields"><div><label for="cable">Марка проводу</label><select id="cable"></select></div>
-        <div><label for="section">Переріз жили <span>мм²</span></label><select id="section"></select></div></div>
-        <fieldset class="color-field"><legend>Колір ізоляції</legend><div id="colors" class="color-grid"></div></fieldset>
-        <div class="mobile-color"><label for="mobile-color">Колір ізоляції</label><select id="mobile-color"></select></div>
-        <div class="selection-summary" id="selection-summary"></div>
-        <button class="primary-button full" id="go-plan" type="button">Спланувати барабани <span>→</span></button>
-        <details class="edit-details"><summary>Режим та мої уточнення <span>＋</span></summary><div class="mode-control"><label for="mode">Режим екструдерів</label><select id="mode"><option value="auto">За рукописним записом</option><option value="dual">№1 + №2 · два шари</option><option value="single">Лише №1 · один шар</option></select><p class="field-hint" id="mode-note"></p></div><p class="field-hint">Уточнення для обраної марки, перерізу, кольору й режиму. Зберігаються лише в цьому браузері.</p><form id="edit-form"><div id="edit-fields" class="edit-grid"></div><p id="edit-error" class="error" role="alert"></p><button class="primary-button full" type="submit">Зберегти уточнення</button><button class="text-button full" id="reset-recipe" type="button">Повернути значення джерела</button></form></details>
-      </aside>
-      <div class="results-column" id="setup-results" aria-live="polite"></div>
+<html lang="uk"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
+  <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=2">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=2"></script>
+</head><body>
+  <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
+  <main>
+    <section id="view-setup" class="work-view">
+      <div class="pickers"><label>Провід<select id="cable"></select></label><label>Переріз, мм²<select id="section"></select></label><label class="color-picker">Колір<select id="color"></select></label></div>
+      <div id="values" aria-live="polite"></div>
+      <div class="actions"><button class="primary" id="open-plan" type="button">План барабанів</button><button class="secondary" id="open-splice" type="button">Вхідний закінчився · +30 м</button></div>
+      <p id="connection" class="quiet" role="status">Оновлюю таблицю…</p><details id="source-details" class="source-details"><summary>Фото запису та пояснення</summary><div id="source-content"></div></details>
     </section>
-
     <section id="view-plan" hidden>
-      <div class="plan-toolbar"><div><h2>Черга барабанів</h2><p id="plan-profile" class="muted"></p></div><div class="button-row"><button id="copy-plan" class="secondary-button" type="button">Копіювати план</button><button id="print-plan" class="secondary-button" type="button">Друк</button><button id="add-drum" class="primary-button" type="button">＋ Барабан</button></div></div>
-      <div class="note-banner"><strong>Лічильник кожного барабана — від нуля.</strong> Позначки зміни барвника орієнтовні. Після стравлювання перекидайте вручну, коли потрібний колір з’явиться у 4-му рядку ванни.</div>
-      <div id="drums" class="drum-list"></div>
-      <div class="plan-bottom">
-        <section class="panel rules-panel"><div class="section-heading"><h2>Поправки до плану</h2><span class="tag">Орієнтири</span></div><p class="field-hint">Відстані зміни барвника залежать від продуктивності. Змініть їх за фактичним досвідом.</p><div id="rule-fields" class="rule-grid"></div><p id="rule-error" class="error" role="alert"></p><p class="field-hint">Для однакового кольору та останнього барабана показана замовлена довжина без поправки на зміну кольору. +30 м додається окремо лише після закінчення вхідного барабана.</p></section>
-        <section class="panel splice-panel"><div class="section-heading"><h2>Закінчився вхідний барабан?</h2><span class="tiny-index">+30</span></div><p class="muted">Введіть поточне завдання довжини з екрана — поле, де на фото стоїть 15030.</p><label for="current-target">Поточне завдання на екрані, м</label><input id="current-target" inputmode="numeric" value="15000" autocomplete="off"><div class="splice-result"><span>Нове завдання</span><strong id="splice-result">15 030 <small>м</small></strong></div><p class="field-hint">Запас для скрутки. Запишіть показану екраном позначку пробою в картку відповідного барабана та перенесіть на ярлик.</p><a class="source-link" href="./Final.JPG" target="_blank" rel="noopener">Відкрити приклад ярлика ↗</a></section>
+      <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Барабани</h1></div><button class="primary" id="add-drum" type="button">＋ Додати</button></div>
+      <p id="plan-title" class="quiet"></p><div id="drums" class="drums"></div>
+      <div class="actions"><button class="secondary" id="copy-plan" type="button">Копіювати план</button><button class="secondary" id="print-plan" type="button">Друк</button></div>
+      <details class="extra"><summary>Поправки до довжини</summary><div id="rules" class="form-grid"></div><p class="quiet">Зміна барвника — приблизно. Відлік від нуля кожного барабана. Перекидання — за кольором у 4-му рядку ванни.</p></details>
+    </section>
+    <section id="view-table" hidden>
+      <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Таблиця налаштувань</h1></div><button class="secondary" id="refresh-table" type="button">Оновити</button></div>
+      <div class="table-toolbar"><label>Провід<select id="table-filter"></select></label><span id="table-count" class="quiet"></span><button class="back" id="export-table" type="button">Завантажити таблицю ↓</button></div>
+      <p id="table-status" class="quiet" role="status"></p><div class="table-scroll"><table><caption class="sr-only">Відомі налаштування обпресування</caption><thead><tr><th>Провід</th><th>мм²</th><th>Колір</th><th>№1</th><th>№2</th><th>Сікора<br>дріт, мм</th><th>Сікора<br>ізоляція, мм</th><th>Дорн<br>мм</th><th>Матриця<br>мм</th><th>Швидкість<br>м/хв</th><th>Запис</th></tr></thead><tbody id="table-body"></tbody></table></div>
+      <p class="quiet">«—» означає, що значення не записане. Натисни «Запис», щоб побачити фото, примітки й дату.</p>
+    </section>
+    <section id="view-admin" hidden>
+      <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Мої заміри</h1></div><span id="admin-who" class="quiet"></span></div>
+      <div id="admin-gate" class="card gate"><p id="admin-message">Перевіряю вхід…</p><a class="primary" href="https://t.me/obpresyvanya_bot?startapp=admin">Відкрити в Telegram</a><button class="back" id="retry-admin" type="button">Перевірити вхід ще раз</button></div>
+      <div id="admin-content" hidden>
+        <div class="admin-tabs"><button class="secondary" id="new-measurement" type="button">＋ Новий замір</button><button class="secondary" id="show-journal" type="button">Попередні заміри</button><button class="back" id="import-old" type="button" hidden>Мої старі уточнення</button></div>
+        <form id="measurement-form" class="card">
+          <div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label><label>Колір<select id="measure-color"></select></label><label>Працюють екструдери<select id="measure-mode"><option value="dual">№1 і №2</option><option value="single">Тільки №1</option><option value="unknown">Ще не знаю</option></select></label></div>
+          <p class="quiet">У формі — поточні значення. Зміни ті, які перевірив.</p><div class="form-grid" id="measurement-fields"></div>
+          <label class="note-label">Примітка<textarea id="measure-note" rows="2" maxlength="2000" placeholder="Наприклад: рівний колір, без пробоїв"></textarea></label>
+          <label class="check"><input type="checkbox" id="publish-measurement"> Застосувати ці значення в калькуляторі</label>
+          <p id="save-message" role="status" class="form-message"></p><button class="primary save" id="save-measurement" type="submit">Зберегти замір</button>
+        </form>
+        <div id="journal" hidden><div id="journal-list"></div><button class="secondary" id="more-journal" type="button" hidden>Ще записи</button></div>
       </div>
     </section>
-
-    <section id="view-reference" hidden>
-      <div class="reference-intro"><h2>Записи та інструкції</h2><p class="muted">Рукописні записи — основа довідника. Друковані карти — для ознайомлення. Порожні й неоднозначні значення не підставляються автоматично.</p></div>
-      <div class="reference-grid"><section class="panel"><h3>Рукописні таблиці</h3><div id="handwritten-sources" class="source-list"></div></section><section class="panel"><h3>Екран і ярлик</h3><a class="image-link" href="./Screen.JPG" target="_blank" rel="noopener"><img src="./Screen.JPG" loading="lazy" alt="Екран лінії обпресування з полями виробництва та довжини"><span>Головний екран лінії ↗</span></a><p class="field-hint">Для екструдерів потрібне поле «Производство». «Ручной» і сині фактичні показники — інші значення.</p><a class="source-link" href="./Final.JPG" target="_blank" rel="noopener">Технологічний ярлик · метрові позначки ↗</a></section></div>
-      <div class="reference-grid"><section class="panel"><h3>Правила зі зміни</h3><ul class="plain-list"><li>№1 — основа, зазвичай біла. Для жовто-зеленого — жовта.</li><li>№2 — верхній шар і його колір. Для жовто-зеленого — зелений.</li><li>За роботи одним екструдером барвник подається в №1.</li><li>Барвник №2 міняють приблизно за 2000 м, №1 — за 300 м. Це початкові орієнтири.</li><li>У ванні 150 м кабелю. Додаткові 1000 м відкладають автоматичне перекидання; це не замовлена довжина.</li><li>Після закінчення вхідного барабана: поточне завдання +30 м і запис позначки пробою.</li></ul></section><section class="panel"><h3>Як читати значення</h3><ul class="plain-list"><li>д — дорн; м — матриця; φ — переріз у мм².</li><li>1 / 2 — значення «Производство» екструдерів.</li><li>V / шв — максимальна швидкість із запису.</li><li>Сікора №1 — діаметр дроту; №2 — записане значення зовнішнього діаметра. «Матриця +0,15» показується поруч як приблизний орієнтир.</li><li>Оберти шнеків із друкованих карт не підставляються в «Производство».</li></ul></section></div>
-      <details class="panel printed-details"><summary>Друковані карти · 15 фото</summary><div id="printed-sources" class="source-list printed-grid"></div></details>
-    </section>
-    <footer><span>Обпресування <span class="footer-dot">/</span> робочі записи</span><span id="save-status">Зберігається на цьому пристрої</span></footer>
   </main>
-  <div id="toast" class="toast" role="status" hidden></div>
-  <noscript><p class="panel">Для розрахунків увімкніть JavaScript. <a href="./DRAW_3.JPG">Відкрити рукописну таблицю ВВГ</a>.</p></noscript>
-</body>
-</html>
+  <dialog id="record-dialog"><div class="dialog-head"><h2>Запис</h2><button class="close" type="button" data-close="record-dialog" aria-label="Закрити">×</button></div><div id="record-content"></div></dialog>
+  <dialog id="splice-dialog"><div class="dialog-head"><h2>Додати запас</h2><button class="close" type="button" data-close="splice-dialog" aria-label="Закрити">×</button></div><label>Зараз на екрані, м<input id="current-target" inputmode="numeric" autocomplete="off" value="15000"></label><div class="splice-number"><span>Постав на екрані</span><strong id="splice-result"></strong></div><p class="quiet">Позначку пробою з екрана запиши на ярлик.</p></dialog>
+  <div id="toast" class="toast" role="status" hidden></div><noscript>Увімкніть JavaScript, щоб обрати провід. <a href="./catalog.json">Таблиця даних</a>.</noscript>
+</body></html>

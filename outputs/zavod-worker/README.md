@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "zavod-data" generated at 2026-09-29T19:56:03.516Z.

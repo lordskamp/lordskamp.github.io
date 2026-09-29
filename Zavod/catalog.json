@@ -1,0 +1,958 @@
+{
+  "cables": [
+    {
+      "id": "vvgng-p",
+      "label": "ВВГнг-П",
+      "sections": [
+        1.5,
+        2.5
+      ],
+      "note": "Застосування таблиці ВВГ до ВВГнг-П підтверджено користувачем 29.09.2026."
+    },
+    {
+      "id": "vvg",
+      "label": "ВВГ",
+      "sections": [
+        1.5,
+        2.5
+      ]
+    },
+    {
+      "id": "pv1",
+      "label": "ПВ1 / H07V-U",
+      "sections": [
+        1,
+        1.5,
+        2.5,
+        4,
+        6
+      ]
+    },
+    {
+      "id": "pv3",
+      "label": "ПВ3",
+      "sections": [
+        0.5,
+        0.75,
+        1,
+        1.5,
+        2.5,
+        4,
+        6
+      ],
+      "note": "Для частини перерізів у записах є альтернативні режими, що потребують уточнення."
+    },
+    {
+      "id": "ysly",
+      "label": "YSLY",
+      "sections": [
+        0.5,
+        0.75,
+        1,
+        1.5,
+        2.5,
+        4,
+        6
+      ],
+      "note": "Спільна таблиця YSLY / (H)05VV-F у DRAW_4. Режим 1,5 мм² з окремого листа H05VV-F сюди не перенесено."
+    },
+    {
+      "id": "h05vv-f",
+      "label": "H05VV-F",
+      "sections": [
+        0.5,
+        0.75,
+        1,
+        1.5,
+        2.5,
+        4,
+        6
+      ],
+      "note": "DRAW_4; для 1,5 мм² — окремий запис DRAW_6."
+    },
+    {
+      "id": "pvs-shvvp",
+      "label": "ПВС / ШВВП",
+      "sections": [
+        0.5,
+        0.75,
+        1,
+        1.5,
+        2.5,
+        4,
+        6
+      ],
+      "note": "Рукописна таблиця IMG_3843. Незавершений рядок 6 мм² не використовується."
+    }
+  ],
+  "recipes": [
+    {
+      "id": "vvgng-p-1-5",
+      "cableId": "vvgng-p",
+      "section": 1.5,
+      "dorn": 1.4,
+      "matrix": 2.45,
+      "sikoraWire": 1.37,
+      "sikoraOuter": 2.6,
+      "extruder1": 140,
+      "extruder2": 195,
+      "maxSpeed": 800,
+      "mode": "dual",
+      "source": "DRAW_3.JPG",
+      "notes": [
+        "Максимальну швидкість 800 підтверджено користувачем 29.09.2026.",
+        "Режим ВВГ застосовано до ВВГнг-П за підтвердженням користувача від 29.09.2026."
+      ],
+      "uncertain": [],
+      "baseId": "vvgng-p-1-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "vvgng-p-2-5",
+      "cableId": "vvgng-p",
+      "section": 2.5,
+      "dorn": 1.8,
+      "matrix": 2.75,
+      "sikoraWire": 1.75,
+      "sikoraOuter": 2.88,
+      "extruder1": 104,
+      "extruder2": 152,
+      "maxSpeed": 550,
+      "mode": "dual",
+      "source": "DRAW_3.JPG",
+      "notes": [
+        "Біля швидкості є окрема приписка «675 Padana»; умову її застосування не пояснено.",
+        "Режим ВВГ застосовано до ВВГнг-П за підтвердженням користувача від 29.09.2026."
+      ],
+      "uncertain": [
+        "Додаткова швидкість «675 Padana»: не використовується як робоча установка до уточнення."
+      ],
+      "baseId": "vvgng-p-2-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "vvg-1-5",
+      "cableId": "vvg",
+      "section": 1.5,
+      "dorn": 1.4,
+      "matrix": 2.45,
+      "sikoraWire": 1.37,
+      "sikoraOuter": 2.6,
+      "extruder1": 140,
+      "extruder2": 195,
+      "maxSpeed": 800,
+      "mode": "dual",
+      "source": "DRAW_3.JPG",
+      "notes": [
+        "Максимальну швидкість 800 підтверджено користувачем 29.09.2026."
+      ],
+      "uncertain": [],
+      "baseId": "vvg-1-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "vvg-2-5",
+      "cableId": "vvg",
+      "section": 2.5,
+      "dorn": 1.8,
+      "matrix": 2.75,
+      "sikoraWire": 1.75,
+      "sikoraOuter": 2.88,
+      "extruder1": 104,
+      "extruder2": 152,
+      "maxSpeed": 550,
+      "mode": "dual",
+      "source": "DRAW_3.JPG",
+      "notes": [
+        "Біля швидкості є окрема приписка «675 Padana»; умову її застосування не пояснено."
+      ],
+      "uncertain": [
+        "Додаткова швидкість «675 Padana»: не використовується як робоча установка до уточнення."
+      ],
+      "baseId": "vvg-2-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv1-1",
+      "cableId": "pv1",
+      "section": 1,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_1.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "pv1-1",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv1-1-5",
+      "cableId": "pv1",
+      "section": 1.5,
+      "dorn": 1.45,
+      "matrix": 2.8,
+      "sikoraWire": 1.37,
+      "sikoraOuter": 2.85,
+      "extruder1": 75,
+      "extruder2": null,
+      "maxSpeed": 320,
+      "mode": "single",
+      "source": "DRAW_1.JPG",
+      "notes": [
+        "Роботу лише першим екструдером підтверджено користувачем 29.09.2026; колонка E2 у джерелі порожня."
+      ],
+      "uncertain": [],
+      "baseId": "pv1-1-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv1-2-5",
+      "cableId": "pv1",
+      "section": 2.5,
+      "dorn": 1.8,
+      "matrix": 3.4,
+      "sikoraWire": 1.75,
+      "sikoraOuter": 3.55,
+      "extruder1": 50,
+      "extruder2": null,
+      "maxSpeed": 150,
+      "mode": "single",
+      "source": "DRAW_1.JPG",
+      "notes": [
+        "Роботу лише першим екструдером підтверджено користувачем 29.09.2026; колонка E2 у джерелі порожня."
+      ],
+      "uncertain": [],
+      "baseId": "pv1-2-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv1-4",
+      "cableId": "pv1",
+      "section": 4,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_1.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "pv1-4",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv1-6",
+      "cableId": "pv1",
+      "section": 6,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_1.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "pv1-6",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv3-0-5",
+      "cableId": "pv3",
+      "section": 0.5,
+      "dorn": 0.95,
+      "matrix": 2.2,
+      "sikoraWire": 1.1,
+      "sikoraOuter": 2.25,
+      "extruder1": 58,
+      "extruder2": null,
+      "maxSpeed": 350,
+      "mode": "single",
+      "source": "DRAW_5.JPG",
+      "notes": [
+        "Дорн 0,95 у джерелі обведено/виправлено.",
+        "Перша Sikora 1,1 більша за записаний дорн 0,95. Значення збережено дослівно.",
+        "Роботу лише першим екструдером підтверджено користувачем 29.09.2026; колонка E2 у джерелі порожня."
+      ],
+      "uncertain": [
+        "Дорн і перша Sikora: необхідно звірити розбіжність 0,95 / 1,1."
+      ],
+      "baseId": "pv3-0-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv3-0-75",
+      "cableId": "pv3",
+      "section": 0.75,
+      "dorn": 1.25,
+      "matrix": 2.4,
+      "sikoraWire": 1.25,
+      "sikoraOuter": 2.5,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_5.JPG",
+      "notes": [
+        "Біля екструдера 1 записано 68 і нижче 57; поруч — «65 / 85». У швидкості — 350 і нижче 300."
+      ],
+      "uncertain": [
+        "Екструдери 1/2 і максимальна швидкість: зв’язок між альтернативними значеннями 68, 57, 65/85 та 350/300 не пояснено."
+      ],
+      "baseId": "pv3-0-75",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv3-1",
+      "cableId": "pv3",
+      "section": 1,
+      "dorn": 1.35,
+      "matrix": 2.2,
+      "sikoraWire": null,
+      "sikoraOuter": 2.5,
+      "extruder1": 50,
+      "extruder2": 130,
+      "maxSpeed": 300,
+      "mode": "dual",
+      "source": "DRAW_5.JPG",
+      "notes": [
+        "Перше значення Sikora переписано поверх попереднього запису."
+      ],
+      "uncertain": [
+        "Перша Sikora: виправлене число не читається достатньо надійно."
+      ],
+      "baseId": "pv3-1",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv3-1-5",
+      "cableId": "pv3",
+      "section": 1.5,
+      "dorn": 1.65,
+      "matrix": 3,
+      "sikoraWire": 1.5,
+      "sikoraOuter": 3.08,
+      "extruder1": 75,
+      "extruder2": null,
+      "maxSpeed": 275,
+      "mode": "single",
+      "source": "DRAW_5.JPG",
+      "notes": [
+        "Роботу лише першим екструдером підтверджено користувачем 29.09.2026; колонка E2 у джерелі порожня."
+      ],
+      "uncertain": [],
+      "baseId": "pv3-1-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv3-2-5",
+      "cableId": "pv3",
+      "section": 2.5,
+      "dorn": 2.15,
+      "matrix": 3.7,
+      "sikoraWire": 2,
+      "sikoraOuter": 3.83,
+      "extruder1": 80,
+      "extruder2": 100,
+      "maxSpeed": 210,
+      "mode": "dual",
+      "source": "DRAW_5.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "pv3-2-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv3-4",
+      "cableId": "pv3",
+      "section": 4,
+      "dorn": 2.65,
+      "matrix": 4.2,
+      "sikoraWire": 2.5,
+      "sikoraOuter": 4.35,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": 150,
+      "mode": "unknown",
+      "source": "DRAW_5.JPG",
+      "notes": [
+        "Дослівний запис екструдерів: «74 (64 / 80)»."
+      ],
+      "uncertain": [
+        "Екструдери 1/2 і режим роботи: потрібно пояснити вибір між 74 та парою 64/80."
+      ],
+      "baseId": "pv3-4",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pv3-6",
+      "cableId": "pv3",
+      "section": 6,
+      "dorn": 3.1,
+      "matrix": 4.7,
+      "sikoraWire": 3,
+      "sikoraOuter": 4.82,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_5.JPG",
+      "notes": [
+        "Дослівний запис екструдерів: «67 (64 / 84)»; у швидкості записано 120 і нижче 130."
+      ],
+      "uncertain": [
+        "Екструдери 1/2 і режим роботи: потрібно пояснити вибір між 67 та парою 64/84.",
+        "Максимальна швидкість: записані 120 та 130 без пояснення умов."
+      ],
+      "baseId": "pv3-6",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "ysly-0-5",
+      "cableId": "ysly",
+      "section": 0.5,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_4.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "ysly-0-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "ysly-0-75",
+      "cableId": "ysly",
+      "section": 0.75,
+      "dorn": 1.2,
+      "matrix": 1.9,
+      "sikoraWire": 1.1,
+      "sikoraOuter": 2.05,
+      "extruder1": 39,
+      "extruder2": 70,
+      "maxSpeed": 350,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "ysly-0-75",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "ysly-1",
+      "cableId": "ysly",
+      "section": 1,
+      "dorn": 1.35,
+      "matrix": 2.1,
+      "sikoraWire": 1.2,
+      "sikoraOuter": 2.12,
+      "extruder1": 38,
+      "extruder2": 95,
+      "maxSpeed": 425,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "ysly-1",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "ysly-2-5",
+      "cableId": "ysly",
+      "section": 2.5,
+      "dorn": 2.1,
+      "matrix": 3,
+      "sikoraWire": 2.1,
+      "sikoraOuter": 3.15,
+      "extruder1": 86,
+      "extruder2": 140,
+      "maxSpeed": 400,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "ysly-2-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "ysly-4",
+      "cableId": "ysly",
+      "section": 4,
+      "dorn": 2.6,
+      "matrix": 3.5,
+      "sikoraWire": 2.5,
+      "sikoraOuter": 3.68,
+      "extruder1": 66,
+      "extruder2": 100,
+      "maxSpeed": 250,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "ysly-4",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "ysly-6",
+      "cableId": "ysly",
+      "section": 6,
+      "dorn": 3.3,
+      "matrix": 4.25,
+      "sikoraWire": 3.05,
+      "sikoraOuter": 4.4,
+      "extruder1": 91,
+      "extruder2": 156,
+      "maxSpeed": 260,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "ysly-6",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "h05vv-f-0-5",
+      "cableId": "h05vv-f",
+      "section": 0.5,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_4.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "h05vv-f-0-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "h05vv-f-0-75",
+      "cableId": "h05vv-f",
+      "section": 0.75,
+      "dorn": 1.2,
+      "matrix": 1.9,
+      "sikoraWire": 1.1,
+      "sikoraOuter": 2.05,
+      "extruder1": 39,
+      "extruder2": 70,
+      "maxSpeed": 350,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "h05vv-f-0-75",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "h05vv-f-1",
+      "cableId": "h05vv-f",
+      "section": 1,
+      "dorn": 1.35,
+      "matrix": 2.1,
+      "sikoraWire": 1.2,
+      "sikoraOuter": 2.12,
+      "extruder1": 38,
+      "extruder2": 95,
+      "maxSpeed": 425,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "h05vv-f-1",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "h05vv-f-2-5",
+      "cableId": "h05vv-f",
+      "section": 2.5,
+      "dorn": 2.1,
+      "matrix": 3,
+      "sikoraWire": 2.1,
+      "sikoraOuter": 3.15,
+      "extruder1": 86,
+      "extruder2": 140,
+      "maxSpeed": 400,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "h05vv-f-2-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "h05vv-f-4",
+      "cableId": "h05vv-f",
+      "section": 4,
+      "dorn": 2.6,
+      "matrix": 3.5,
+      "sikoraWire": 2.5,
+      "sikoraOuter": 3.68,
+      "extruder1": 66,
+      "extruder2": 100,
+      "maxSpeed": 250,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "h05vv-f-4",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "h05vv-f-6",
+      "cableId": "h05vv-f",
+      "section": 6,
+      "dorn": 3.3,
+      "matrix": 4.25,
+      "sikoraWire": 3.05,
+      "sikoraOuter": 4.4,
+      "extruder1": 91,
+      "extruder2": 156,
+      "maxSpeed": 260,
+      "mode": "dual",
+      "source": "DRAW_4.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "h05vv-f-6",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "ysly-1-5",
+      "cableId": "ysly",
+      "section": 1.5,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "DRAW_4.JPG",
+      "notes": [
+        "Рядок YSLY 1,5 мм² порожній. Окремий запис H05VV-F із DRAW_6 не підтверджує цей режим для YSLY."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "ysly-1-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "h05vv-f-1-5",
+      "cableId": "h05vv-f",
+      "section": 1.5,
+      "dorn": 1.7,
+      "matrix": 2.8,
+      "sikoraWire": 1.5,
+      "sikoraOuter": 2.98,
+      "extruder1": 70,
+      "extruder2": 112,
+      "maxSpeed": 325,
+      "mode": "dual",
+      "source": "DRAW_6.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "h05vv-f-1-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pvs-shvvp-0-5",
+      "cableId": "pvs-shvvp",
+      "section": 0.5,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "IMG_3843.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "pvs-shvvp-0-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pvs-shvvp-0-75",
+      "cableId": "pvs-shvvp",
+      "section": 0.75,
+      "dorn": 1.2,
+      "matrix": 2,
+      "sikoraWire": 1.12,
+      "sikoraOuter": 2.1,
+      "extruder1": 60,
+      "extruder2": 100,
+      "maxSpeed": 550,
+      "mode": "dual",
+      "source": "IMG_3843.JPG",
+      "notes": [],
+      "uncertain": [],
+      "baseId": "pvs-shvvp-0-75",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pvs-shvvp-1",
+      "cableId": "pvs-shvvp",
+      "section": 1,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "IMG_3843.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "pvs-shvvp-1",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pvs-shvvp-1-5",
+      "cableId": "pvs-shvvp",
+      "section": 1.5,
+      "dorn": 1.65,
+      "matrix": 2.7,
+      "sikoraWire": 1.53,
+      "sikoraOuter": 2.8,
+      "extruder1": 81,
+      "extruder2": 118,
+      "maxSpeed": 400,
+      "mode": "dual",
+      "source": "IMG_3843.JPG",
+      "notes": [
+        "Під колонкою другого екструдера є запис «колір 2000» — орієнтир зміни кольору за 2000 м."
+      ],
+      "uncertain": [],
+      "colorLead2": 2000,
+      "baseId": "pvs-shvvp-1-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pvs-shvvp-2-5",
+      "cableId": "pvs-shvvp",
+      "section": 2.5,
+      "dorn": 2.1,
+      "matrix": 3.4,
+      "sikoraWire": 1.97,
+      "sikoraOuter": 3.55,
+      "extruder1": 78,
+      "extruder2": 100,
+      "maxSpeed": 240,
+      "mode": "dual",
+      "source": "IMG_3843.JPG",
+      "notes": [
+        "Під колонкою другого екструдера є запис «колір 1500» — орієнтир зміни кольору за 1500 м."
+      ],
+      "uncertain": [],
+      "colorLead2": 1500,
+      "baseId": "pvs-shvvp-2-5",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pvs-shvvp-4",
+      "cableId": "pvs-shvvp",
+      "section": 4,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "IMG_3843.JPG",
+      "notes": [
+        "Рядок у рукописній таблиці порожній."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "pvs-shvvp-4",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "pvs-shvvp-6",
+      "cableId": "pvs-shvvp",
+      "section": 6,
+      "dorn": null,
+      "matrix": null,
+      "sikoraWire": null,
+      "sikoraOuter": null,
+      "extruder1": null,
+      "extruder2": null,
+      "maxSpeed": null,
+      "mode": "unknown",
+      "source": "IMG_3843.JPG",
+      "notes": [
+        "Рядок незавершений і повторює окремі числа з 2,5 мм². Його значення не використовуються до уточнення."
+      ],
+      "uncertain": [
+        "Усі робочі значення: підтвердженого режиму для цього перерізу немає."
+      ],
+      "baseId": "pvs-shvvp-6",
+      "color": "all",
+      "origin": "handwritten",
+      "revision": 1,
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    }
+  ],
+  "updatedAt": "2026-09-29T00:00:00.000Z",
+  "source": "snapshot"
+}
