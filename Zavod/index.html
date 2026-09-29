@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f4ed">
+  <meta name="description" content="Робочий довідник ділянки обпресування: інструмент, екструдери, Сікора та план зміни кольорів.">
+  <title>Обпресування · Робочий довідник</title>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">До налаштувань</a>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Обпресування — головна"><span class="brand-mark" aria-hidden="true">◎</span><span>ДІЛЯНКА <b>ОБПРЕСУВАННЯ</b></span></a>
+    <div class="top-actions"><span class="local-badge"><i></i> Робочий довідник</span><a href="../" class="site-link">На сайт ↗</a></div>
+  </header>
+  <main id="main" class="shell">
+    <section class="intro"><div><p class="eyebrow">ВІД ЗАПИСУ — ДО НАЛАШТУВАННЯ</p><h1>Усе для наступного барабана.</h1><p class="intro-copy">Оберіть провід. Перевірте значення. Сплануйте зміну кольору.</p></div><div class="intro-index" aria-hidden="true"><span>01—02</span><small>ЕКСТРУДЕРИ / СІКОРА / ІНСТРУМЕНТ</small></div></section>
+    <nav class="tabs" aria-label="Розділи довідника">
+      <button type="button" data-view="setup" aria-current="page"><span>01</span> Налаштування</button>
+      <button type="button" data-view="plan"><span>02</span> План барабанів <b id="drum-count">3</b></button>
+      <button type="button" data-view="reference"><span>03</span> Джерела й нотатки</button>
+    </nav>
+
+    <section id="view-setup" class="workspace">
+      <aside class="selection-panel panel">
+        <div class="section-heading"><h2>Параметри проводу</h2><span class="tiny-index">01</span></div>
+        <label for="cable">Марка проводу</label><select id="cable"></select>
+        <label for="section">Переріз жили <span>мм²</span></label><select id="section"></select>
+        <fieldset class="color-field"><legend>Колір ізоляції</legend><div id="colors" class="color-grid"></div></fieldset>
+        <label for="mode">Режим екструдерів</label><select id="mode"><option value="auto">За рукописним записом</option><option value="dual">№1 + №2 · два шари</option><option value="single">Лише №1 · один шар</option></select>
+        <p class="field-hint" id="mode-note"></p>
+        <div class="selection-summary" id="selection-summary"></div>
+        <button class="primary-button full" id="go-plan" type="button">Спланувати барабани <span>→</span></button>
+        <details class="edit-details"><summary>Мої уточнення до рецепта <span>＋</span></summary><p class="field-hint">Для обраної марки, перерізу, кольору й режиму. Зберігаються лише в цьому браузері.</p><form id="edit-form"><div id="edit-fields" class="edit-grid"></div><p id="edit-error" class="error" role="alert"></p><button class="primary-button full" type="submit">Зберегти уточнення</button><button class="text-button full" id="reset-recipe" type="button">Повернути значення джерела</button></form></details>
+      </aside>
+      <div class="results-column" id="setup-results" aria-live="polite"></div>
+    </section>
+
+    <section id="view-plan" hidden>
+      <div class="plan-toolbar"><div><h2>Черга барабанів</h2><p id="plan-profile" class="muted"></p></div><div class="button-row"><button id="copy-plan" class="secondary-button" type="button">Копіювати план</button><button id="print-plan" class="secondary-button" type="button">Друк</button><button id="add-drum" class="primary-button" type="button">＋ Барабан</button></div></div>
+      <div class="note-banner"><strong>Лічильник кожного барабана — від нуля.</strong> Позначки зміни барвника орієнтовні. Після стравлювання перекидайте вручну, коли потрібний колір з’явиться у 4-му рядку ванни.</div>
+      <div id="drums" class="drum-list"></div>
+      <div class="plan-bottom">
+        <section class="panel rules-panel"><div class="section-heading"><h2>Поправки до плану</h2><span class="tag">Орієнтири</span></div><p class="field-hint">Відстані зміни барвника залежать від продуктивності. Змініть їх за фактичним досвідом.</p><div id="rule-fields" class="rule-grid"></div><p id="rule-error" class="error" role="alert"></p><p class="field-hint">Для однакового кольору та останнього барабана показана замовлена довжина без поправки на зміну кольору. +30 м додається окремо лише після закінчення вхідного барабана.</p></section>
+        <section class="panel splice-panel"><div class="section-heading"><h2>Закінчився вхідний барабан?</h2><span class="tiny-index">+30</span></div><p class="muted">Введіть поточне завдання довжини з екрана — поле, де на фото стоїть 15030.</p><label for="current-target">Поточне завдання на екрані, м</label><input id="current-target" inputmode="numeric" value="15000" autocomplete="off"><div class="splice-result"><span>Нове завдання</span><strong id="splice-result">15 030 <small>м</small></strong></div><p class="field-hint">Запас для скрутки. Запишіть показану екраном позначку пробою в картку відповідного барабана та перенесіть на ярлик.</p><a class="source-link" href="./Final.JPG" target="_blank" rel="noopener">Відкрити приклад ярлика ↗</a></section>
+      </div>
+    </section>
+
+    <section id="view-reference" hidden>
+      <div class="reference-intro"><p class="eyebrow">ДОСВІД ДІЛЯНКИ</p><h2>Джерело є в кожного числа.</h2><p class="muted">Рукописні записи — основа довідника. Друковані карти зібрані окремо для ознайомлення. Порожні й неоднозначні значення не підставляються автоматично.</p></div>
+      <div class="reference-grid"><section class="panel"><h3>Рукописні таблиці</h3><div id="handwritten-sources" class="source-list"></div></section><section class="panel"><h3>Екран і ярлик</h3><a class="image-link" href="./Screen.JPG" target="_blank" rel="noopener"><img src="./Screen.JPG" loading="lazy" alt="Екран лінії обпресування з полями виробництва та довжини"><span>Головний екран лінії ↗</span></a><p class="field-hint">Для екструдерів потрібне поле «Производство». «Ручной» і сині фактичні показники — інші значення.</p><a class="source-link" href="./Final.JPG" target="_blank" rel="noopener">Технологічний ярлик · метрові позначки ↗</a></section></div>
+      <div class="reference-grid"><section class="panel"><h3>Правила зі зміни</h3><ul class="plain-list"><li>№1 — основа, зазвичай біла. Для жовто-зеленого — жовта.</li><li>№2 — верхній шар і його колір. Для жовто-зеленого — зелений.</li><li>За роботи одним екструдером барвник подається в №1.</li><li>Барвник №2 міняють приблизно за 2000 м, №1 — за 300 м. Це початкові орієнтири.</li><li>У ванні 150 м кабелю. Додаткові 1000 м відкладають автоматичне перекидання; це не замовлена довжина.</li><li>Після закінчення вхідного барабана: поточне завдання +30 м і запис позначки пробою.</li></ul></section><section class="panel"><h3>Як читати значення</h3><ul class="plain-list"><li>д — дорн; м — матриця; φ — переріз у мм².</li><li>1 / 2 — значення «Производство» екструдерів.</li><li>V / шв — максимальна швидкість із запису.</li><li>Сікора №1 — діаметр дроту; №2 — записане значення зовнішнього діаметра. «Матриця +0,15» показується поруч як приблизний орієнтир.</li><li>Оберти шнеків із друкованих карт не підставляються в «Производство».</li></ul></section></div>
+      <details class="panel printed-details"><summary>Друковані карти · 15 фото</summary><div id="printed-sources" class="source-list printed-grid"></div></details>
+    </section>
+    <footer><span>Обпресування <span class="footer-dot">/</span> робочі записи</span><span id="save-status">Зберігається на цьому пристрої</span></footer>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <noscript><p class="panel">Для розрахунків увімкніть JavaScript. <a href="./DRAW_3.JPG">Відкрити рукописну таблицю ВВГ</a>.</p></noscript>
+</body>
+</html>
