@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/shyfr-content.mjs validate",
-    "lint": "eslint api/shyfr-*.js shyfr/*.js scripts/*.mjs tests/*.mjs eslint.config.js",
-    "typecheck": "node --check api/shyfr-api.js && node --check api/shyfr-content.js && node --check api/shyfr-core.js && node --check api/kobza-leaderboard-worker.js && node --check shyfr/shyfr.js && node --check telegram-mini-app.js",
+    "lint": "eslint api/shyfr-*.js shyfr/*.js Zavod/*.js scripts/*.mjs tests/*.mjs eslint.config.js",
+    "typecheck": "node --check api/shyfr-api.js && node --check api/shyfr-content.js && node --check api/shyfr-core.js && node --check api/kobza-leaderboard-worker.js && node --check shyfr/shyfr.js && node --check telegram-mini-app.js && node --check Zavod/app.js && node --check Zavod/core.js && node --check Zavod/data.js && node --check Zavod/telegram.js",
     "test": "node --test tests/*.test.mjs",
     "validate:shyfr-content": "node scripts/shyfr-content.mjs validate",
     "build:shyfr-private-kv": "node scripts/shyfr-content.mjs private-kv",

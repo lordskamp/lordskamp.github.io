@@ -21,6 +21,14 @@ export default [
   },
   js.configs.recommended,
   {
+    files: ['Zavod/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...sharedGlobals, window: 'readonly', document: 'readonly', navigator: 'readonly', localStorage: 'readonly', FormData: 'readonly' }
+    }
+  },
+  {
     files: ['api/*.js', 'scripts/*.mjs', 'tests/*.mjs', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',

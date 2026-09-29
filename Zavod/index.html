@@ -18,24 +18,23 @@
     <div class="top-actions"><span class="local-badge"><i></i> Робочий довідник</span><a href="../" class="site-link">На сайт ↗</a></div>
   </header>
   <main id="main" class="shell">
-    <section class="intro"><div><p class="eyebrow">ВІД ЗАПИСУ — ДО НАЛАШТУВАННЯ</p><h1>Усе для наступного барабана.</h1><p class="intro-copy">Оберіть провід. Перевірте значення. Сплануйте зміну кольору.</p></div><div class="intro-index" aria-hidden="true"><span>01—02</span><small>ЕКСТРУДЕРИ / СІКОРА / ІНСТРУМЕНТ</small></div></section>
+    <section class="intro"><div><p class="eyebrow">РОБОЧИЙ ДОВІДНИК</p><h1>Налаштування обпресування</h1><p class="intro-copy">Значення для екрана, інструмент і зміна кольору.</p></div></section>
     <nav class="tabs" aria-label="Розділи довідника">
       <button type="button" data-view="setup" aria-current="page"><span>01</span> Налаштування</button>
       <button type="button" data-view="plan"><span>02</span> План барабанів <b id="drum-count">3</b></button>
-      <button type="button" data-view="reference"><span>03</span> Джерела й нотатки</button>
+      <button type="button" data-view="reference"><span>03</span> Джерела</button>
     </nav>
 
     <section id="view-setup" class="workspace">
       <aside class="selection-panel panel">
         <div class="section-heading"><h2>Параметри проводу</h2><span class="tiny-index">01</span></div>
-        <label for="cable">Марка проводу</label><select id="cable"></select>
-        <label for="section">Переріз жили <span>мм²</span></label><select id="section"></select>
+        <div class="primary-fields"><div><label for="cable">Марка проводу</label><select id="cable"></select></div>
+        <div><label for="section">Переріз жили <span>мм²</span></label><select id="section"></select></div></div>
         <fieldset class="color-field"><legend>Колір ізоляції</legend><div id="colors" class="color-grid"></div></fieldset>
-        <label for="mode">Режим екструдерів</label><select id="mode"><option value="auto">За рукописним записом</option><option value="dual">№1 + №2 · два шари</option><option value="single">Лише №1 · один шар</option></select>
-        <p class="field-hint" id="mode-note"></p>
+        <div class="mobile-color"><label for="mobile-color">Колір ізоляції</label><select id="mobile-color"></select></div>
         <div class="selection-summary" id="selection-summary"></div>
         <button class="primary-button full" id="go-plan" type="button">Спланувати барабани <span>→</span></button>
-        <details class="edit-details"><summary>Мої уточнення до рецепта <span>＋</span></summary><p class="field-hint">Для обраної марки, перерізу, кольору й режиму. Зберігаються лише в цьому браузері.</p><form id="edit-form"><div id="edit-fields" class="edit-grid"></div><p id="edit-error" class="error" role="alert"></p><button class="primary-button full" type="submit">Зберегти уточнення</button><button class="text-button full" id="reset-recipe" type="button">Повернути значення джерела</button></form></details>
+        <details class="edit-details"><summary>Режим та мої уточнення <span>＋</span></summary><div class="mode-control"><label for="mode">Режим екструдерів</label><select id="mode"><option value="auto">За рукописним записом</option><option value="dual">№1 + №2 · два шари</option><option value="single">Лише №1 · один шар</option></select><p class="field-hint" id="mode-note"></p></div><p class="field-hint">Уточнення для обраної марки, перерізу, кольору й режиму. Зберігаються лише в цьому браузері.</p><form id="edit-form"><div id="edit-fields" class="edit-grid"></div><p id="edit-error" class="error" role="alert"></p><button class="primary-button full" type="submit">Зберегти уточнення</button><button class="text-button full" id="reset-recipe" type="button">Повернути значення джерела</button></form></details>
       </aside>
       <div class="results-column" id="setup-results" aria-live="polite"></div>
     </section>
@@ -51,7 +50,7 @@
     </section>
 
     <section id="view-reference" hidden>
-      <div class="reference-intro"><p class="eyebrow">ДОСВІД ДІЛЯНКИ</p><h2>Джерело є в кожного числа.</h2><p class="muted">Рукописні записи — основа довідника. Друковані карти зібрані окремо для ознайомлення. Порожні й неоднозначні значення не підставляються автоматично.</p></div>
+      <div class="reference-intro"><h2>Записи та інструкції</h2><p class="muted">Рукописні записи — основа довідника. Друковані карти — для ознайомлення. Порожні й неоднозначні значення не підставляються автоматично.</p></div>
       <div class="reference-grid"><section class="panel"><h3>Рукописні таблиці</h3><div id="handwritten-sources" class="source-list"></div></section><section class="panel"><h3>Екран і ярлик</h3><a class="image-link" href="./Screen.JPG" target="_blank" rel="noopener"><img src="./Screen.JPG" loading="lazy" alt="Екран лінії обпресування з полями виробництва та довжини"><span>Головний екран лінії ↗</span></a><p class="field-hint">Для екструдерів потрібне поле «Производство». «Ручной» і сині фактичні показники — інші значення.</p><a class="source-link" href="./Final.JPG" target="_blank" rel="noopener">Технологічний ярлик · метрові позначки ↗</a></section></div>
       <div class="reference-grid"><section class="panel"><h3>Правила зі зміни</h3><ul class="plain-list"><li>№1 — основа, зазвичай біла. Для жовто-зеленого — жовта.</li><li>№2 — верхній шар і його колір. Для жовто-зеленого — зелений.</li><li>За роботи одним екструдером барвник подається в №1.</li><li>Барвник №2 міняють приблизно за 2000 м, №1 — за 300 м. Це початкові орієнтири.</li><li>У ванні 150 м кабелю. Додаткові 1000 м відкладають автоматичне перекидання; це не замовлена довжина.</li><li>Після закінчення вхідного барабана: поточне завдання +30 м і запис позначки пробою.</li></ul></section><section class="panel"><h3>Як читати значення</h3><ul class="plain-list"><li>д — дорн; м — матриця; φ — переріз у мм².</li><li>1 / 2 — значення «Производство» екструдерів.</li><li>V / шв — максимальна швидкість із запису.</li><li>Сікора №1 — діаметр дроту; №2 — записане значення зовнішнього діаметра. «Матриця +0,15» показується поруч як приблизний орієнтир.</li><li>Оберти шнеків із друкованих карт не підставляються в «Производство».</li></ul></section></div>
       <details class="panel printed-details"><summary>Друковані карти · 15 фото</summary><div id="printed-sources" class="source-list printed-grid"></div></details>
