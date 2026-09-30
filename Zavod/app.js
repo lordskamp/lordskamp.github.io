@@ -1,9 +1,9 @@
-import { CABLES, RECIPES } from './data.js';
+import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, practicalFor } from './catalog-base.js';
 import { COLORS, DEFAULT_RULES, number, fmt, outerEstimate, colorName, dyePlan, planDrum, spliceTarget, parseBreakdowns } from './core.js';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
-import { FIELDS, cachedCatalog, loadCatalog, findRecipe, api, csv } from './store.js?v=5';
-import { referenceFor } from './reference-data.js?v=5';
-import { trialRpm, additionalRpm, handwrittenAlternatives } from './rpm.js';
+import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=6';
+import { setupFor, tableSetups, VALUE_LABELS } from './setup-data.js';
+import { handwrittenAlternatives } from './rpm.js';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -12,18 +12,18 @@ const DRAFT = 'zavod-measurement-draft-v1';
 const RULES = [['bath', 'У ванні, м'], ['reserve', 'Запас до перекидання, м'], ['lead2', 'Барвник №2 — за, м'], ['lead1', 'Барвник №1 — за, м'], ['splice', 'Запас для скрутки, м']];
 const read = key => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
 const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; } };
-const cableLabel = id => CABLES.find(row => row.id === id)?.label ?? id;
-const colorLabel = id => id === 'all' ? 'Усі кольори' : colorName(id);
+const cableLabel = id => optionFor(id)?.label ?? id;
+const colorLabel = id => id === 'all' ? '' : colorName(id);
 const date = value => value ? new Date(value).toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }) : '';
 const cableOptions = () => CABLES.map(row => `<option value="${row.id}">${esc(row.label)}</option>`).join('');
-const colorOptions = (selected, all = false) => (all ? '<option value="all">Усі кольори</option>' : '') + COLORS.map(row => `<option value="${row.id}" ${row.id === selected ? 'selected' : ''}>${esc(row.label)}</option>`).join('');
+const colorOptions = selected => COLORS.map(row => `<option value="${row.id}" ${row.id === selected ? 'selected' : ''}>${esc(row.label)}</option>`).join('');
 const sectionOptions = id => CABLES.find(row => row.id === id).sections.map(value => `<option value="${value}">${fmt(value)}</option>`).join('');
 
 function restore() {
-  const state = { version: 1, cableId: 'vvgng-p', section: 1.5, color: 'blue', rules: { ...DEFAULT_RULES }, overrides: {}, currentTarget: '15000', drums: ['blue', 'brown', 'yellow-green'].map((color, i) => ({ id: `drum-${i}`, color, length: '15000', name: '', breakdowns: '' })) };
+  const state = { version: 1, cableId: optionFor('vvgng-p').id, section: 1.5, color: 'blue', rules: { ...DEFAULT_RULES }, overrides: {}, currentTarget: '15000', drums: ['blue', 'brown', 'yellow-green'].map((color, i) => ({ id: `drum-${i}`, color, length: '15000', name: '', breakdowns: '' })) };
   const saved = read(STORAGE);
   if (saved?.version !== 1) return state;
-  const cable = CABLES.find(row => row.id === saved.cableId);
+  const cable = optionFor(saved.cableId);
   if (cable) { state.cableId = cable.id; state.section = cable.sections.includes(saved.section) ? saved.section : cable.sections[0]; }
   if (COLORS.some(row => row.id === saved.color)) state.color = saved.color;
   for (const [key] of RULES) if (Number.isInteger(number(saved.rules?.[key])) && number(saved.rules[key]) >= 0) state.rules[key] = number(saved.rules[key]);
@@ -35,13 +35,19 @@ function restore() {
 }
 const state = restore();
 let catalog = cachedCatalog();
-let view = 'setup', toastTimer, syncing = false, authorized = false, authenticating = false, trialSpeed = '';
+let view = 'setup', toastTimer, syncing = false, authorized = false, authenticating = false;
 let formReady = false, expectedRevision = 0, pendingSave = null, journal = [], nextJournal = null, busy = false;
-const recipe = (color = state.color) => findRecipe(catalog, state.cableId, state.section, color);
+const setup = () => setupFor(state.cableId, state.section, catalog);
+const recipe = () => {
+  const result = setup();
+  return { ...result.stored, ...result.effective, mode: result.mode, maxSpeed: result.effective.workingSpeed, optionId: result.option.id };
+};
+const display = value => typeof value === 'string' && number(value) === null ? esc(value) : fmt(value);
 const persist = () => { if (!write(STORAGE, state)) toast('План не зберігся на пристрої. Скопіюй його перед закриттям.'); };
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4500); }
 
 function showView(next) {
+  if (next === 'table' && view === 'setup') $('table-filter').value = state.cableId;
   view = next;
   for (const name of ['setup', 'plan', 'table', 'admin']) $('view-' + name).hidden = next !== name;
   document.querySelectorAll('[data-view]').forEach(button => button.toggleAttribute('data-active', button.dataset.view === next));
@@ -60,42 +66,34 @@ function renderSelectors() {
 }
 function renderSetup() {
   document.documentElement.dataset.wireColor = state.color;
-  const r = recipe();
+  const info = setup(), r = recipe();
   $('open-splice').textContent = `Вхідний закінчився · +${fmt(state.rules.splice)} м`;
   const dyes = dyePlan(state.color, r.mode);
-  const value = key => `<strong>${fmt(r[key])}</strong>`;
-  const more = extruder => {
-    const forecast = extruder === 2 && r.mode === 'single' ? '' : `<p class="rpm-forecast">Прогноз: <b id="forecast-rpm${extruder}">—</b></p>`;
-    const extra = additionalRpm(r, extruder).map(item => `<p>${esc(item.label)}: <b title="${esc(item.source)}">${fmt(item.value)}</b></p>`).join('');
-    return forecast || extra ? `<div class="rpm-more">${forecast}${extra}</div>` : '';
+  const value = key => `<strong>${display(info.effective[key])}</strong><small class="value-kind">${VALUE_LABELS[info.sources[key]] ?? 'Ще не визначено'}</small>`;
+  const rpm = key => {
+    const values = ['practical', 'reference', 'forecast'].filter(source => info[source][key] != null);
+    if (!values.length) return '<strong>—</strong><small class="value-kind">Ще не визначено</small>';
+    return values.map(source => source === info.sources[key] ? `<strong>${display(info[source][key])}</strong><small class="value-kind">${VALUE_LABELS[source]}</small>` : `<p class="rpm-extra">${VALUE_LABELS[source]}: <b>${display(info[source][key])}</b></p>`).join('');
   };
-  const alternatives = handwrittenAlternatives(r);
-  const missing = ['extruder1', 'sikoraWire', 'sikoraOuter', 'dorn', 'matrix', 'maxSpeed', ...(r.mode === 'single' ? [] : ['extruder2'])].some(key => r[key] == null);
-  $('values').innerHTML = `<section class="production"><h1>Оберти шнека <span>об/хв</span></h1><div class="pair"><div><span>Екструдер №1</span>${value('extruder1')}<small>${esc(dyes?.first)}</small>${more(1)}</div><div><span>Екструдер №2</span>${r.mode === 'single' ? '<strong class="off">Вимк.</strong>' : value('extruder2')}<small>${esc(dyes?.second)}</small>${more(2)}</div></div><label class="trial-speed"><span>Швидкість для прогнозу, <span class="unit">м/хв</span></span><input id="trial-speed" type="text" inputmode="decimal" autocomplete="off" value="${esc(trialSpeed)}" aria-describedby="forecast-help"></label><p id="forecast-help" class="rpm-help" role="status"></p>${alternatives ? `<p class="rpm-alternatives">Інші рукописні: ${esc(alternatives)}. Режими ще не уточнені.</p>` : ''}</section>
-    <section class="card readings"><h2>Сікора <small>мм</small></h2><div class="pair"><div><span>1 · Дріт</span>${value('sikoraWire')}</div><div><span>2 · Ізоляція</span>${value('sikoraOuter')}</div></div><p class="reference">Матриця + 0,15 ≈ ${fmt(outerEstimate(r.matrix))} <span>· орієнтир</span></p></section>
+  const alternatives = handwrittenAlternatives({ cableId: info.option.practicalCableId, section: state.section });
+  const pair = info.ambiguousPv3 && info.stored.extruder1 != null ? `${fmt(info.stored.extruder1)} / ${fmt(info.stored.extruder2)}${info.stored.maxSpeed != null ? `; ${fmt(info.stored.maxSpeed)} м/хв` : ''}` : alternatives ? `${alternatives}${state.section === .75 ? '; 350 / 300 м/хв' : state.section === 6 ? '; 120 / 130 м/хв' : info.stored.maxSpeed != null ? `; ${fmt(info.stored.maxSpeed)} м/хв` : ''}` : null;
+  const speeds = info.stages;
+  $('values').innerHTML = `<section class="production"><h1>Оберти шнека <span>об/хв</span></h1><div class="pair extruders"><div class="extruder ${dyes?.first === 'Біла основа' ? 'base-white' : dyes?.first === 'Жовтий' ? 'base-yellow' : ''}"><span>Екструдер №1</span>${rpm('extruder1')}<small class="dye">${esc(dyes?.first)}</small></div><div class="extruder"><span>Екструдер №2</span>${r.mode === 'single' ? '<strong class="off">Вимк.</strong><small class="value-kind">Один екструдер</small>' : rpm('extruder2')}<small class="dye">${esc(dyes?.second)}</small></div></div>${pair ? `<p class="rpm-alternatives">Практичні варіанти: ${esc(pair)}. Режим не уточнений.</p>` : ''}${info.forecast.reason && info.effective.extruder1 == null ? '<p class="rpm-help">Прогнозу ще немає — потрібен практичний замір.</p>' : ''}</section>
+    <section class="card readings"><h2>Сікора <small>мм</small></h2><div class="pair"><div><span>1 · Дріт</span>${info.effective.sikoraWire == null && info.row.wireNom != null ? `<strong>${fmt(info.row.wireNom)}</strong><small class="value-kind">Довідкові · номінальний</small>` : value('sikoraWire')}</div><div><span>2 · Ізоляція</span>${value('sikoraOuter')}</div></div><p class="reference">Матриця + 0,15 ≈ ${fmt(outerEstimate(r.matrix))} <span>· орієнтир</span></p></section>
     <section class="card tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн</span>${value('dorn')}</div><div><img src="./MATRIX.svg" alt=""><span>Матриця</span>${value('matrix')}</div><small>мм</small></section>
-    <div class="speed-row"><span>Макс. швидкість</span><div>${value('maxSpeed')} <span>м/хв</span></div></div>
-    ${missing || !dyes?.valid ? `<p class="notice">${r.mode === 'unknown' ? 'Режим ще не уточнений. ' : ''}${!dyes?.valid && r.mode !== 'unknown' ? esc(dyes.note) : missing ? '«—» — значення ще треба уточнити.' : ''}</p>` : ''}
-    ${r.cableId === 'pv3' && r.mode === 'dual' && r.origin !== 'measurement' ? '<p class="notice">Пара №1/№2 — з рукопису. Для якого кольору вона потрібна, ще не уточнено.</p>' : ''}`;
+    <section class="card speeds"><h2>Швидкості <small>м/хв</small></h2><div class="speed-stages"><div><span>1 · Запуск</span><strong>${fmt(speeds.first)}</strong><small>Задана</small></div><div><span>2 · Розгін</span><strong>${fmt(speeds.second)}</strong><small>½ робочої</small></div><div><span>3 · Робоча</span><strong>${fmt(speeds.working)}</strong><small>${VALUE_LABELS[speeds.source] ?? 'Ще не визначено'}</small></div></div>${['practical','reference','forecast'].filter(source => info[source].workingSpeed != null && source !== speeds.source).map(source => `<p class="speed-extra">${VALUE_LABELS[source]}: <b>${fmt(info[source].workingSpeed)}</b> м/хв</p>`).join('')}</section>
+    ${Object.values(info.sources).includes('forecast') ? '<p class="quiet forecast-note">Прогнозовані значення ще не перевірені на лінії.</p>' : ''}
+    ${!dyes?.valid ? `<p class="notice">${esc(dyes?.note)}</p>` : ''}`;
   $('source-content').innerHTML = sourceContent(r);
-  renderForecast();
-}
-function renderForecast() {
-  const result = trialRpm(recipe(), trialSpeed, state.color);
-  for (const [extruder, key] of [[1, 'first'], [2, 'second']]) {
-    const target = $('forecast-rpm' + extruder);
-    if (target) target.textContent = result[key] == null ? '—' : '≈ ' + fmt(result[key], 1);
-  }
-  $('forecast-help').textContent = trialSpeed.trim() ? result.message : 'Орієнтир для проби за незмінних умов.';
 }
 function sourceContent(r) {
   const original = RECIPES.find(row => row.id === (r.baseId || r.id));
-  const references = referenceFor(r.cableId);
-  return `<p>${r.origin === 'measurement' ? 'Власний замір' : 'Рукописний запис'} · ${esc(date(r.updatedAt))}</p><p><a class="source-link" href="./${esc(r.source)}">Відкрити фото ${esc(r.source)}</a></p>
-    ${[...(r.notes || []), ...(r.uncertain || [])].map(note => `<p>${esc(note)}</p>`).join('')}
+  const info = setupFor(r.optionId || optionFor(r.cableId)?.id || state.cableId, r.section, catalog), references = [info.card];
+  return `<p>Довідкові · <a class="source-link" href="./${esc(info.card.source)}">Фото</a></p>${Object.values(info.practical).some(value=>value!=null) ? `<p>Практичні · ${esc(date(r.updatedAt))} · ${info.practicalSources.map(source => `<a class="source-link" href="./${esc(source)}">Фото запису</a>`).join(' · ')}</p>` : '<p>Практичні значення ще не визначено.</p>'}
+    ${[...(r.notes || []), ...(r.uncertain || [])].map(note => `<p>${esc(note.replace(/максимальна швидкість/gi, 'робоча швидкість'))}</p>`).join('')}
     ${r.cableId === 'pv3' ? '<p>ПВ3: один екструдер — основний режим за уточненням оператора. Пари значень у записі можуть стосуватися жовто-зеленого кольору; це ще не підтверджено.</p>' : ''}
     ${r.origin === 'measurement' && original ? `<details><summary>Початковий рукописний запис</summary>${numbersList(original)}${[...original.notes, ...original.uncertain].map(note => `<p>${esc(note)}</p>`).join('')}</details>` : ''}
-    <details><summary>Примітки до довідкових карт</summary>${references.map(card => `<p><b>${esc(card.label)}</b> · <a href="./${esc(card.source)}">Фото</a></p>${card.notes.map(note => `<p>${esc(note)}</p>`).join('')}`).join('')}</details>`;
+    ${info.forecast.method ? `<p>Прогнозовані: ${info.forecast.method === 'interpolation' ? 'за сусідніми практичними перерізами' : 'за найближчим практичним режимом'}${info.forecast.rpmMethod === 'insulation-volume' ? ', з урахуванням площі ізоляції' : ''}.</p>` : ''}<details><summary>Примітки до довідкових карт</summary>${references.map(card => `<p><b>${esc(info.option.label)}</b> · <a href="./${esc(card.source)}">Фото</a></p>${card.notes.map(note => `<p>${esc(note)}</p>`).join('')}`).join('')}</details>`;
 }
 async function syncCatalog(notify = false) {
   if (syncing) return;
@@ -116,15 +114,17 @@ async function syncCatalog(notify = false) {
 
 function renderTable() {
   const filter = $('table-filter').value;
-  const rows = catalog.recipes.filter(row => !filter || row.cableId === filter).sort((a, b) => CABLES.findIndex(c => c.id === a.cableId) - CABLES.findIndex(c => c.id === b.cableId) || a.section - b.section || a.color.localeCompare(b.color));
-  $('table-count').textContent = `Рядків: ${rows.length}`;
-  $('table-body').innerHTML = rows.map(row => `<tr><th scope="row">${esc(cableLabel(row.cableId))}</th><td>${fmt(row.section)}</td><td>${esc(colorLabel(row.color))}</td><td>${fmt(row.extruder1)}</td><td>${row.mode === 'single' ? 'Вимк.' : fmt(row.extruder2)}</td>${['sikoraWire', 'sikoraOuter', 'dorn', 'matrix', 'maxSpeed'].map(key => `<td>${fmt(row[key])}</td>`).join('')}<td><button type="button" class="back" data-record="${esc(row.id)}">${row.origin === 'measurement' ? 'Замір' : 'Запис'} ↗</button></td></tr>`).join('');
+  const rows = tableSetups(catalog, filter);
+  $('table-count').textContent = `Перерізів: ${rows.length}`;
+  $('table-body').innerHTML = rows.flatMap(info => ['practical','reference','forecast'].map((source,i) => {
+    const values = info[source], speed = number(values.workingSpeed);
+    return `<tr class="table-${source}">${i===0 ? `<th scope="rowgroup" rowspan="3">${esc(info.option.label)}</th><td rowspan="3">${fmt(info.row.section)}</td>` : ''}<th scope="row">${VALUE_LABELS[source]}</th><td>${display(values.extruder1)}</td><td>${source !== 'reference' && info.mode === 'single' ? 'Вимк.' : display(values.extruder2)}</td>${['sikoraWire','sikoraOuter','dorn','matrix'].map(key=>`<td>${display(values[key])}</td>`).join('')}<td>20</td><td>${fmt(speed === null ? null : Math.round(speed/2))}</td><td>${fmt(speed)}</td>${i===0 ? `<td rowspan="3"><button type="button" class="back" data-record="${esc(info.option.id)}|${info.row.section}">Фото ↗</button></td>` : ''}</tr>`;
+  })).join('');
 }
 function numbersList(row) { return `<dl class="numbers-list">${FIELDS.map(([key, label]) => `<div><dt>${esc(label)}</dt><dd>${key === 'extruder2' && row.mode === 'single' ? 'Вимк.' : fmt(row[key])}</dd></div>`).join('')}</dl>`; }
 function openRecord(id) {
-  const row = catalog.recipes.find(r => r.id === id);
-  if (!row) return;
-  $('record-content').innerHTML = `<p><b>${esc(cableLabel(row.cableId))} ${fmt(row.section)} мм² · ${esc(colorLabel(row.color))}</b></p>${sourceContent(row)}${authorized ? `<div class="actions"><button class="primary" type="button" data-edit="${esc(id)}">Записати новий замір</button><button class="secondary" type="button" data-history="${esc(id)}">Історія змін</button></div><div id="record-history"></div>` : ''}`;
+  const [optionId,section] = id.split('|'), info = setupFor(optionId,Number(section),catalog), row = { ...info.stored, optionId };
+  $('record-content').innerHTML = `<p><b>${esc(info.option.label)} ${fmt(row.section)} мм²</b></p>${sourceContent(row)}${authorized ? `<div class="actions"><button class="primary" type="button" data-edit="${esc(info.base.id)}" data-option="${esc(info.option.id)}">Записати новий замір</button><button class="secondary" type="button" data-history="${esc(info.base.id)}">Історія змін</button></div><div id="record-history"></div>` : ''}`;
   $('record-dialog').showModal();
 }
 
@@ -153,7 +153,9 @@ async function copyPlan() {
   const lines = [`${cableLabel(state.cableId)} ${fmt(state.section)} мм²`];
   state.drums.forEach((drum, i) => {
     const result = drumResult(drum, i), r = recipe(drum.color);
-    lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${fmt(r.extruder1)}, №2 ${r.mode === 'single' ? 'вимк.' : fmt(r.extruder2)} об/хв. Сікора ${fmt(r.sikoraWire)} / ${fmt(r.sikoraOuter)}. Дорн ${fmt(r.dorn)}, матриця ${fmt(r.matrix)}. Макс. ${fmt(r.maxSpeed)} м/хв.`, `На екрані: ${fmt(result.target)} м.`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
+    const info = setup();
+    const labeled = key => `${display(info.effective[key])} (${VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;
+    lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв. Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}. Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — 20, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `На екрані: ${fmt(result.target)} м.`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
     if (result.transition) lines.push('Стравити та перекинути вручну за потрібним кольором у 4-му рядку ванни.');
     if (drum.breakdowns) lines.push('Пробої: ' + drum.breakdowns);
   });
@@ -179,33 +181,33 @@ async function enterAdmin() {
   } catch (error) { $('admin-message').textContent = error.message; }
   finally { authenticating = false; }
 }
-function selectedBase() { return RECIPES.find(row => row.cableId === $('measure-cable').value && row.section === Number($('measure-section').value)); }
+function selectedBase() { return baseFor($('measure-cable').value, Number($('measure-section').value)); }
 function exactRevision(baseId, color) { return catalog.recipes.find(row => row.baseId === baseId && row.color === color)?.revision ?? 0; }
-function newMeasurement(row = recipe()) { fillMeasurement({ ...row, color: row.color === 'all' ? state.color : row.color, note: '' }); }
+function newMeasurement(row = setup().stored) { fillMeasurement({ ...row, optionId: state.cableId, color: 'all', note: '' }); }
 function fillMeasurement(row, revision) {
   const base = RECIPES.find(r => r.id === row.baseId || r.id === row.id);
   if (!base) return;
   $('measurement-form').hidden = false; $('journal').hidden = true;
-  $('measure-cable').innerHTML = cableOptions(); $('measure-cable').value = base.cableId;
-  $('measure-section').innerHTML = sectionOptions(base.cableId); $('measure-section').value = String(base.section);
-  $('measure-color').innerHTML = colorOptions(row.color, true); $('measure-color').value = row.color;
+  const option = row.optionId ? optionFor(row.optionId) : optionFor(base.cableId);
+  $('measure-cable').innerHTML = cableOptions(); $('measure-cable').value = option.id;
+  $('measure-section').innerHTML = sectionOptions(option.id); $('measure-section').value = String(base.section);
+  $('measure-color').value = 'all';
   $('measure-mode').value = row.mode;
   $('measurement-fields').innerHTML = FIELDS.map(([key, label]) => `<label>${esc(label)}<input name="${key}" inputmode="decimal" autocomplete="off" value="${row[key] == null ? '' : esc(row[key])}" placeholder="Не записано" maxlength="12" ${key === 'extruder2' && row.mode === 'single' ? 'disabled' : ''}></label>`).join('');
   $('measure-note').value = row.note || '';
   $('publish-measurement').checked = false;
-  expectedRevision = revision ?? exactRevision(base.id, row.color);
+  expectedRevision = revision ?? exactRevision(base.id, 'all');
   pendingSave = null; formReady = true; $('save-message').textContent = '';
 }
 function formValues() {
-  const values = { baseId: selectedBase().id, color: $('measure-color').value, mode: $('measure-mode').value, note: $('measure-note').value };
+  const values = { baseId: selectedBase().id, optionId: $('measure-cable').value, color: 'all', mode: $('measure-mode').value, note: $('measure-note').value };
   for (const [key] of FIELDS) values[key] = $('measurement-form').elements.namedItem(key).value;
   return values;
 }
 function saveDraft() { if (formReady) write(DRAFT, { ...formValues(), expectedRevision, pendingSave }); }
 function loadSelectedMeasurement() {
-  const base = selectedBase(), color = $('measure-color').value;
-  const row = findRecipe(catalog, base.cableId, base.section, color);
-  fillMeasurement({ ...row, color, note: '' }); saveDraft();
+  const row = practicalFor($('measure-cable').value, Number($('measure-section').value), catalog);
+  fillMeasurement({ ...row, optionId: $('measure-cable').value, color: 'all', note: '' }); saveDraft();
 }
 async function saveMeasurement(event) {
   event.preventDefault();
@@ -251,7 +253,7 @@ async function showJournal(more = false) {
   try {
     const result = await api('/admin/measurements' + (more && nextJournal ? '?before=' + encodeURIComponent(nextJournal) : ''), { admin: true });
     journal.push(...result.measurements); nextJournal = result.next;
-    $('journal-list').innerHTML = journal.length ? journal.map(row => `<article class="card journal-entry"><h2>${esc(cableLabel(row.cableId))} ${fmt(row.section)} · ${esc(colorLabel(row.color))}</h2><p class="quiet">${esc(date(row.createdAt))}</p>${row.note ? `<p>${esc(row.note)}</p>` : ''}<details><summary>Значення</summary>${numbersList(row)}</details><button class="back" type="button" data-reuse="${esc(row.id)}">Взяти за основу нового заміру →</button></article>`).join('') : '<p class="card">Поки немає замірів. Натисни «Новий замір».</p>';
+    $('journal-list').innerHTML = journal.length ? journal.map(row => `<article class="card journal-entry"><h2>${esc(cableLabel(row.optionId || row.cableId))} ${fmt(row.section)}${row.color === 'all' ? '' : ' · ' + esc(colorLabel(row.color))}</h2><p class="quiet">${esc(date(row.createdAt))}</p>${row.note ? `<p>${esc(row.note)}</p>` : ''}<details><summary>Значення</summary>${numbersList(row)}</details><button class="back" type="button" data-reuse="${esc(row.id)}">Взяти за основу нового заміру →</button></article>`).join('') : '<p class="card">Поки немає замірів. Натисни «Новий замір».</p>';
     $('more-journal').hidden = !nextJournal;
   } catch (error) { if (!more) $('journal-list').textContent = error.message; else toast(error.message); }
   finally { $('more-journal').disabled = false; }
@@ -276,7 +278,7 @@ document.addEventListener('click', event => {
   if (target.dataset.close) $(target.dataset.close).close();
   if (target.classList.contains('source-link')) { event.preventDefault(); openSource(target.href); }
   if (target.dataset.record) openRecord(target.dataset.record);
-  if (target.dataset.edit) { const row = catalog.recipes.find(r => r.id === target.dataset.edit); $('record-dialog').close(); showView('admin'); fillMeasurement({ ...row, note: '' }); }
+  if (target.dataset.edit) { const row = catalog.recipes.find(r => r.id === target.dataset.edit) ?? RECIPES.find(r => r.id === target.dataset.edit); $('record-dialog').close(); showView('admin'); fillMeasurement({ ...row, optionId: target.dataset.option, note: '' }); }
   if (target.dataset.history) void showHistory(target.dataset.history);
   if (target.dataset.reuse) { fillMeasurement(journal.find(row => row.id === target.dataset.reuse)); saveDraft(); }
   if (target.dataset.old) {
@@ -290,7 +292,7 @@ for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change',
   if (id === 'cable') { state.cableId = $('cable').value; if (!CABLES.find(c => c.id === state.cableId).sections.includes(state.section)) state.section = CABLES.find(c => c.id === state.cableId).sections[0]; }
   if (id === 'section') state.section = Number($('section').value);
   if (id === 'color') state.color = $('color').value;
-  trialSpeed = ''; persist(); renderSelectors(); renderSetup(); haptic();
+  persist(); renderSelectors(); renderSetup(); haptic();
 });
 $('open-plan').addEventListener('click', () => showView('plan'));
 $('open-splice').addEventListener('click', () => { $('current-target').value = state.currentTarget; renderSplice(); $('splice-dialog').showModal(); });
@@ -300,23 +302,21 @@ $('drums').addEventListener('input', event => { const card = event.target.closes
 $('drums').addEventListener('click', event => { const button = event.target.closest('[data-action]'); if (!button) return; const i = state.drums.findIndex(d => d.id === button.closest('[data-drum]').dataset.drum); if (button.dataset.action === 'remove' && state.drums.length > 1) state.drums.splice(i, 1); else { const j = i + (button.dataset.action === 'up' ? -1 : 1); if (j >= 0 && j < state.drums.length) [state.drums[i], state.drums[j]] = [state.drums[j], state.drums[i]]; } persist(); renderPlan(); });
 $('rules').addEventListener('input', event => { if (!event.target.dataset.rule) return; state.rules[event.target.dataset.rule] = event.target.value; persist(); renderOutputs(); });
 $('copy-plan').addEventListener('click', () => void copyPlan()); $('print-plan').addEventListener('click', () => window.print());
-$('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions();
+$('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions(); $('table-filter').value = state.cableId;
 $('table-filter').addEventListener('change', renderTable); $('refresh-table').addEventListener('click', () => void syncCatalog(true));
-$('export-table').addEventListener('click', () => { const url = URL.createObjectURL(new Blob([csv(catalog)], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = 'Обпресування.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000); });
 $('retry-admin').addEventListener('click', () => void enterAdmin());
 $('new-measurement').addEventListener('click', () => {
   if (busy) return;
   if (formReady) {
-    const base = selectedBase(), color = $('measure-color').value;
-    fillMeasurement({ ...findRecipe(catalog, base.cableId, base.section, color), color, note: '' });
+    const optionId = $('measure-cable').value, section = Number($('measure-section').value);
+    fillMeasurement({ ...practicalFor(optionId, section, catalog), optionId, color: 'all', note: '' });
   } else newMeasurement();
   saveDraft();
 });
 $('show-journal').addEventListener('click', () => { saveDraft(); void showJournal(); }); $('more-journal').addEventListener('click', () => void showJournal(true));
 $('import-old').addEventListener('click', importOld);
 $('measure-cable').addEventListener('change', () => { $('measure-section').innerHTML = sectionOptions($('measure-cable').value); loadSelectedMeasurement(); });
-for (const id of ['measure-section', 'measure-color']) $(id).addEventListener('change', loadSelectedMeasurement);
-$('values').addEventListener('input', event => { if (event.target.id === 'trial-speed') { trialSpeed = event.target.value; renderForecast(); } });
+$('measure-section').addEventListener('change', loadSelectedMeasurement);
 $('measure-mode').addEventListener('change', () => { for (const key of ['extruder1', 'extruder2', 'maxSpeed']) $('measurement-form').elements.namedItem(key).value = ''; $('measurement-form').elements.namedItem('extruder2').disabled = $('measure-mode').value === 'single'; $('save-message').textContent = 'Режим змінено. Вкажи оберти й швидкість для нього.'; saveDraft(); });
 $('measurement-form').addEventListener('input', saveDraft); $('measurement-form').addEventListener('submit', event => void saveMeasurement(event));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void syncCatalog(); });

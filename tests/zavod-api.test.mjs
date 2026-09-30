@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createHmac, randomUUID } from 'node:crypto';
 import worker, { verifyTelegram } from '../api/zavod-worker.js';
 import { baseline, findRecipe, csv } from '../Zavod/store.js';
+import { CATALOG_OPTIONS, baseFor } from '../Zavod/catalog-base.js';
 
 const TOKEN = 'test-bot-secret-only';
 const owner = { id: 100, username: 'Lordskamp' };
@@ -102,6 +103,26 @@ test('Partial measurements keep absent values null; unknown mode cannot be appli
   for (const overrides of [{ matrix: -1 }, { extruder1: '140' }, { sikoraWire: 1500 }, { color: 'missing' }, { baseId: 'missing' }, { note: 'a'.repeat(2001) }]) assert.equal((await call('/admin/measurements', authenticated(measurement(overrides)))).status, 400);
   const single = await call('/admin/measurements', authenticated(measurement({ mode: 'single', extruder2: 160 })));
   assert.equal(single.data.measurement.extruder2, null);
+});
+
+test('a cable present only in the printed catalogue can receive its first owner measurement', async t => {
+  const { call, db } = fixture(); t.after(() => db.close());
+  const option = CATALOG_OPTIONS.find(row => row.brand === 'ПВ5');
+  const base = baseFor(option.id, .5);
+  const draft = measurement({ baseId: base.id, optionId: option.id, color: 'all', mode: 'single', extruder1: 60, extruder2: null, maxSpeed: 300 });
+  const saved = await call('/admin/measurements', authenticated(draft));
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.measurement.optionId, option.id);
+  const result = await call('/admin/recipes/' + base.id, authenticated({ measurementId: draft.id, expectedRevision: 0 }, 'PUT'));
+  assert.equal(result.status, 200);
+  assert.equal(result.data.recipe.cableId, option.id);
+  assert.equal(result.data.recipe.origin, 'measurement');
+  assert.equal(result.data.recipe.source, 'IMG_3850.JPG');
+  const catalogue = (await call('/catalog')).data;
+  assert.equal(catalogue.recipes.find(row => row.id === base.id).extruder1, 60);
+  assert(catalogue.cables.some(row => row.id === option.id));
+  assert.equal((await call('/admin/measurements', authenticated(measurement({ baseId: option.id + '-invalid' })))).status, 400);
+  assert.equal((await call('/admin/measurements', authenticated(measurement({ optionId: option.id })))).status, 400);
 });
 test('Journal pagination never skips records with identical timestamps', async t => {
   const { call, db } = fixture(); t.after(() => db.close());

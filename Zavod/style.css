@@ -8,8 +8,9 @@
 /* Wire colours also set the page, controls and production panel. */
 .production h1{display:flex;justify-content:space-between;align-items:center;gap:12px}.production h1>span{font-size:13px}
 .unit{white-space:nowrap}
-.rpm-more{border-top:1px solid color-mix(in srgb,var(--wire-ink) 25%,transparent);margin-top:12px;padding-top:8px;font-size:13px}.rpm-more p{margin:4px 0}.rpm-more b{font-size:15px;font-variant-numeric:tabular-nums}.rpm-forecast{font-weight:500}
-.trial-speed{display:grid;grid-template-columns:1fr 110px;align-items:center;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--wire-ink) 25%,transparent);font-size:13px}.trial-speed input{min-height:42px;padding:8px 10px;color:var(--ink);font-size:17px;font-variant-numeric:tabular-nums}.rpm-help,.rpm-alternatives{font-size:12px;line-height:1.45;margin-top:8px;opacity:.9}
+.value-kind{font-size:11px;letter-spacing:0;font-weight:500;color:var(--muted)}.production .value-kind{color:inherit;opacity:.8}.rpm-extra{font-size:12px;margin-top:8px}.rpm-extra b{font-size:17px}.dye{margin-top:8px}.rpm-help,.rpm-alternatives{font-size:12px;line-height:1.45;margin-top:10px;opacity:.9}
+.production .extruders{gap:8px}.extruders .extruder{padding:12px;border-radius:10px}.extruders .extruder+div{padding-left:12px;border:0}.extruders .base-white{background:#fff;color:#24322c}.extruders .base-yellow{background:#efda48;color:#303216}.extruders .base-white .value-kind,.extruders .base-yellow .value-kind{color:inherit}.extruders strong{font-size:44px}.extruders .dye{font-size:12px}
+.readings .value-kind{margin-top:2px}.speeds h2{display:flex;justify-content:space-between;margin-bottom:12px}.speeds h2 small{color:var(--muted);font-weight:400}.speed-stages{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.speed-stages>div{display:flex;flex-direction:column}.speed-stages span{font-size:12px}.speed-stages strong{font-size:29px;font-variant-numeric:tabular-nums}.speed-stages small{font-size:11px;color:var(--muted)}.speed-extra{font-size:12px;color:var(--muted);margin-top:8px}.forecast-note{margin-bottom:12px}.table-practical th[scope="row"]{color:#285c3d}.table-forecast th[scope="row"]{color:#86651d}.table-reference th[scope="row"]{color:#566c7e}
 :root{--wire:#245f41;--wire-ink:#fff;--wire-soft:#e9efe5;--wire-bg:#f4f5ef;--wire-link:#22583e}
 :root[data-wire-color="blue"]{--wire:#1759a6;--wire-bg:#edf4fc;--wire-soft:#dceafd;--wire-link:#164e94}
 :root[data-wire-color="brown"]{--wire:#714329;--wire-bg:#f6eee8;--wire-soft:#ecddd2;--wire-link:#70412b}
@@ -28,7 +29,7 @@
 :root[data-wire-color="yellow-green"] .production{background:linear-gradient(110deg,#efda48 0%,#efda48 47%,#9acc93 53%,#9acc93 100%)}
 :root[data-wire-color="yellow-green"] .primary{background:linear-gradient(110deg,#efda48,#9acc93)}
 .tool-row>div{grid-template-columns:66px 1fr;column-gap:10px}
-.tool-row img{width:66px;height:100px}
+.tool-row img{width:66px;height:100px;grid-row:span 3}
 .tool-row strong{font-size:28px}
 :root[data-telegram-theme="dark"][data-wire-color]{--bg:color-mix(in srgb,var(--wire) 16%,#181c21);--soft:color-mix(in srgb,var(--wire) 22%,#232b30);--green:color-mix(in srgb,var(--wire-link) 35%,#fff)}
 @media(max-width:500px){.tool-row{gap:8px}.tool-row>div{grid-template-columns:56px 1fr;column-gap:7px}.tool-row img{width:56px;height:90px}.tool-row strong{font-size:26px}.tool-row>small{font-size:12px}}

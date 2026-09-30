@@ -1,4 +1,4 @@
-import { CABLES, RECIPES } from '../Zavod/data.js';
+import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor } from '../Zavod/catalog-base.js';
 import { COLORS } from '../Zavod/core.js';
 
 const NUMERIC = ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'extruder1', 'extruder2', 'maxSpeed', 'colorLead2'];
@@ -82,6 +82,11 @@ export function validateMeasurement(input) {
   if (!['single', 'dual', 'unknown'].includes(input.mode)) fail(400, 'Оберіть режим екструдерів.');
   if (typeof input.note !== 'string' || input.note.length > 2000) fail(400, 'Примітка має містити до 2000 символів.');
   const result = { id: input.id, baseId: base.id, cableId: base.cableId, section: base.section, color: input.color, mode: input.mode, note: input.note.trim() };
+  if (input.optionId !== undefined) {
+    const option = CABLES.find(option => option.id === input.optionId);
+    if (!option || baseFor(option.id, base.section)?.id !== base.id) fail(400, 'Замір належить іншій марці або карті.');
+    result.optionId = optionFor(option.id).id;
+  }
   for (const field of NUMERIC) {
     const value = input[field];
     if (value === null || value === undefined || value === '') { result[field] = null; continue; }

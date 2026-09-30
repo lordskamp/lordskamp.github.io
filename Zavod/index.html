@@ -2,8 +2,8 @@
 <html lang="uk"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=5">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=5"></script>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=6">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=6"></script>
 </head><body>
   <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
@@ -21,10 +21,9 @@
     </section>
     <section id="view-table" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Таблиця налаштувань</h1></div><button class="secondary" id="refresh-table" type="button">Оновити</button></div>
-      <div class="table-toolbar"><label>Провід<select id="table-filter"></select></label><span id="table-count" class="quiet"></span><button class="back" id="export-table" type="button">Завантажити таблицю ↓</button></div>
-      <p id="table-status" class="quiet" role="status"></p><div class="table-scroll"><table><caption class="sr-only">Відомі налаштування обпресування</caption><thead><tr><th>Провід</th><th>мм²</th><th>Колір</th><th>№1<br>об/хв</th><th>№2<br>об/хв</th><th>Сікора<br>дріт, мм</th><th>Сікора<br>ізоляція, мм</th><th>Дорн<br>мм</th><th>Матриця<br>мм</th><th>Швидкість<br>м/хв</th><th>Запис</th></tr></thead><tbody id="table-body"></tbody></table></div>
-      <p class="quiet">«—» означає, що значення не записане. Натисни «Запис», щоб побачити фото, примітки й дату.</p>
-      <details class="extra"><summary>Таблиця для нового чату ChatGPT</summary><p class="quiet">Довідкові й рукописні дані з усіх фото. Поля прогнозу порожні.</p><div class="actions"><a class="secondary" href="../outputs/zavod-comparison-20260930/zavod-comparison.xlsx" download>Excel ↓</a><a class="secondary" href="./downloads/zavod-comparison.md" download>Текстова таблиця ↓</a><a class="secondary" href="./downloads/prompt.md" download>Промпт ↓</a></div></details>
+      <div class="table-toolbar"><label>Провід<select id="table-filter"></select></label><span id="table-count" class="quiet"></span></div>
+      <p id="table-status" class="quiet" role="status"></p><div class="table-scroll"><table><caption class="sr-only">Налаштування обпресування за довідкою, практикою та прогнозом</caption><thead><tr><th>Провід</th><th>мм²</th><th>Значення</th><th>№1<br>об/хв</th><th>№2<br>об/хв</th><th>Сікора<br>дріт, мм</th><th>Сікора<br>ізоляція, мм</th><th>Дорн<br>мм</th><th>Матриця<br>мм</th><th>1 · Запуск<br>м/хв</th><th>2 · Розгін<br>м/хв</th><th>Робоча<br>м/хв</th><th>Джерела</th></tr></thead><tbody id="table-body"></tbody></table></div>
+      <p class="quiet">«—» означає, що значення ще не визначене. Натисни «Фото», щоб побачити джерела й примітки.</p>
     </section>
     <section id="view-admin" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Мої заміри</h1></div><span id="admin-who" class="quiet"></span></div>
@@ -32,8 +31,8 @@
       <div id="admin-content" hidden>
         <div class="admin-tabs"><button class="secondary" id="new-measurement" type="button">＋ Новий замір</button><button class="secondary" id="show-journal" type="button">Попередні заміри</button><button class="back" id="import-old" type="button" hidden>Мої старі уточнення</button></div>
         <form id="measurement-form" class="card">
-          <div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label><label>Колір<select id="measure-color"></select></label><label>Працюють екструдери<select id="measure-mode"><option value="dual">№1 і №2</option><option value="single">Тільки №1</option><option value="unknown">Ще не знаю</option></select></label></div>
-          <p class="quiet">У формі — поточні значення. Зміни ті, які перевірив.</p><div class="form-grid" id="measurement-fields"></div>
+          <input type="hidden" id="measure-color" value="all"><div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label><label>Працюють екструдери<select id="measure-mode"><option value="dual">№1 і №2</option><option value="single">Тільки №1</option><option value="unknown">Ще не знаю</option></select></label></div>
+          <p class="quiet">У формі — відомі практичні значення. Запиши те, що перевірив.</p><div class="form-grid" id="measurement-fields"></div>
           <label class="note-label">Примітка<textarea id="measure-note" rows="2" maxlength="2000" placeholder="Наприклад: рівний колір, без пробоїв"></textarea></label>
           <label class="check"><input type="checkbox" id="publish-measurement"> Застосувати ці значення в калькуляторі</label>
           <p id="save-message" role="status" class="form-message"></p><button class="primary save" id="save-measurement" type="submit">Зберегти замір</button>
