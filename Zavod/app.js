@@ -58,6 +58,7 @@ function renderSelectors() {
 }
 function renderSetup() {
   const r = recipe();
+  $('open-splice').textContent = `Вхідний закінчився · +${fmt(state.rules.splice)} м`;
   const dyes = dyePlan(state.color, r.mode);
   const value = key => `<strong>${fmt(r[key])}</strong>`;
   const missing = ['extruder1', 'sikoraWire', 'sikoraOuter', 'dorn', 'matrix', 'maxSpeed', ...(r.mode === 'single' ? [] : ['extruder2'])].some(key => r[key] == null);
@@ -148,6 +149,7 @@ async function enterAdmin() {
       const draft = read(DRAFT);
       if (draft && RECIPES.some(r => r.id === draft.baseId) && ['all', ...COLORS.map(c => c.id)].includes(draft.color)) {
         fillMeasurement(draft, draft.expectedRevision);
+        if (draft.pendingSave?.id && draft.pendingSave?.signature) pendingSave = draft.pendingSave;
         $('save-message').textContent = 'Відновлено незавершений замір.';
       } else newMeasurement();
     }
@@ -177,7 +179,7 @@ function formValues() {
   for (const [key] of FIELDS) values[key] = $('measurement-form').elements.namedItem(key).value;
   return values;
 }
-function saveDraft() { if (formReady) write(DRAFT, { ...formValues(), expectedRevision }); }
+function saveDraft() { if (formReady) write(DRAFT, { ...formValues(), expectedRevision, pendingSave }); }
 function loadSelectedMeasurement() {
   const base = selectedBase(), color = $('measure-color').value;
   const row = findRecipe(catalog, base.cableId, base.section, color);
@@ -196,6 +198,7 @@ async function saveMeasurement(event) {
   if (publish && input.mode === 'unknown') { $('save-message').textContent = 'Для калькулятора треба обрати, які екструдери працюють.'; return; }
   const signature = JSON.stringify(input);
   if (pendingSave?.signature !== signature) pendingSave = { signature, id: crypto.randomUUID() };
+  saveDraft();
   busy = true; $('save-measurement').disabled = true; $('save-message').textContent = 'Зберігаю…';
   $('measurement-form').querySelectorAll('input, select, textarea').forEach(control => { control.disabled = true; });
   let recorded = false;
@@ -212,7 +215,7 @@ async function saveMeasurement(event) {
     $('save-message').textContent = publish ? 'Збережено. Калькулятор уже показує ці значення.' : 'Замір збережено в журналі.';
     write(DRAFT, null); haptic('success');
   } catch (error) {
-    $('save-message').textContent = (recorded ? 'Замір є в журналі. Калькулятор не змінено. ' : '') + error.message;
+    $('save-message').textContent = (recorded ? 'Замір є в журналі. Застосування не підтверджено. ' : '') + error.message;
     saveDraft(); haptic('error');
   } finally {
     busy = false; $('save-measurement').disabled = false;
@@ -246,6 +249,7 @@ function importOld() {
 
 document.addEventListener('click', event => {
   const target = event.target.closest('button, a'); if (!target) return;
+  if (busy && (target.dataset.edit || target.dataset.reuse || target.dataset.old)) return;
   if (target.dataset.view) showView(target.dataset.view);
   if (target.dataset.close) $(target.dataset.close).close();
   if (target.classList.contains('source-link')) { event.preventDefault(); openSource(target.href); }
