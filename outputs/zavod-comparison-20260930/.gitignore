@@ -3,3 +3,4 @@ detail*.png
 preview*.png
 inspection.json
 *.inspect.ndjson
+operator-forecast-extracted.json
