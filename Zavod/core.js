@@ -23,6 +23,11 @@ export function positive(value) {
   return parsed !== null && parsed > 0 ? parsed : null;
 }
 
+export function secondSpeed(workingSpeed) {
+  const working = positive(workingSpeed);
+  return working === null ? null : Math.min(working, Math.max(20, Math.floor(working / 40) * 20));
+}
+
 export function fmt(value, digits = 2) {
   const parsed = number(value);
   return parsed === null ? '—' : new Intl.NumberFormat('uk-UA', { maximumFractionDigits: digits }).format(parsed);

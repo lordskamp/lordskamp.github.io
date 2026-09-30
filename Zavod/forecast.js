@@ -1,4 +1,5 @@
 import { RECIPES } from './data.js';
+import { secondSpeed } from './core.js?v=7';
 
 // Only these cards are linked to the original practical tables. Other cards need
 // their own measurements; matching a brand name does not match its specification.
@@ -115,10 +116,10 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
     rpmMethod: positive(row.rpm1) ? 'reference-ratio' : 'insulation-volume',
     reason: extruder1 === null || (mode === 'dual' && extruder2 === null) ? 'Швидкість розрахована; для обертів бракує геометрії або довідкових обертів.' : null,
     anchors: anchors.map(({ record }) => ({ section: record.section, source: record.source, extruder1: record.extruder1, extruder2: record.extruder2, workingSpeed: record.maxSpeed })),
-    speed1: 20, speed2: Math.round(workingSpeed / 2),
+    speed1: 20, speed2: secondSpeed(workingSpeed),
   };
 }
 
 export function speedStages(workingSpeed) {
-  return { speed1: 20, speed2: positive(workingSpeed) ? Math.round(workingSpeed / 2) : null, workingSpeed: positive(workingSpeed) ? workingSpeed : null };
+  return { speed1: 20, speed2: secondSpeed(workingSpeed), workingSpeed: positive(workingSpeed) ? workingSpeed : null };
 }

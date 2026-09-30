@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RECIPES } from '../Zavod/data.js';
 import { CATALOG_OPTIONS, baseFor, practicalFor } from '../Zavod/catalog-base.js';
-import { setupFor, tableSetups, VALUE_LABELS } from '../Zavod/setup-data.js';
+import { setupFor, tableSetups, metricValues, VALUE_LABELS } from '../Zavod/setup-data.js';
 
 const catalog = () => ({ recipes: RECIPES.map(record => ({ ...record, baseId: record.id, origin: 'handwritten', color: 'all', revision: 1, updatedAt: '2026-09-29T00:00:00Z' })) });
 const option = (cardId, brand) => CATALOG_OPTIONS.find(candidate => candidate.cardId === cardId && candidate.brand === brand);
@@ -16,7 +16,7 @@ test('reference specifications do not borrow practical values from similarly nam
   assert.equal(h05.effective.extruder1, 92);
   assert.equal(h05.sources.extruder1, 'reference');
   assert.equal(h05.stages.working, 500);
-  assert.equal(h05.stages.second, 250);
+  assert.equal(h05.stages.second, 240);
   const ysly = setup('ysly-1000', 'YSLY-JZ', 2.5);
   assert.equal(ysly.practical.extruder1, null);
   assert.equal(ysly.effective.extruder1, 87);
@@ -24,14 +24,22 @@ test('reference specifications do not borrow practical values from similarly nam
   assert.equal(ysly.sources.workingSpeed, 'reference');
 });
 
-test('known practical settings suppress duplicate forecasts and drive all speed stages', () => {
+test('known practical settings remain primary while reference and forecast stay available', () => {
   const result = setup('pv1', 'ПВ1', 1.5);
   assert.equal(result.effective.extruder1, 75);
   assert.equal(result.sources.extruder1, 'practical');
   assert.equal(result.practical.workingSpeed, 320);
   assert.equal(result.reference.workingSpeed, 300);
-  assert.equal(result.forecast.extruder1, null);
-  assert.equal(result.forecast.workingSpeed, null);
+  assert.equal(result.forecast.extruder1, 70);
+  assert.equal(result.forecast.workingSpeed, 320);
+  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source, item.value]), [['practical',75], ['reference',null], ['forecast',70]]);
+  assert.deepEqual(metricValues(result, 'workingSpeed').map(item => [item.source, item.value]), [['practical',320], ['reference',300], ['forecast',320]]);
+  const sikora = metricValues(result, 'sikoraOuter');
+  assert.equal(sikora[0].source, 'practical');
+  assert.equal(sikora[1].source, 'reference');
+  assert.equal(sikora[1].value, result.row.outerNom);
+  assert(sikora[1].label.includes('номінальний'));
+  assert.equal(sikora[2].source, 'forecast');
   assert.equal(result.mode, 'single');
   assert.deepEqual(result.stages, { first: 20, second: 160, working: 320, source: 'practical' });
 });
@@ -42,7 +50,8 @@ test('an unmeasured section gets labelled forecasts without any speed input', ()
   assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2, result.forecast.workingSpeed], [65, 103, 512]);
   assert.equal(result.sources.extruder1, 'forecast');
   assert.equal(result.sources.workingSpeed, 'forecast');
-  assert.deepEqual(result.stages, { first: 20, second: 256, working: 512, source: 'forecast' });
+  assert.deepEqual(result.stages, { first: 20, second: 240, working: 512, source: 'forecast' });
+  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source,item.value]), [['forecast',65], ['reference',117]]);
   assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані' });
 });
 
@@ -69,8 +78,10 @@ test('forecast RPM for a partial measurement is scaled to its measured working s
   records.recipes.push({ ...base, baseId: base.id, origin: 'measurement', color: 'all', mode: 'dual', maxSpeed: 200, revision: 2, updatedAt: '2026-09-30T12:00:00Z' });
   const result = setup('pvs-380', 'ПВС', 1, records);
   assert.equal(result.practical.workingSpeed, 200);
-  assert.equal(result.forecast.workingSpeed, null);
-  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2], [25, 40]);
+  assert.equal(result.forecast.workingSpeed, 512);
+  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2], [65, 103]);
+  assert.deepEqual([result.effective.extruder1, result.effective.extruder2], [25, 40]);
+  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.value,item.label]), [[25,'Прогнозовані · для 200 м/хв'], [117,'Довідкові'], [65,'Прогнозовані · для 512 м/хв']]);
   assert.deepEqual(result.stages, { first: 20, second: 100, working: 200, source: 'practical' });
 });
 

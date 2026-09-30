@@ -1,8 +1,8 @@
 import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js';
 import { RECIPES } from './data.js';
 import { SOURCE_ANNOTATIONS } from './reference-data.js';
-import { forecastFor } from './forecast.js';
-import { number } from './core.js';
+import { forecastFor } from './forecast.js?v=7';
+import { number, secondSpeed, fmt } from './core.js?v=7';
 
 export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані' };
 const metric = row => ({
@@ -11,7 +11,22 @@ const metric = row => ({
 });
 export function speedStages(workingSpeed, source) {
   const working = number(workingSpeed);
-  return { first: 20, second: working === null ? null : Math.round(working / 2), working, source };
+  return { first: 20, second: secondSpeed(working), working, source };
+}
+
+export function metricValues(info, key) {
+  const nominal = key === 'sikoraWire' ? info.row.wireNom : key === 'sikoraOuter' ? info.row.outerNom : null;
+  const reference = info.reference[key] ?? nominal ?? null;
+  const referenceLabel = info.reference[key] == null && nominal != null ? 'Довідкові · номінальний' : VALUE_LABELS.reference;
+  const source = info.sources[key] ?? 'reference';
+  const adjustedRpm = ['extruder1','extruder2'].includes(key) && info.practical.workingSpeed != null && info.forecast.workingSpeed != null && info.practical.workingSpeed !== info.forecast.workingSpeed;
+  const mainLabel = source === 'reference' ? referenceLabel : source === 'forecast' && adjustedRpm ? `Прогнозовані · для ${fmt(info.practical.workingSpeed)} м/хв` : VALUE_LABELS[source];
+  const main = { source, value: source === 'reference' ? reference : info.effective[key], label: mainLabel };
+  const forecastLabel = adjustedRpm ? `Прогнозовані · для ${fmt(info.forecast.workingSpeed)} м/хв` : VALUE_LABELS.forecast;
+  return [main,
+    ...(source === 'reference' ? [] : [{ source: 'reference', value: reference, label: referenceLabel }]),
+    ...(source === 'forecast' && main.value === info.forecast[key] || info.forecast[key] == null ? [] : [{ source: 'forecast', value: info.forecast[key], label: forecastLabel }]),
+  ];
 }
 
 export function setupFor(optionId, section, catalog) {
@@ -39,18 +54,15 @@ export function setupFor(optionId, section, catalog) {
   const anchors = [...new Map([...all].sort((a,b) => String(a.updatedAt ?? '').localeCompare(String(b.updatedAt ?? ''))).map(record => [(record.baseId || record.id), record])).values()];
   const direct = anchors.filter(record => record.cableId === option.id).map(record => ({ ...record, referenceCardId: card.id }));
   const forecast = forecastFor(card, row, [...anchors.filter(record => record.cableId !== option.id), ...direct], { mode: mode === 'unknown' ? undefined : mode, cableId: option.brand === '(H)05VV-F' && card.id === 'ysly-shared' ? 'ysly' : option.practicalCableId });
-  if (practical.workingSpeed != null && forecast.workingSpeed > 0) {
-    for (const key of ['extruder1', 'extruder2']) if (forecast[key] != null) forecast[key] = Math.round(forecast[key] * practical.workingSpeed / forecast.workingSpeed);
-  }
-  // A calculated nominal model must not compete with an already measured value.
-  for (const key of ['extruder1', 'extruder2', 'workingSpeed']) if (practical[key] != null) forecast[key] = null;
-  if (practical.sikoraOuter == null && number(practical.matrix ?? reference.matrix) !== null) forecast.sikoraOuter = Math.round((number(practical.matrix ?? reference.matrix) + .15) * 100) / 100;
+  // Keep estimates available for comparison; effective values still prefer practice.
+  if (number(practical.matrix ?? reference.matrix) !== null) forecast.sikoraOuter = Math.round((number(practical.matrix ?? reference.matrix) + .15) * 100) / 100;
   const effective = {}, sources = {};
   for (const key of Object.keys(reference)) {
     const predicted = key === 'workingSpeed' ? forecast.workingSpeed : forecast[key];
     const choices = [['practical', practical[key]], ['forecast', predicted], ['reference', reference[key]]];
     const chosen = choices.find(([,value]) => value !== null && value !== undefined && value !== '');
     sources[key] = chosen?.[0] ?? null; effective[key] = chosen?.[1] ?? null;
+    if (sources[key] === 'forecast' && ['extruder1','extruder2'].includes(key) && practical.workingSpeed != null && forecast.workingSpeed > 0) effective[key] = Math.round(effective[key] * practical.workingSpeed / forecast.workingSpeed);
   }
   return { option, card, row, base, stored, practical, practicalSources: [...practicalSources].filter(Boolean), reference, forecast, effective, sources,
     mode: mode === 'unknown' ? forecast.mode ?? 'unknown' : mode,

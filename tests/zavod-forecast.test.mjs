@@ -89,13 +89,17 @@ test('current owner measurements supersede the reused original section', () => {
   assert.equal(result.anchors.length, 3);
 });
 
-test('speed stages are automatic whole numbers, 20 at launch and half at stage 2', () => {
-  assert.deepEqual(speedStages(425), { speed1: 20, speed2: 213, workingSpeed: 425 });
+test('stage 2 is roughly half the working speed rounded down to a multiple of 20', () => {
+  assert.deepEqual(speedStages(275), { speed1: 20, speed2: 120, workingSpeed: 275 });
+  assert.deepEqual(speedStages(325), { speed1: 20, speed2: 160, workingSpeed: 325 });
+  assert.deepEqual(speedStages(425), { speed1: 20, speed2: 200, workingSpeed: 425 });
+  assert.deepEqual(speedStages(550), { speed1: 20, speed2: 260, workingSpeed: 550 });
+  assert.deepEqual(speedStages(20), { speed1: 20, speed2: 20, workingSpeed: 20 });
   assert.deepEqual(speedStages(null), { speed1: 20, speed2: null, workingSpeed: null });
   assert.deepEqual(speedStages(0), { speed1: 20, speed2: null, workingSpeed: null });
   const result = predict('pvs-380', 1);
   assert.equal(result.speed1, 20);
-  assert.equal(result.speed2, 256);
+  assert.equal(result.speed2, 240);
 });
 
 test('insufficient geometry leaves RPM empty while keeping a supported speed estimate', () => {

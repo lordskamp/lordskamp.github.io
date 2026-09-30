@@ -1,8 +1,8 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, practicalFor } from './catalog-base.js';
-import { COLORS, DEFAULT_RULES, number, fmt, outerEstimate, colorName, dyePlan, planDrum, spliceTarget, parseBreakdowns } from './core.js';
+import { COLORS, DEFAULT_RULES, number, fmt, outerEstimate, colorName, dyePlan, planDrum, spliceTarget, parseBreakdowns } from './core.js?v=7';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=6';
-import { setupFor, tableSetups, VALUE_LABELS } from './setup-data.js';
+import { setupFor, tableSetups, speedStages, metricValues, VALUE_LABELS } from './setup-data.js?v=7';
 import { handwrittenAlternatives } from './rpm.js';
 
 const $ = id => document.getElementById(id);
@@ -69,20 +69,16 @@ function renderSetup() {
   const info = setup(), r = recipe();
   $('open-splice').textContent = `Вхідний закінчився · +${fmt(state.rules.splice)} м`;
   const dyes = dyePlan(state.color, r.mode);
-  const value = key => `<strong>${display(info.effective[key])}</strong><small class="value-kind">${VALUE_LABELS[info.sources[key]] ?? 'Ще не визначено'}</small>`;
-  const rpm = key => {
-    const values = ['practical', 'reference', 'forecast'].filter(source => info[source][key] != null);
-    if (!values.length) return '<strong>—</strong><small class="value-kind">Ще не визначено</small>';
-    return values.map(source => source === info.sources[key] ? `<strong>${display(info[source][key])}</strong><small class="value-kind">${VALUE_LABELS[source]}</small>` : `<p class="rpm-extra">${VALUE_LABELS[source]}: <b>${display(info[source][key])}</b></p>`).join('');
-  };
+  const extra = item => `<p class="metric-extra">${esc(item.label)}: <b>${display(item.value)}</b></p>`;
+  const value = key => metricValues(info, key).map((item, index) => index === 0 ? `<strong>${display(item.value)}</strong><small class="value-kind">${esc(item.label)}</small>` : extra(item)).join('');
   const alternatives = handwrittenAlternatives({ cableId: info.option.practicalCableId, section: state.section });
   const pair = info.ambiguousPv3 && info.stored.extruder1 != null ? `${fmt(info.stored.extruder1)} / ${fmt(info.stored.extruder2)}${info.stored.maxSpeed != null ? `; ${fmt(info.stored.maxSpeed)} м/хв` : ''}` : alternatives ? `${alternatives}${state.section === .75 ? '; 350 / 300 м/хв' : state.section === 6 ? '; 120 / 130 м/хв' : info.stored.maxSpeed != null ? `; ${fmt(info.stored.maxSpeed)} м/хв` : ''}` : null;
   const speeds = info.stages;
-  $('values').innerHTML = `<section class="production"><h1>Оберти шнека <span>об/хв</span></h1><div class="pair extruders"><div class="extruder ${dyes?.first === 'Біла основа' ? 'base-white' : dyes?.first === 'Жовтий' ? 'base-yellow' : ''}"><span>Екструдер №1</span>${rpm('extruder1')}<small class="dye">${esc(dyes?.first)}</small></div><div class="extruder"><span>Екструдер №2</span>${r.mode === 'single' ? '<strong class="off">Вимк.</strong><small class="value-kind">Один екструдер</small>' : rpm('extruder2')}<small class="dye">${esc(dyes?.second)}</small></div></div>${pair ? `<p class="rpm-alternatives">Практичні варіанти: ${esc(pair)}. Режим не уточнений.</p>` : ''}${info.forecast.reason && info.effective.extruder1 == null ? '<p class="rpm-help">Прогнозу ще немає — потрібен практичний замір.</p>' : ''}</section>
-    <section class="card readings"><h2>Сікора <small>мм</small></h2><div class="pair"><div><span>1 · Дріт</span>${info.effective.sikoraWire == null && info.row.wireNom != null ? `<strong>${fmt(info.row.wireNom)}</strong><small class="value-kind">Довідкові · номінальний</small>` : value('sikoraWire')}</div><div><span>2 · Ізоляція</span>${value('sikoraOuter')}</div></div><p class="reference">Матриця + 0,15 ≈ ${fmt(outerEstimate(r.matrix))} <span>· орієнтир</span></p></section>
-    <section class="card tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн</span>${value('dorn')}</div><div><img src="./MATRIX.svg" alt=""><span>Матриця</span>${value('matrix')}</div><small>мм</small></section>
-    <section class="card speeds"><h2>Швидкості <small>м/хв</small></h2><div class="speed-stages"><div><span>1 · Запуск</span><strong>${fmt(speeds.first)}</strong><small>Задана</small></div><div><span>2 · Розгін</span><strong>${fmt(speeds.second)}</strong><small>½ робочої</small></div><div><span>3 · Робоча</span><strong>${fmt(speeds.working)}</strong><small>${VALUE_LABELS[speeds.source] ?? 'Ще не визначено'}</small></div></div>${['practical','reference','forecast'].filter(source => info[source].workingSpeed != null && source !== speeds.source).map(source => `<p class="speed-extra">${VALUE_LABELS[source]}: <b>${fmt(info[source].workingSpeed)}</b> м/хв</p>`).join('')}</section>
-    ${Object.values(info.sources).includes('forecast') ? '<p class="quiet forecast-note">Прогнозовані значення ще не перевірені на лінії.</p>' : ''}
+  $('values').innerHTML = `<section class="production"><h1>Оберти шнека <span>об/хв</span></h1><div class="pair extruders"><div class="extruder ${r.mode === 'dual' ? dyes?.first === 'Біла основа' ? 'base-white' : dyes?.first === 'Жовтий' ? 'base-yellow' : '' : ''}"><span>Екструдер №1</span>${value('extruder1')}<small class="dye">${esc(dyes?.first)}</small></div><div class="extruder"><span>Екструдер №2</span>${r.mode === 'single' ? `<strong class="off">Вимк.</strong><small class="value-kind">Один екструдер</small>${extra({ label: VALUE_LABELS.reference, value: info.reference.extruder2 })}` : value('extruder2')}<small class="dye">${esc(dyes?.second)}</small></div></div>${pair ? `<p class="rpm-alternatives">Практичні варіанти: ${esc(pair)}. Режим не уточнений.</p>` : ''}${info.forecast.reason && info.effective.extruder1 == null ? '<p class="rpm-help">Прогнозу ще немає — потрібен практичний замір.</p>' : ''}</section>
+    <section class="card readings"><h2>Сікора <small>мм</small></h2><div class="pair"><div><span>1 · Дріт</span>${value('sikoraWire')}</div><div><span>2 · Ізоляція</span>${value('sikoraOuter')}</div></div><p class="reference">Матриця + 0,15 ≈ ${fmt(outerEstimate(r.matrix))} <span>· орієнтир</span></p></section>
+    <section class="card tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн</span><div class="tool-values">${value('dorn')}</div></div><div><img src="./MATRIX.svg" alt=""><span>Матриця</span><div class="tool-values">${value('matrix')}</div></div><small>мм</small></section>
+    <section class="card speeds"><h2>Швидкості <small>м/хв</small></h2><div class="speed-stages"><div><span>1 · Запуск</span><strong>${fmt(speeds.first)}</strong><small>Задана</small></div><div><span>2 · Розгін</span><strong>${fmt(speeds.second)}</strong><small>≈ ½ робочої</small></div><div><span>3 · Робоча</span><strong>${fmt(speeds.working)}</strong><small>${VALUE_LABELS[speeds.source] ?? 'Ще не визначено'}</small></div></div>${metricValues(info, 'workingSpeed').slice(1).map(item => `<p class="speed-extra">${esc(item.label)}: <b>${fmt(item.value)}</b> м/хв</p>`).join('')}</section>
+    ${['extruder1','extruder2','workingSpeed','sikoraOuter'].some(key => info.forecast[key] != null) ? '<p class="quiet forecast-note">Прогнозовані значення ще не перевірені на лінії.</p>' : ''}
     ${!dyes?.valid ? `<p class="notice">${esc(dyes?.note)}</p>` : ''}`;
   $('source-content').innerHTML = sourceContent(r);
 }
@@ -118,7 +114,7 @@ function renderTable() {
   $('table-count').textContent = `Перерізів: ${rows.length}`;
   $('table-body').innerHTML = rows.flatMap(info => ['practical','reference','forecast'].map((source,i) => {
     const values = info[source], speed = number(values.workingSpeed);
-    return `<tr class="table-${source}">${i===0 ? `<th scope="rowgroup" rowspan="3">${esc(info.option.label)}</th><td rowspan="3">${fmt(info.row.section)}</td>` : ''}<th scope="row">${VALUE_LABELS[source]}</th><td>${display(values.extruder1)}</td><td>${source !== 'reference' && info.mode === 'single' ? 'Вимк.' : display(values.extruder2)}</td>${['sikoraWire','sikoraOuter','dorn','matrix'].map(key=>`<td>${display(values[key])}</td>`).join('')}<td>20</td><td>${fmt(speed === null ? null : Math.round(speed/2))}</td><td>${fmt(speed)}</td>${i===0 ? `<td rowspan="3"><button type="button" class="back" data-record="${esc(info.option.id)}|${info.row.section}">Фото ↗</button></td>` : ''}</tr>`;
+    return `<tr class="table-${source}">${i===0 ? `<th scope="rowgroup" rowspan="3">${esc(info.option.label)}</th><td rowspan="3">${fmt(info.row.section)}</td>` : ''}<th scope="row">${VALUE_LABELS[source]}</th><td>${display(values.extruder1)}</td><td>${source !== 'reference' && info.mode === 'single' ? 'Вимк.' : display(values.extruder2)}</td>${['sikoraWire','sikoraOuter','dorn','matrix'].map(key=>`<td>${display(values[key])}</td>`).join('')}<td>20</td><td>${fmt(speedStages(speed).second)}</td><td>${fmt(speed)}</td>${i===0 ? `<td rowspan="3"><button type="button" class="back" data-record="${esc(info.option.id)}|${info.row.section}">Фото ↗</button></td>` : ''}</tr>`;
   })).join('');
 }
 function numbersList(row) { return `<dl class="numbers-list">${FIELDS.map(([key, label]) => `<div><dt>${esc(label)}</dt><dd>${key === 'extruder2' && row.mode === 'single' ? 'Вимк.' : fmt(row[key])}</dd></div>`).join('')}</dl>`; }
