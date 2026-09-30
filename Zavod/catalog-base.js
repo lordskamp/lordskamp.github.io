@@ -1,6 +1,7 @@
-import { CATALOG_OPTIONS } from './catalog-options.js';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=9';
 import { RECIPES } from './data.js';
-import { REFERENCE_CARDS } from './reference-data.js';
+import { REFERENCE_CARDS } from './reference-data.js?v=9';
+import { hasPv3Modes, pv3Recipe } from './pv3-modes.js?v=9';
 
 export { CATALOG_OPTIONS };
 export const CATALOG_CABLES = CATALOG_OPTIONS;
@@ -29,11 +30,16 @@ export const CATALOG_BASES = [...new Map([
   ...CATALOG_OPTIONS.flatMap(option => option.sections.map(section => baseFor(option.id, section))),
 ].map(base => [base.id, base])).values()];
 
-export function practicalFor(optionId, section, catalog) {
+export const measurementColor = (optionId, mode) => hasPv3Modes(optionFor(optionId)) && mode === 'dual' ? 'yellow-green' : 'all';
+
+export function practicalFor(optionId, section, catalog, mode) {
+  const splitModes = hasPv3Modes(optionFor(optionId)) && mode;
   const base = baseFor(optionId, section);
   if (!base) return null;
   const rows = (catalog?.recipes ?? []).filter(row => (row.baseId || row.id) === base.id);
-  // Colours affect the dye only. Applied measurements take priority for every colour.
-  const latest = rows.filter(row => row.origin === 'measurement').sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')) || b.revision - a.revision)[0];
-  return latest ?? rows.find(row => row.color === 'all') ?? { ...base, baseId: base.id, color: 'all', origin: 'handwritten', revision: 0 };
+  // PV3 has separate single/dual measurements. Other colours share one setup.
+  const latest = rows.filter(row => row.origin === 'measurement' && (!splitModes || row.mode === mode)).sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')) || b.revision - a.revision)[0];
+  if (latest) return latest;
+  const original = rows.find(row => row.origin !== 'measurement' && row.color === 'all') ?? { ...base, baseId: base.id, color: 'all', origin: 'handwritten', revision: 0 };
+  return splitModes ? pv3Recipe(original, mode) : original;
 }

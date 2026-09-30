@@ -1,4 +1,4 @@
-import { REFERENCE_CARDS } from './reference-data.js';
+import { REFERENCE_CARDS } from './reference-data.js?v=9';
 
 // Names are the brands in the printed tables. A missing practicalCableId means
 // that no handwritten operating recipe has been established for this brand.
@@ -7,10 +7,12 @@ import { REFERENCE_CARDS } from './reference-data.js';
 const options = (cardId, brands, extra = {}) => {
   const card = REFERENCE_CARDS.find(item => item.id === cardId);
   if (!card) throw new Error(`Unknown reference card: ${cardId}`);
+  const suffix = (extra.suffix ?? '').split(' · ').filter(part => !/^[\d.,/]+\s*(?:кВ|В|кВт|Вт)$/u.test(part)).join(' · ');
   return brands.map(([brand, slug, practicalCableId = null]) => ({
     id: `${cardId}--${slug}`,
     brand,
-    label: `${brand === 'Speaker cable' ? 'Акустичний кабель' : brand}${extra.suffix ? ` · ${extra.suffix}` : ''}`,
+    label: `${brand === 'Speaker cable' ? 'Акустичний кабель' : brand}${suffix ? ` · ${suffix}` : ''}`,
+    specification: extra.suffix ?? null,
     cardId,
     sections: card.rows.filter(row => !extra.sections || extra.sections.includes(row.section)).map(row => row.section),
     practicalCableId,
@@ -36,7 +38,7 @@ export const CATALOG_OPTIONS = [
   ], { mode: 'single', modeHint: 'Один екструдер підтверджено для практичних записів ПВ1 1,5 і 2,5 мм²; для інших марок режим не підтверджено.' }),
   ...options('pv3', [
     ['ПВ3', 'pv3', 'pv3'], ['ПВ3нг', 'pv3ng'], ['ПВ3нгд', 'pv3ngd'],
-  ], { mode: 'single', modeHint: 'Основний режим ПВ3 — один екструдер, за уточненням оператора. Рукописні пари обертів — окремі неуточнені варіанти.' }),
+  ], { mode: 'single', modeHint: 'ПВ3: один екструдер для суцільного кольору, два — для жовто-зеленого. Пари в рукописі належать режиму з двома екструдерами.' }),
   ...options('pv5', [
     ['ПВ5', 'pv5'], ['ПВ5нг', 'pv5ng'], ['ПВ5нгд', 'pv5ngd'],
   ]),

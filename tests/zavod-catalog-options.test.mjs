@@ -62,3 +62,12 @@ test('режим ПВ3 не прирівнює непідтверджені не
   assert.equal(catalogOption('pv3--pv3ng').mode, 'unknown');
   assert.equal(catalogOption('pv3--pv3ngd').mode, 'unknown');
 });
+
+test('назви не містять напругу, але початкові специфікації та ідентифікатори збережені', () => {
+  assert(CATALOG_OPTIONS.every(option => !/\d\s*(?:кВ|В|кВт|Вт)\b/u.test(option.label)));
+  assert.equal(catalogOption('pvs-380--pvs').label,'ПВС');
+  assert.equal(catalogOption('pvs-380--pvs').specification,'380 В');
+  assert.equal(catalogOption('vvg-p-066--vvgng-p').label,'ВВГнг-П');
+  assert.equal(catalogOption('vvg3--vvgz').label,'ВВГз · клас 3');
+  assert.equal(catalogOption('ysly-1000--ysly-jz').specification,'600/1000 В');
+});

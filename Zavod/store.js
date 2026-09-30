@@ -1,5 +1,5 @@
 import { CABLES, RECIPES } from './data.js';
-import { colorName } from './core.js';
+import { colorName } from './core.js?v=9';
 import { API_URL } from './config.js?v=3';
 const CACHE = 'zavod-shared-table-v1';
 export const FIELDS = [['extruder1', 'Оберти №1, об/хв'], ['extruder2', 'Оберти №2, об/хв'], ['sikoraWire', 'SIKORA: діаметр жили, мм'], ['sikoraOuter', 'SIKORA: з ізоляцією, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Робоча швидкість, м/хв'], ['colorLead2', 'Зміна кольору №2 за, м']];

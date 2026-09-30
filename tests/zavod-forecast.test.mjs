@@ -27,14 +27,19 @@ test('endpoint extrapolation is explicit and does not extend a ratio slope', () 
   assert.equal(vvg.rpmMethod, 'insulation-volume');
 });
 
-test('single-extruder PV3 forecasts exclude all unconfirmed dual notes', () => {
+test('PV3 forecasts use separate confirmed anchors for single and dual operation', () => {
   const result = predict('pv3', 1);
   assert.equal(result.mode, 'single');
   assert.equal(result.extruder2, null);
-  assert.equal(result.workingSpeed, 281);
-  assert.deepEqual(result.anchors.map(anchor => anchor.section), [.5, 1.5]);
-  assert.equal(predict('pv3', 6).workingSpeed, 135);
-  assert.equal(predict('pv3', 1, RECIPES, { mode: 'dual' }).extruder1, null);
+  assert.equal(result.workingSpeed, 300);
+  assert.deepEqual(result.anchors.map(anchor => anchor.section), [.5, .75, 1.5, 4, 6]);
+  assert(result.anchors.every(anchor => anchor.extruder2 === null));
+  assert.equal(predict('pv3', 6).workingSpeed, 120);
+  const dual = predict('pv3', 1, RECIPES, { mode: 'dual' });
+  assert.equal(dual.workingSpeed, 300);
+  assert.deepEqual(dual.anchors.map(anchor => anchor.section), [.75, 1, 2.5, 4, 6]);
+  assert(dual.anchors.every(anchor => anchor.extruder1 > 0 && anchor.extruder2 > 0));
+  assert.deepEqual(dual.anchors.find(anchor => anchor.section === 6), {section:6,source:'DRAW_5.JPG',extruder1:64,extruder2:84,workingSpeed:130});
 });
 
 test('DRAW_4 repetitions are one calibration sample per section, DRAW_6 is H05 only', () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RECIPES } from '../Zavod/data.js';
-import { CATALOG_OPTIONS, baseFor, practicalFor } from '../Zavod/catalog-base.js';
+import { CATALOG_OPTIONS, baseFor, practicalFor, measurementColor } from '../Zavod/catalog-base.js';
 import { setupFor, tableSetups, metricValues, VALUE_LABELS } from '../Zavod/setup-data.js';
 
 const catalog = () => ({ recipes: RECIPES.map(record => ({ ...record, baseId: record.id, origin: 'handwritten', color: 'all', revision: 1, updatedAt: '2026-09-29T00:00:00Z' })) });
@@ -55,20 +55,66 @@ test('an unmeasured section gets labelled forecasts without any speed input', ()
   assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані' });
 });
 
-test('unconfirmed PV3 pairs do not supply the working speed of the single-extruder forecast', () => {
-  for (const [section, working, rpm] of [[1, 281, 49], [2.5, 230, 78]]) {
+test('PV3 pairs supply dual RPM without becoming practical single-extruder RPM', () => {
+  for (const [section, working, pair] of [[1, 300, [50,130]], [2.5, 210, [80,100]]]) {
     const result = setup('pv3', 'ПВ3', section);
-    assert.equal(result.ambiguousPv3, true);
     assert.equal(result.mode, 'single');
     assert.equal(result.practical.extruder1, null);
     assert.equal(result.practical.extruder2, null);
-    assert.equal(result.practical.workingSpeed, null);
-    assert.equal(result.effective.extruder1, rpm);
+    assert.equal(result.practical.workingSpeed, working);
+    assert(result.effective.extruder1 > 0);
+    assert.equal(result.sources.extruder1, 'forecast');
     assert.equal(result.effective.extruder2, null);
     assert.equal(result.effective.workingSpeed, working);
-    assert.equal(result.sources.workingSpeed, 'forecast');
-    assert(result.stored.extruder1 > 0 && result.stored.extruder2 > 0 && result.stored.maxSpeed > 0);
+    assert.equal(result.sources.workingSpeed, 'practical');
+    const dual = setupFor('pv3',section,catalog(),'yellow-green');
+    assert.equal(dual.mode, 'dual');
+    assert.deepEqual([dual.practical.extruder1,dual.practical.extruder2], pair);
   }
+});
+
+test('PV3 0.75 uses 68 or 65/85 at working speed 350; section 6 uses its two recorded speeds', () => {
+  for (const color of ['blue','brown','white','green']) {
+    const result = setupFor('pv3',.75,catalog(),color);
+    assert.equal(result.mode, 'single');
+    assert.deepEqual([result.effective.extruder1,result.effective.extruder2,result.effective.workingSpeed], [68,null,350]);
+    assert.equal(result.sources.extruder1,'practical');
+    assert.equal(result.sources.workingSpeed,'practical');
+  }
+  const striped = setupFor('pv3',.75,catalog(),'yellow-green');
+  assert.equal(striped.mode, 'dual');
+  assert.deepEqual([striped.effective.extruder1,striped.effective.extruder2,striped.effective.workingSpeed], [65,85,350]);
+  assert.deepEqual([setupFor('pv3',6,catalog(),'blue').effective.workingSpeed,setupFor('pv3',6,catalog(),'yellow-green').effective.workingSpeed], [120,130]);
+  for (const [color, pair] of [['blue',[74,null]],['yellow-green',[64,80]]]) {
+    const result = setupFor('pv3',4,catalog(),color);
+    assert.deepEqual([result.effective.extruder1,result.effective.extruder2], pair);
+    assert.equal(result.effective.workingSpeed,150);
+  }
+});
+
+test('coexisting PV3 measurements and forecast anchors do not overwrite the other mode', () => {
+  const records = catalog(), base = baseFor('pv3',.75);
+  records.recipes.push({...base,baseId:base.id,origin:'measurement',color:'all',mode:'single',extruder1:82,extruder2:null,maxSpeed:340,revision:2,updatedAt:'2026-09-30T14:00:00Z'});
+  records.recipes.push({...base,id:base.id+'~yellow-green',baseId:base.id,origin:'measurement',color:'yellow-green',mode:'dual',extruder1:70,extruder2:90,maxSpeed:300,revision:1,updatedAt:'2026-09-30T15:00:00Z'});
+  const single = setupFor('pv3',.75,records,'brown'), dual = setupFor('pv3',.75,records,'yellow-green');
+  assert.deepEqual([single.effective.extruder1,single.effective.extruder2,single.effective.workingSpeed],[82,null,340]);
+  assert.deepEqual([dual.effective.extruder1,dual.effective.extruder2,dual.effective.workingSpeed],[70,90,300]);
+  assert.equal(single.forecast.anchors.find(anchor=>anchor.section===.75).extruder1,82);
+  assert.equal(dual.forecast.anchors.find(anchor=>anchor.section===.75).extruder1,70);
+  assert.equal(measurementColor('pv3','dual'),'yellow-green');
+  assert.equal(measurementColor('pv3','single'),'all');
+  assert.equal(measurementColor('vvg','dual'),'all');
+});
+
+test('equal values are confirmed only by a real practical value of the same metric', () => {
+  const result = setup('pv3','ПВ3',1.5);
+  assert(metricValues(result,'workingSpeed').filter(item=>item.source!=='practical').every(item=>item.confirmed));
+  assert.equal(metricValues(result,'matrix').find(item=>item.source==='reference').confirmed,true);
+  assert.equal(metricValues(result,'sikoraWire').find(item=>item.source==='reference').confirmed,true);
+  assert.equal(metricValues(result,'sikoraOuter').find(item=>item.source==='reference').confirmed,false);
+  assert.equal(metricValues(result,'extruder1').find(item=>item.source==='reference').confirmed,false);
+  const unmeasured = setup('pvs-380','ПВС',1);
+  assert(metricValues(unmeasured,'extruder1').every(item=>!item.confirmed));
 });
 
 test('forecast RPM for a partial measurement is scaled to its measured working speed', () => {
@@ -138,9 +184,10 @@ test('Speaker handwritten pairs remain practical only for their named brand', ()
   }
 });
 
-test('every selectable reference row is present without a colour dimension', () => {
+test('every selectable reference row is present, with both PV3 modes and no all-colours column', () => {
   const records = tableSetups(catalog());
-  assert.equal(records.length, CATALOG_OPTIONS.reduce((count, item) => count + item.sections.length, 0));
+  assert.equal(records.length, CATALOG_OPTIONS.reduce((count, item) => count + item.sections.length * (item.practicalCableId === 'pv3' ? 2 : 1), 0));
+  assert.equal(new Set(records.map(record=>`${record.option.id}:${record.row.section}`)).size, CATALOG_OPTIONS.reduce((count,item)=>count+item.sections.length,0));
   assert(records.every(record => record.option && record.row && record.stages.first === 20));
   assert(records.every(record => !Object.hasOwn(record, 'color')));
 });

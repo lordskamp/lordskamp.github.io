@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { createHmac, randomUUID } from 'node:crypto';
 import worker, { verifyTelegram } from '../api/zavod-worker.js';
 import { baseline, findRecipe, csv } from '../Zavod/store.js';
-import { CATALOG_OPTIONS, baseFor } from '../Zavod/catalog-base.js';
+import { CATALOG_OPTIONS, baseFor, measurementColor } from '../Zavod/catalog-base.js';
+import { setupFor } from '../Zavod/setup-data.js';
 
 const TOKEN = 'test-bot-secret-only';
 const owner = { id: 100, username: 'Lordskamp' };
@@ -124,6 +125,31 @@ test('a cable present only in the printed catalogue can receive its first owner 
   assert.equal((await call('/admin/measurements', authenticated(measurement({ baseId: option.id + '-invalid' })))).status, 400);
   assert.equal((await call('/admin/measurements', authenticated(measurement({ optionId: option.id })))).status, 400);
 });
+test('PV3 single and yellow-green measurements persist independently and retain unused original anchors', async t => {
+  const { call, db } = fixture(); t.after(() => db.close());
+  const option = CATALOG_OPTIONS.find(row => row.practicalCableId === 'pv3'), base = baseFor(option.id, .75);
+  const single = measurement({baseId:base.id,optionId:option.id,color:measurementColor(option.id,'single'),mode:'single',extruder1:70,extruder2:null,maxSpeed:340});
+  assert.equal((await call('/admin/measurements',authenticated(single))).status,200);
+  assert.equal((await call('/admin/recipes/'+base.id,authenticated({measurementId:single.id,expectedRevision:1},'PUT'))).status,200);
+  let catalog = (await call('/catalog')).data;
+  const originalDual = setupFor(option.id,.75,catalog,'yellow-green');
+  assert.deepEqual([originalDual.effective.extruder1,originalDual.effective.extruder2,originalDual.effective.workingSpeed],[65,85,350]);
+  assert.equal(originalDual.forecast.anchors.find(row=>row.section===.75).extruder1,65);
+  const dual = measurement({baseId:base.id,optionId:option.id,color:measurementColor(option.id,'dual'),mode:'dual',extruder1:66,extruder2:86,maxSpeed:345});
+  assert.equal((await call('/admin/measurements',authenticated(dual))).status,200);
+  assert.equal((await call('/admin/recipes/'+base.id+'~yellow-green',authenticated({measurementId:dual.id,expectedRevision:0},'PUT'))).status,200);
+  catalog = (await call('/catalog')).data;
+  for (const color of ['blue','brown','white']) {
+    const result = setupFor(option.id,.75,catalog,color);
+    assert.deepEqual([result.effective.extruder1,result.effective.extruder2,result.effective.workingSpeed],[70,null,340]);
+  }
+  const striped = setupFor(option.id,.75,catalog,'yellow-green');
+  assert.deepEqual([striped.effective.extruder1,striped.effective.extruder2,striped.effective.workingSpeed],[66,86,345]);
+  assert.equal(striped.forecast.anchors.find(row=>row.section===.75).extruder1,66);
+  assert.equal((await call('/admin/history/'+base.id,{initData:signed()})).data.history[0].origin,'handwritten');
+  assert.equal((await call('/admin/measurements',{initData:signed()})).data.measurements.length,2);
+});
+
 test('Journal pagination never skips records with identical timestamps', async t => {
   const { call, db } = fixture(); t.after(() => db.close());
   const insert = db.prepare('INSERT INTO measurements VALUES (?, ?, ?, ?, ?, ?)');
@@ -135,5 +161,5 @@ test('Journal pagination never skips records with identical timestamps', async t
 });
 test('CSV preserves Unicode and quotes, and neutralizes spreadsheet formulas', () => {
   const catalog = baseline(); catalog.recipes[0].notes = ['=HYPERLINK("bad")'];
-  const output = csv(catalog); assert.ok(output.startsWith('\uFEFF')); assert.ok(output.includes("\"'=HYPERLINK(\"\"bad\"\")\"")); assert.ok(output.includes('Сікора'));
+  const output = csv(catalog); assert.ok(output.startsWith('\uFEFF')); assert.ok(output.includes("\"'=HYPERLINK(\"\"bad\"\")\"")); assert.ok(output.includes('SIKORA'));
 });

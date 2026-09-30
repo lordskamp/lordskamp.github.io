@@ -55,7 +55,7 @@ export function dyePlan(color, mode) {
     first: color === 'yellow-green' ? 'Жовтий' : 'Біла основа',
     second: color === 'yellow-green' ? 'Зелений' : colorName(color),
     valid: true,
-    note: color === 'yellow-green' ? 'Жовта основа — №1; зелений верхній шар — №2.' : 'Основа — №1; обраний колір верхнього шару — №2.'
+    note: color === 'yellow-green' ? 'Жовта основа — №1; зелені смуги — №2.' : 'Основа — №1; обраний колір верхнього шару — №2.'
   };
 }
 

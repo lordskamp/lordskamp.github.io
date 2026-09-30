@@ -1,5 +1,6 @@
 import { RECIPES } from './data.js';
-import { secondSpeed } from './core.js?v=7';
+import { secondSpeed } from './core.js?v=9';
+import { operatingRecords } from './pv3-modes.js?v=9';
 
 // Only these cards are linked to the original practical tables. Other cards need
 // their own measurements; matching a brand name does not match its specification.
@@ -47,8 +48,6 @@ function anchorsFor(card, records, family, mode, options) {
   const sections = new Map();
   for (const record of records) {
     if (!linked(record, card, family, options) || record.mode !== mode) continue;
-    // The colour/conditions of the two-extruder PV3 notes were not established.
-    if (card.id === 'pv3' && mode === 'dual' && record.origin !== 'measurement') continue;
     if (!positive(record.extruder1) || !positive(record.maxSpeed) || (mode === 'dual' && !positive(record.extruder2))) continue;
     const row = card.rows.find(candidate => candidate.section === record.section);
     if (!row || !positive(row.maxSpeed)) continue;
@@ -103,7 +102,7 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
   const mode = options.mode ?? family?.mode ?? (ownModes.length === 1 ? ownModes[0] : positive(row.rpm2) ? 'dual' : 'unknown');
   if (mode !== 'single' && mode !== 'dual') return empty(mode, 'Потрібно уточнити кількість екструдерів.');
   if (!positive(row.maxSpeed)) return empty(mode, 'Немає однозначної довідкової швидкості.');
-  const anchors = anchorsFor(card, practicalRecords, family, mode, options);
+  const anchors = anchorsFor(card, operatingRecords(practicalRecords), family, mode, options);
   if (anchors.length < 2) return empty(mode, 'Для прогнозу потрібні практичні заміри двох перерізів цієї карти.');
   const selected = bracket(anchors, row.section);
   const ratio = ({ record, row: reference }) => record.maxSpeed / reference.maxSpeed;
