@@ -1,0 +1,5 @@
+node_modules/
+detail*.png
+preview*.png
+inspection.json
+*.inspect.ndjson

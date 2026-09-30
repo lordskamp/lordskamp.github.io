@@ -2,6 +2,7 @@ import { CABLES, RECIPES } from './data.js';
 import { COLORS, DEFAULT_RULES, number, fmt, outerEstimate, colorName, dyePlan, planDrum, spliceTarget, parseBreakdowns } from './core.js';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, findRecipe, api, csv } from './store.js?v=3';
+import { referenceFor } from './reference-data.js';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -57,6 +58,7 @@ function renderSelectors() {
   $('color').innerHTML = colorOptions(state.color);
 }
 function renderSetup() {
+  document.documentElement.dataset.wireColor = state.color;
   const r = recipe();
   $('open-splice').textContent = `Вхідний закінчився · +${fmt(state.rules.splice)} м`;
   const dyes = dyePlan(state.color, r.mode);
@@ -66,14 +68,18 @@ function renderSetup() {
     <section class="card readings"><h2>Сікора <small>мм</small></h2><div class="pair"><div><span>1 · Дріт</span>${value('sikoraWire')}</div><div><span>2 · Ізоляція</span>${value('sikoraOuter')}</div></div><p class="reference">Матриця + 0,15 ≈ ${fmt(outerEstimate(r.matrix))} <span>· орієнтир</span></p></section>
     <section class="card tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн</span>${value('dorn')}</div><div><img src="./MATRIX.svg" alt=""><span>Матриця</span>${value('matrix')}</div><small>мм</small></section>
     <div class="speed-row"><span>Макс. швидкість</span><div>${value('maxSpeed')} <span>м/хв</span></div></div>
-    ${missing || !dyes?.valid ? `<p class="notice">${r.mode === 'unknown' ? 'Режим ще не уточнений. ' : ''}${!dyes?.valid && r.mode !== 'unknown' ? esc(dyes.note) : missing ? '«—» — значення ще треба уточнити.' : ''}</p>` : ''}`;
+    ${missing || !dyes?.valid ? `<p class="notice">${r.mode === 'unknown' ? 'Режим ще не уточнений. ' : ''}${!dyes?.valid && r.mode !== 'unknown' ? esc(dyes.note) : missing ? '«—» — значення ще треба уточнити.' : ''}</p>` : ''}
+    ${r.cableId === 'pv3' && r.mode === 'dual' && r.origin !== 'measurement' ? '<p class="notice">Пара №1/№2 — з рукопису. Для якого кольору вона потрібна, ще не уточнено.</p>' : ''}`;
   $('source-content').innerHTML = sourceContent(r);
 }
 function sourceContent(r) {
   const original = RECIPES.find(row => row.id === (r.baseId || r.id));
+  const references = referenceFor(r.cableId);
   return `<p>${r.origin === 'measurement' ? 'Власний замір' : 'Рукописний запис'} · ${esc(date(r.updatedAt))}</p><p><a class="source-link" href="./${esc(r.source)}">Відкрити фото ${esc(r.source)}</a></p>
     ${[...(r.notes || []), ...(r.uncertain || [])].map(note => `<p>${esc(note)}</p>`).join('')}
-    ${r.origin === 'measurement' && original ? `<details><summary>Початковий рукописний запис</summary>${numbersList(original)}${[...original.notes, ...original.uncertain].map(note => `<p>${esc(note)}</p>`).join('')}</details>` : ''}`;
+    ${r.cableId === 'pv3' ? '<p>ПВ3: один екструдер — основний режим за уточненням оператора. Пари значень у записі можуть стосуватися жовто-зеленого кольору; це ще не підтверджено.</p>' : ''}
+    ${r.origin === 'measurement' && original ? `<details><summary>Початковий рукописний запис</summary>${numbersList(original)}${[...original.notes, ...original.uncertain].map(note => `<p>${esc(note)}</p>`).join('')}</details>` : ''}
+    <details><summary>Примітки до довідкових карт</summary>${references.map(card => `<p><b>${esc(card.label)}</b> · <a href="./${esc(card.source)}">Фото</a></p>${card.notes.map(note => `<p>${esc(note)}</p>`).join('')}`).join('')}</details>`;
 }
 async function syncCatalog(notify = false) {
   if (syncing) return;

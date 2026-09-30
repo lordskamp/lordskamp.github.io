@@ -5,4 +5,27 @@
 @media(min-width:800px){main{padding-top:32px}.pickers{grid-template-columns:1.3fr .8fr 1.3fr;gap:12px}.color-picker{grid-column:auto}.production{padding:24px}.production strong{font-size:58px}.production strong.off{line-height:2.35}.readings{padding:22px 24px}.readings strong{font-size:36px}.tool-row{padding:18px 24px}}
 @media(max-width:500px){.header{padding:10px 14px;gap:4px}.brand{font-size:15px;gap:4px}.header nav{gap:0}.header nav button{font-size:13px;padding:8px 9px}main{padding:8px 14px 28px}.pickers{gap:10px;margin-bottom:14px}.pickers label{font-size:13px}.pickers input,.pickers select{padding:10px}.production{padding:17px 20px}.production strong{font-size:46px}.production strong.off{font-size:29px;line-height:2.06}.card{padding:16px}.pair{gap:14px}.pair>div+div{padding-left:20px}.readings h2{margin-bottom:8px}.readings strong{font-size:30px}.tool-row{padding:12px 16px}.actions{gap:8px}.work-view>.actions{display:grid;grid-template-columns:1fr}.work-view>.actions .secondary{font-size:14px;min-height:44px}.speed-row{padding-bottom:12px}.page-heading h1{font-size:23px}.table-toolbar>.back{margin-left:0}.form-grid{gap:12px}.target strong{font-size:29px}.target>span{max-width:100px}.admin-tabs .secondary{font-size:14px;flex:1}.table-scroll{margin-right:-14px;border-radius:10px 0 0 10px}#table-filter{min-width:170px}.journal-entry h2{font-size:17px}}
 :root[data-telegram-theme="dark"]{color-scheme:dark;--bg:var(--tg-theme-bg-color,#19231f);--paper:var(--tg-theme-secondary-bg-color,#222f29);--ink:var(--tg-theme-text-color,#eef2ed);--muted:#a8b7ad;--line:#435449;--green:#b3d9bb;--soft:#2b3e31;--danger:#ffad93}.production,.primary{background:#245f41;color:#fff}:root[data-telegram-theme="dark"] .tool-row img{filter:invert(.8)}
+/* Wire colours also set the page, controls and production panel. */
+:root{--wire:#245f41;--wire-ink:#fff;--wire-soft:#e9efe5;--wire-bg:#f4f5ef;--wire-link:#22583e}
+:root[data-wire-color="blue"]{--wire:#1759a6;--wire-bg:#edf4fc;--wire-soft:#dceafd;--wire-link:#164e94}
+:root[data-wire-color="brown"]{--wire:#714329;--wire-bg:#f6eee8;--wire-soft:#ecddd2;--wire-link:#70412b}
+:root[data-wire-color="black"]{--wire:#25272b;--wire-bg:#eceef0;--wire-soft:#dfe2e6;--wire-link:#30353d}
+:root[data-wire-color="white"]{--wire:#fff;--wire-ink:#25272b;--wire-bg:#f6f6f6;--wire-soft:#e7e7e7;--wire-link:#363636}
+:root[data-wire-color="gray"]{--wire:#626a74;--wire-bg:#eff1f4;--wire-soft:#dfe3e8;--wire-link:#4f5862}
+:root[data-wire-color="red"]{--wire:#a72b32;--wire-bg:#fceff0;--wire-soft:#f4dce0;--wire-link:#98262f}
+:root[data-wire-color="green"]{--wire:#246443;--wire-bg:#edf6ef;--wire-soft:#dcecdf;--wire-link:#205738}
+:root[data-wire-color="yellow"]{--wire:#f1cc33;--wire-ink:#302b12;--wire-bg:#fff9df;--wire-soft:#f6edc0;--wire-link:#675414}
+:root[data-wire-color="yellow-green"]{--wire:#e9ce38;--wire-ink:#1e3626;--wire-bg:#f6f9df;--wire-soft:#e7efcf;--wire-link:#2a5d34}
+:root[data-wire-color]{--bg:var(--wire-bg);--soft:var(--wire-soft);--green:var(--wire-link)}
+.production,.primary{background:var(--wire);color:var(--wire-ink)}
+.production{border:1px solid color-mix(in srgb,var(--wire-link) 20%,transparent)}
+.primary{border-color:color-mix(in srgb,var(--wire-link) 30%,transparent)}
+.production .pair>div+div{border-color:color-mix(in srgb,var(--wire-ink) 25%,transparent)}
+:root[data-wire-color="yellow-green"] .production{background:linear-gradient(110deg,#efda48 0%,#efda48 47%,#9acc93 53%,#9acc93 100%)}
+:root[data-wire-color="yellow-green"] .primary{background:linear-gradient(110deg,#efda48,#9acc93)}
+.tool-row>div{grid-template-columns:66px 1fr;column-gap:10px}
+.tool-row img{width:66px;height:100px}
+.tool-row strong{font-size:28px}
+:root[data-telegram-theme="dark"][data-wire-color]{--bg:color-mix(in srgb,var(--wire) 16%,#181c21);--soft:color-mix(in srgb,var(--wire) 22%,#232b30);--green:color-mix(in srgb,var(--wire-link) 35%,#fff)}
+@media(max-width:500px){.tool-row{gap:8px}.tool-row>div{grid-template-columns:56px 1fr;column-gap:7px}.tool-row img{width:56px;height:90px}.tool-row strong{font-size:26px}.tool-row>small{font-size:12px}}
 @media print{.header,.back,.actions,.drum-heading button,.source-details,.toast,#add-drum,#rules{display:none!important}body{background:white;color:black}main{max-width:none;padding:0}.card{break-inside:avoid;border-color:#aaa;box-shadow:none}.drum{max-width:none}input,select{border:0;padding:0;appearance:none;min-height:25px}.extra{border:0}.extra:not([open]){display:none}.quiet{color:#555}dialog{display:none}}
