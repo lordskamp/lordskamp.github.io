@@ -2,7 +2,7 @@ import { CABLES, RECIPES } from './data.js';
 import { colorName } from './core.js';
 import { API_URL } from './config.js?v=3';
 const CACHE = 'zavod-shared-table-v1';
-export const FIELDS = [['extruder1', 'Оберти №1, об/хв'], ['extruder2', 'Оберти №2, об/хв'], ['sikoraWire', 'Сікора: дріт, мм'], ['sikoraOuter', 'Сікора: ізоляція, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Робоча швидкість, м/хв'], ['colorLead2', 'Зміна кольору №2 за, м']];
+export const FIELDS = [['extruder1', 'Оберти №1, об/хв'], ['extruder2', 'Оберти №2, об/хв'], ['sikoraWire', 'SIKORA: діаметр жили, мм'], ['sikoraOuter', 'SIKORA: з ізоляцією, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Робоча швидкість, м/хв'], ['colorLead2', 'Зміна кольору №2 за, м']];
 export function baseline() {
   return { cables: CABLES, recipes: RECIPES.map(row => ({ ...row, baseId: row.id, color: 'all', origin: 'handwritten', revision: 1, updatedAt: '2026-09-29T00:00:00.000Z' })), source: 'snapshot' };
 }
