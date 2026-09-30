@@ -11,6 +11,6 @@
     "OWNER_USERNAME": "Lordskamp"
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "zavod-data", "migrations_dir": "migrations/zavod" }
+    { "binding": "DB", "database_name": "zavod-data", "database_id": "b90dec89-98e3-4b88-93f9-e95f01b84b42", "migrations_dir": "migrations/zavod" }
   ]
 }

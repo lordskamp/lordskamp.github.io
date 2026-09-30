@@ -106,9 +106,11 @@ export async function handleRequest(request, env) {
   const user = await admin(request, env);
   if (request.method === 'POST' && path === '/admin/auth') return { ok: true, username: user.username || env.OWNER_USERNAME };
   if (request.method === 'GET' && path === '/admin/measurements') {
-    const before = new URL(request.url).searchParams.get('before') || '9999';
-    const { results } = await env.DB.prepare('SELECT * FROM measurements WHERE created_at < ? ORDER BY created_at DESC, id DESC LIMIT 101').bind(before).all();
-    return { measurements: results.slice(0, 100).map(row => ({ ...JSON.parse(row.data), createdAt: row.created_at })), next: results.length > 100 ? results[99].created_at : null };
+    const cursor = new URL(request.url).searchParams.get('before');
+    const [before, beforeId] = cursor ? cursor.split('|') : ['9999', ''];
+    if (!before || (cursor && !beforeId)) fail(400, 'Некоректна сторінка журналу.');
+    const { results } = await env.DB.prepare('SELECT * FROM measurements WHERE created_at < ? OR (created_at = ? AND id < ?) ORDER BY created_at DESC, id DESC LIMIT 101').bind(before, before, beforeId).all();
+    return { measurements: results.slice(0, 100).map(row => ({ ...JSON.parse(row.data), createdAt: row.created_at })), next: results.length > 100 ? results[99].created_at + '|' + results[99].id : null };
   }
   if (request.method === 'POST' && path === '/admin/measurements') {
     const measurement = validateMeasurement(await bodyJson(request));

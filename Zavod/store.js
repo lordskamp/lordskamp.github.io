@@ -1,5 +1,6 @@
 import { CABLES, RECIPES } from './data.js';
-import { API_URL } from './config.js';
+import { colorName } from './core.js';
+import { API_URL } from './config.js?v=3';
 const CACHE = 'zavod-shared-table-v1';
 export const FIELDS = [['extruder1', 'Екструдер №1'], ['extruder2', 'Екструдер №2'], ['sikoraWire', 'Сікора: дріт, мм'], ['sikoraOuter', 'Сікора: ізоляція, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Швидкість, м/хв'], ['colorLead2', 'Зміна кольору №2 за, м']];
 export function baseline() {
@@ -40,8 +41,12 @@ export async function api(path, { method = 'GET', body, admin = false } = {}) {
   return result;
 }
 export function csv(catalog) {
-  const quote = value => '"' + String(value ?? '').replaceAll('"', '""') + '"';
+  const quote = value => {
+    let text = String(value ?? '');
+    if (typeof value === 'string' && /^[\s]*[=+@-]/.test(text)) text = "'" + text;
+    return '"' + text.replaceAll('"', '""') + '"';
+  };
   const headers = ['Марка', 'Переріз, мм²', 'Колір', 'Режим', ...FIELDS.map(([, label]) => label), 'Джерело', 'Примітки', 'Дата', 'Версія'];
-  const rows = catalog.recipes.map(row => [catalog.cables.find(cable => cable.id === row.cableId)?.label, row.section, row.color, row.mode, ...FIELDS.map(([key]) => row[key]), row.source, [...(row.notes || []), ...(row.uncertain || [])].join(' | '), row.updatedAt, row.revision]);
+  const rows = catalog.recipes.map(row => [catalog.cables.find(cable => cable.id === row.cableId)?.label, row.section, row.color === 'all' ? 'Усі кольори' : colorName(row.color), { single: 'Тільки №1', dual: '№1 і №2', unknown: 'Не уточнено' }[row.mode], ...FIELDS.map(([key]) => row[key]), row.source, [...(row.notes || []), ...(row.uncertain || [])].join(' | '), row.updatedAt, row.revision]);
   return '\uFEFF' + [headers, ...rows].map(row => row.map(quote).join(';')).join('\r\n');
 }

@@ -10,6 +10,9 @@ const sharedGlobals = {
   URL: 'readonly',
   URLSearchParams: 'readonly',
   TextEncoder: 'readonly',
+  TextDecoder: 'readonly',
+  AbortSignal: 'readonly',
+  Blob: 'readonly',
   structuredClone: 'readonly',
   setTimeout: 'readonly',
   clearTimeout: 'readonly'
