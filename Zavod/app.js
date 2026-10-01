@@ -1,5 +1,7 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, measurementColor } from './catalog-base.js?v=9';
-import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, planDrum, spliceTarget, parseBreakdowns } from './core.js?v=9';
+import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=10';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=11';
+import { drumStatus } from './planner.js?v=11';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=9';
 import { setupFor, tableSetups, speedStages, metricValues, VALUE_LABELS } from './setup-data.js?v=9';
@@ -23,21 +25,21 @@ const sectionOptions = id => CABLES.find(row => row.id === id).sections.map(valu
 function restore() {
   const state = { version: 1, cableId: optionFor('vvgng-p').id, section: 1.5, color: 'blue', rules: { ...DEFAULT_RULES }, overrides: {}, currentTarget: '15000', drums: ['blue', 'brown', 'yellow-green'].map((color, i) => ({ id: `drum-${i}`, color, length: '15000', name: '', breakdowns: '' })) };
   const saved = read(STORAGE);
-  if (saved?.version !== 1) return state;
+  if (saved?.version !== 1) { restorePlanner(null, state); return state; }
   const cable = optionFor(saved.cableId);
   if (cable) { state.cableId = cable.id; state.section = cable.sections.includes(saved.section) ? saved.section : cable.sections[0]; }
   if (COLORS.some(row => row.id === saved.color)) state.color = saved.color;
   for (const [key] of RULES) if (Number.isInteger(number(saved.rules?.[key])) && number(saved.rules[key]) >= 0) state.rules[key] = number(saved.rules[key]);
   if (saved.overrides && typeof saved.overrides === 'object') state.overrides = saved.overrides;
   if (typeof saved.currentTarget === 'string') state.currentTarget = saved.currentTarget.slice(0, 20);
-  const drums = Array.isArray(saved.drums) ? saved.drums.filter(d => d && COLORS.some(c => c.id === d.color)).slice(0, 50) : [];
-  if (drums.length) state.drums = drums.map((d, i) => ({ id: `drum-${i}`, color: d.color, length: String(d.length ?? '').slice(0, 20), name: String(d.name ?? '').slice(0, 80), breakdowns: String(d.breakdowns ?? '').slice(0, 2000) }));
+  restorePlanner(saved, state);
   return state;
 }
 const state = restore();
 let catalog = cachedCatalog();
 let view = 'setup', toastTimer, syncing = false, authorized = false, authenticating = false;
 let formReady = false, expectedRevision = 0, pendingSave = null, journal = [], nextJournal = null, busy = false;
+let setupFromPlan = false;
 const setup = (color = state.color) => setupFor(state.cableId, state.section, catalog, color);
 const recipe = color => {
   const result = setup(color);
@@ -46,13 +48,19 @@ const recipe = color => {
 const display = value => typeof value === 'string' && number(value) === null ? esc(value) : fmt(value);
 const persist = () => { if (!write(STORAGE, state)) toast('План не зберігся на пристрої. Скопіюй його перед закриттям.'); };
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4500); }
+const planner = createPlannerUI({ state, getSetup: (cableId, section, color) => setupFor(cableId, section, catalog, color), persist, toast, haptic, onCableInfo: drum => {
+  state.cableId = drum.cableId; state.section = drum.section; state.color = drum.color;
+  setupFromPlan = true; persist(); renderSelectors(); showView('setup');
+} });
 
 function showView(next) {
   if (next === 'table' && view === 'setup') $('table-filter').value = state.cableId;
   view = next;
+  if (next !== 'setup') setupFromPlan = false;
+  $('return-to-plan').hidden = next !== 'setup' || !setupFromPlan;
   for (const name of ['setup', 'plan', 'table', 'admin']) $('view-' + name).hidden = next !== name;
   document.querySelectorAll('[data-view]').forEach(button => button.toggleAttribute('data-active', button.dataset.view === next));
-  setBackHandler(next === 'setup' ? null : () => showView('setup'));
+  setBackHandler(next === 'setup' ? setupFromPlan ? () => showView('plan') : null : () => showView('setup'));
   if (next === 'setup') renderSetup();
   if (next === 'plan') renderPlan();
   if (next === 'table') renderTable();
@@ -144,35 +152,22 @@ function openRecord(id) {
   $('record-dialog').showModal();
 }
 
-function drumResult(drum, i) {
-  const r = recipe(drum.color), next = state.drums[i + 1];
-  const mode = next && recipe(next.color).mode !== r.mode ? 'unknown' : r.mode;
-  return planDrum(drum, next, mode, { ...state.rules });
-}
-function drumOutput(drum, i) {
-  const result = drumResult(drum, i), log = parseBreakdowns(drum.breakdowns);
-  if (result.errors.length) return `<p class="error">${result.errors.map(esc).join('<br>')}</p>`;
-  return `<div class="target"><span>Довжина на екрані</span><strong>${fmt(result.target)} <small>м</small></strong></div>
-    ${result.transition ? `<ol class="steps">${result.events.map(event => `<li><b>≈ ${fmt(event.at)} м</b> — барвник №${event.extruder}: ${esc(event.dye.toLowerCase())}</li>`).join('')}<li>Стравити. Коли ${esc(colorName(result.nextColor).toLowerCase())} з’явиться у 4-му рядку ванни — перекинути вручну.</li></ol><p class="quiet formula">${esc(result.formula)}</p>` : '<p class="quiet">Без поправки на зміну кольору.</p>'}
-    ${result.warnings.map(w => `<p class="error">${esc(w)}</p>`).join('')}${log.error ? `<p class="error">${esc(log.error)}</p>` : log.values.length ? `<p>На ярлик — пробій: <b>${log.values.map(v => fmt(v) + ' м').join('; ')}</b></p>` : ''}`;
-}
 function renderPlan() {
-  $('plan-title').textContent = `${cableLabel(state.cableId)} · ${fmt(state.section)} мм² · план зберігається на цьому пристрої`;
-  $('drums').innerHTML = state.drums.map((drum, i) => `<article class="card drum" data-drum="${drum.id}"><div class="drum-heading"><h2>Барабан ${i + 1}</h2><div><button type="button" class="icon-button" data-action="up" aria-label="Барабан ${i + 1} вгору" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="icon-button" data-action="down" aria-label="Барабан ${i + 1} вниз" ${i === state.drums.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="icon-button" data-action="remove" aria-label="Прибрати барабан ${i + 1}" ${state.drums.length === 1 ? 'disabled' : ''}>×</button></div></div><div class="form-grid"><label>Колір<select data-field="color">${colorOptions(drum.color)}</select></label><label>Потрібна довжина, м<input data-field="length" inputmode="numeric" value="${esc(drum.length)}" maxlength="20"></label></div><div data-output="${drum.id}">${drumOutput(drum, i)}</div><details class="extra"><summary>Номер барабана та пробої</summary><div class="form-grid"><label>Номер барабана<input data-field="name" maxlength="80" value="${esc(drum.name)}"></label><label>Пробій на метрі<input data-field="breakdowns" inputmode="text" maxlength="2000" placeholder="3682; 9240" value="${esc(drum.breakdowns)}"></label></div></details></article>`).join('');
+  planner.render();
   $('rules').innerHTML = RULES.map(([key, label]) => `<label>${esc(label)}<input data-rule="${key}" inputmode="numeric" value="${esc(state.rules[key])}" maxlength="8"></label>`).join('');
   const r = recipe();
   if (r.colorLead2) $('rules').insertAdjacentHTML('beforeend', `<p class="quiet">У записі для цього проводу: зміна кольору №2 за ${fmt(r.colorLead2)} м. <button class="back" type="button" id="use-source-lead">Взяти це значення</button></p>`);
 }
-function renderOutputs() { state.drums.forEach((drum, i) => { document.querySelector(`[data-output="${drum.id}"]`).innerHTML = drumOutput(drum, i); }); }
+function renderOutputs() { planner.renderOutputs(); }
 function renderSplice() { const result = spliceTarget(state.currentTarget, state.rules.splice); $('splice-result').textContent = result === null ? 'Введи цілі метри' : fmt(result) + ' м'; }
 async function copyPlan() {
-  const lines = [`${cableLabel(state.cableId)} ${fmt(state.section)} мм²`];
+  const lines = ['План барабанів · довжини кожного кольору окремо'];
   state.drums.forEach((drum, i) => {
-    const result = drumResult(drum, i), r = recipe(drum.color);
-    const info = setup(drum.color);
+    const result = planner.result(drum, i), info = planner.setup(drum), r = { mode: info.mode };
     const labeled = key => `${display(info.effective[key])} (${VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;
-    lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв. Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}. Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — 20, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `На екрані: ${fmt(result.target)} м.`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
+    lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${planner.drumTitle(drum)} · ${colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв. Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}. Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — 20, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `Стан: ${drumStatus(drum) === 'done' ? 'готово' : drumStatus(drum) === 'active' ? 'в роботі' : 'у черзі'}. На екрані: ${fmt(result.target)} м.`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
     if (result.transition) lines.push('Стравити та перекинути вручну за потрібним кольором у 4-му рядку ванни.');
+    if (result.setupChange) lines.push(planner.transitionText(drum, i));
     if (drum.breakdowns) lines.push('Пробої: ' + drum.breakdowns);
   });
   try { await navigator.clipboard.writeText(lines.join('\n')); toast('План скопійовано'); } catch { toast('Копіювання недоступне. Скористайся кнопкою «Друк».'); }
@@ -314,11 +309,9 @@ for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change',
   persist(); renderSelectors(); renderSetup(); haptic();
 });
 $('open-plan').addEventListener('click', () => showView('plan'));
+$('return-to-plan').addEventListener('click', () => showView('plan'));
 $('open-splice').addEventListener('click', () => { $('current-target').value = state.currentTarget; renderSplice(); $('splice-dialog').showModal(); });
 $('current-target').addEventListener('input', () => { state.currentTarget = $('current-target').value; persist(); renderSplice(); });
-$('add-drum').addEventListener('click', () => { if (state.drums.length >= 50) return toast('У плані вже 50 барабанів.'); state.drums.push({ id: crypto.randomUUID(), color: state.color, length: '15000', name: '', breakdowns: '' }); persist(); renderPlan(); });
-$('drums').addEventListener('input', event => { const card = event.target.closest('[data-drum]'); if (!card || !event.target.dataset.field) return; const drum = state.drums.find(d => d.id === card.dataset.drum); drum[event.target.dataset.field] = event.target.value; persist(); renderOutputs(); });
-$('drums').addEventListener('click', event => { const button = event.target.closest('[data-action]'); if (!button) return; const i = state.drums.findIndex(d => d.id === button.closest('[data-drum]').dataset.drum); if (button.dataset.action === 'remove' && state.drums.length > 1) state.drums.splice(i, 1); else { const j = i + (button.dataset.action === 'up' ? -1 : 1); if (j >= 0 && j < state.drums.length) [state.drums[i], state.drums[j]] = [state.drums[j], state.drums[i]]; } persist(); renderPlan(); });
 $('rules').addEventListener('input', event => { if (!event.target.dataset.rule) return; state.rules[event.target.dataset.rule] = event.target.value; persist(); renderOutputs(); });
 $('copy-plan').addEventListener('click', () => void copyPlan()); $('print-plan').addEventListener('click', () => window.print());
 $('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions(); $('table-filter').value = state.cableId;
@@ -347,4 +340,5 @@ function startTelegram() { initTelegram(); if (window.Telegram?.WebApp?.initData
 renderSelectors(); renderSetup(); renderTable(); startTelegram();
 window.addEventListener('load', startTelegram, { once: true });
 if (new URLSearchParams(window.location.search).get('admin') === '1') showView('admin');
+else if (new URLSearchParams(window.location.search).get('plan') === '1') showView('plan');
 void syncCatalog();

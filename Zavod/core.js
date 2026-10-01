@@ -63,6 +63,15 @@ export function dyePlan(color, mode) {
 export function planDrum(drum, nextDrum, mode, inputRules = {}) {
   const rules = { ...DEFAULT_RULES, ...inputRules };
   const length = positive(drum.length);
+  const supplied = value => value !== null && value !== undefined;
+  const cableChange = Boolean(nextDrum && (
+    supplied(drum.cableId) && supplied(nextDrum.cableId) && drum.cableId !== nextDrum.cableId ||
+    supplied(drum.section) && supplied(nextDrum.section) && (number(drum.section) ?? drum.section) !== (number(nextDrum.section) ?? nextDrum.section)
+  ));
+  const headChange = Boolean(nextDrum && (drum.color === 'yellow-green') !== (nextDrum.color === 'yellow-green'));
+  const modeChange = Boolean(nextDrum && supplied(drum.mode) && supplied(nextDrum.mode) && drum.mode !== nextDrum.mode);
+  const setupChange = cableChange || headChange || modeChange;
+  const changes = { setupChange, cableChange, headChange, modeChange };
   const errors = [];
   for (const key of ['bath', 'reserve', 'lead1', 'lead2', 'splice']) {
     const value = number(rules[key]);
@@ -72,9 +81,11 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
   if (length === null || !Number.isInteger(length)) errors.push('Вкажіть довжину барабана цілим числом метрів, більшим за нуль.');
   if (!COLORS.some(color => color.id === drum.color)) errors.push('Оберіть колір барабана.');
   if (nextDrum && !COLORS.some(color => color.id === nextDrum.color)) errors.push('Оберіть колір наступного барабана.');
-  if (errors.length) return { errors: [...new Set(errors)], events: [], target: null };
+  if (errors.length) return { errors: [...new Set(errors)], warnings: [], events: [], target: null, ...changes };
 
-  const transition = Boolean(nextDrum && nextDrum.color !== drum.color);
+  // A cable, distributor or extruder change requires a separate setup. The
+  // in-run dye countdown only applies while the current setup continues.
+  const transition = Boolean(nextDrum && nextDrum.color !== drum.color && !setupChange);
   const events = [];
   const warnings = [];
   let target = length;
@@ -99,7 +110,7 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
     }
   }
   events.sort((a, b) => a.at - b.at);
-  return { errors, warnings, length, target: errors.length ? null : target, formula, transition, events, nextColor: nextDrum?.color ?? null };
+  return { errors, warnings, length, target: errors.length ? null : target, formula, transition, events, nextColor: nextDrum?.color ?? null, ...changes };
 }
 
 /** Add to the current screen setting, including any earlier +30 additions. */

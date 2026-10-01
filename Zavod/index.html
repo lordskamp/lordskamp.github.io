@@ -2,20 +2,35 @@
 <html lang="uk"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=9">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=9"></script>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=11">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=11"></script>
 </head><body>
   <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
     <section id="view-setup" class="work-view">
+      <button class="back" id="return-to-plan" type="button" hidden>← До черги</button>
       <div class="pickers"><label>Провід<select id="cable"></select></label><label>Переріз, мм²<select id="section"></select></label><label class="color-picker">Колір<select id="color"></select></label></div>
       <div id="values" aria-live="polite"></div>
       <div class="actions"><button class="primary" id="open-plan" type="button">План барабанів</button><button class="secondary" id="open-splice" type="button">Вхідний закінчився · +30 м</button></div>
       <p id="connection" class="quiet" role="status">Оновлюю таблицю…</p><details id="source-details" class="source-details"><summary>Фото запису та пояснення</summary><div id="source-content"></div></details>
     </section>
     <section id="view-plan" hidden>
-      <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Барабани</h1></div><button class="primary" id="add-drum" type="button">＋ Додати</button></div>
-      <p id="plan-title" class="quiet"></p><div id="drums" class="drums"></div>
+      <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>План барабанів</h1></div><button class="secondary" id="add-drum" type="button">Окремий барабан</button></div>
+      <p id="plan-title" class="quiet"></p>
+      <details class="card job-builder" id="job-builder" open>
+        <summary>Завдання</summary>
+        <p class="quiet">Вкажи довжини для кожного кольору: «3×15 + 3×15 + 11» означає 6 по 15 км і 1 на 11 км.</p>
+        <div id="jobs"></div>
+        <div class="job-toolbar"><button class="secondary" id="add-job" type="button">＋ Ще провід</button><button class="back" id="load-plan-example" type="button">Приклад із фото</button></div>
+        <p class="quiet">Черга врахує заміни розсікача й потребу скрутки. Порядок проводів можна змінити стрілками.</p>
+        <div class="actions job-actions"><button class="primary" id="generate-plan" type="button">Скласти чергу</button><button class="secondary" id="undo-plan" type="button" hidden>Повернути попередню чергу</button></div>
+        <p id="job-message" class="form-message" role="status"></p>
+      </details>
+      <div id="plan-summary" aria-live="polite"></div>
+      <p id="plan-order-status" class="quiet" role="status"></p>
+      <div class="queue-heading"><div><h2>Черга</h2><p class="quiet">Перетягни за ☰. Натисни на провід, щоб змінити дані.</p></div><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Впорядкувати</button><button class="secondary" id="clear-plan" type="button">Очистити чергу</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>
+      <div id="drums" class="drums"></div>
+      <p id="plan-live" class="sr-only" role="status" aria-live="polite"></p>
       <div class="actions"><button class="secondary" id="copy-plan" type="button">Копіювати план</button><button class="secondary" id="print-plan" type="button">Друк</button></div>
       <details class="extra"><summary>Поправки до довжини</summary><div id="rules" class="form-grid"></div><p class="quiet">Зміна барвника — приблизно. Відлік від нуля кожного барабана. Перекидання — за кольором у 4-му рядку ванни.</p></details>
     </section>

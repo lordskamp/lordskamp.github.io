@@ -22,23 +22,81 @@ test('15 км зі зміною кольору: екран 15 850 м, барвн
   assert.deepEqual(result.events, [{ extruder: 2, at: 13000, lead: 2000, dye: 'Коричневий' }]);
 });
 
-test('перехід на жовто-зелений додає жовту основу Е1 на 14 700 м', () => {
+test('перехід на жовто-зелений потребує зміни розсікача після повної довжини', () => {
   const result = planDrum(drum('brown'), drum('yellow-green'), 'dual');
-  assert.equal(result.target, 15850);
-  assert.deepEqual(result.events, [
-    { extruder: 2, at: 13000, lead: 2000, dye: 'Зелений' },
-    { extruder: 1, at: 14700, lead: 300, dye: 'Жовтий' }
-  ]);
+  assert.equal(result.target, 15000);
+  assert.equal(result.transition, false);
+  assert.equal(result.setupChange, true);
+  assert.equal(result.headChange, true);
+  assert.equal(result.cableChange, false);
+  assert.equal(result.modeChange, false);
+  assert.deepEqual(result.events, []);
+  assert.deepEqual(result.warnings, []);
   assert.equal(dyePlan('yellow-green', 'dual').first, 'Жовтий');
   assert.equal(dyePlan('yellow-green', 'dual').second, 'Зелений');
 });
 
-test('після жовто-зеленого Е1 повертається до білої основи', () => {
+test('після жовто-зеленого зміна розсікача не отримує попередніх метрових підказок', () => {
   const result = planDrum(drum('yellow-green'), drum('blue'), 'dual');
-  assert.deepEqual(result.events, [
-    { extruder: 2, at: 13000, lead: 2000, dye: 'Синій' },
-    { extruder: 1, at: 14700, lead: 300, dye: 'Біла основа' }
-  ]);
+  assert.equal(result.target, 15000);
+  assert.equal(result.headChange, true);
+  assert.equal(result.setupChange, true);
+  assert.equal(result.transition, false);
+  assert.deepEqual(result.events, []);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('зміна проводу або перерізу завершує повну довжину незалежно від кольору', () => {
+  for (const color of ['blue', 'brown']) {
+    for (const nextSetup of [{ cableId: 'pv3', section: 2.5 }, { cableId: 'vvgng-p', section: 1.5 }]) {
+      const current = Object.freeze({ ...drum('blue', 11000), cableId: 'vvgng-p', section: 2.5 });
+      const next = Object.freeze({ ...drum(color), ...nextSetup });
+      const result = planDrum(current, next, 'dual');
+      assert.equal(result.target, 11000);
+      assert.equal(result.cableChange, true);
+      assert.equal(result.setupChange, true);
+      assert.equal(result.headChange, false);
+      assert.equal(result.transition, false);
+      assert.deepEqual(result.events, []);
+      assert.deepEqual(result.warnings, []);
+      assert.equal(current.length, 11000);
+      assert.equal(next.color, color);
+    }
+  }
+});
+
+test('той самий провід та чисельно однаковий переріз зберігають перехід звичайного кольору', () => {
+  const result = planDrum(
+    { ...drum('blue'), cableId: 'vvgng-p', section: '2,5', mode: 'dual' },
+    { ...drum('brown'), cableId: 'vvgng-p', section: 2.5, mode: 'dual' },
+    'dual'
+  );
+  assert.equal(result.target, 15850);
+  assert.equal(result.transition, true);
+  for (const key of ['setupChange', 'cableChange', 'headChange', 'modeChange']) assert.equal(result[key], false);
+  assert.deepEqual(result.events, [{ extruder: 2, at: 13000, lead: 2000, dye: 'Коричневий' }]);
+});
+
+test('зміна кількості екструдерів потребує окремого налаштування навіть для одного кольору', () => {
+  for (const color of ['blue', 'brown']) {
+    const result = planDrum({ ...drum('blue'), mode: 'dual' }, { ...drum(color), mode: 'single' }, 'dual');
+    assert.equal(result.modeChange, true);
+    assert.equal(result.setupChange, true);
+    assert.equal(result.target, 15000);
+    assert.equal(result.transition, false);
+    assert.deepEqual(result.events, []);
+    assert.deepEqual(result.warnings, []);
+  }
+});
+
+test('останній барабан та відсутні поля старого плану не вигадують зміни налаштування', () => {
+  const final = planDrum({ ...drum('yellow-green'), cableId: 'pv3', section: 2.5, mode: 'dual' }, null, 'dual');
+  const legacy = planDrum(drum('blue'), { ...drum('brown'), cableId: 'pv3', section: 2.5, mode: 'single' }, 'dual');
+  for (const result of [final, legacy]) {
+    for (const key of ['setupChange', 'cableChange', 'headChange', 'modeChange']) assert.equal(result[key], false);
+  }
+  assert.equal(final.target, 15000);
+  assert.equal(legacy.target, 15850);
 });
 
 test('однаковий колір наступного барабана не додає резерву й переходів', () => {
@@ -116,13 +174,17 @@ test('короткий барабан не створює від’ємної п
 test('невідомий режим та жовто-зелений з одним екструдером не вигадують зміни барвника', () => {
   for (const [current, next, mode] of [
     ['blue', 'brown', 'unknown'],
-    ['blue', 'brown', undefined],
-    ['blue', 'yellow-green', 'single'],
-    ['yellow-green', 'brown', 'single']
+    ['blue', 'brown', undefined]
   ]) {
     const result = planDrum(drum(current), drum(next), mode);
     assert.deepEqual(result.events, []);
     assert.ok(result.warnings.some(message => message.includes('уточніть схему')));
+  }
+  for (const [current, next] of [['blue', 'yellow-green'], ['yellow-green', 'brown']]) {
+    const result = planDrum(drum(current), drum(next), 'single');
+    assert.equal(result.headChange, true);
+    assert.equal(result.target, 15000);
+    assert.deepEqual(result.events, []);
   }
   assert.equal(dyePlan('yellow-green', 'single').valid, false);
   assert.equal(dyePlan('blue', 'unknown').valid, false);
