@@ -1,23 +1,37 @@
 import { CABLES, RECIPES } from './data.js';
-import { colorName } from './core.js?v=20';
+import { colorName } from './core.js?v=21';
 import { API_URL } from './config.js?v=3';
+import { PUBLIC_CALIBRATIONS, CALIBRATION_SNAPSHOT } from './calibration-snapshot.js?v=21';
 const CACHE = 'zavod-shared-table-v1';
 export const FIELDS = [['extruder1', 'Оберти №1, об/хв'], ['extruder2', 'Оберти №2, об/хв'], ['sikoraWire', 'SIKORA: діаметр жили, мм'], ['sikoraOuter', 'SIKORA: з ізоляцією, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Робоча швидкість, м/хв'], ['colorLead1', 'Зміна кольору №1 за, м'], ['colorLead2', 'Зміна кольору №2 за, м']];
 export function baseline() {
-  return { cables: CABLES, recipes: RECIPES.map(row => ({ ...row, baseId: row.id, color: 'all', origin: 'handwritten', revision: 1, updatedAt: '2026-09-29T00:00:00.000Z' })), source: 'snapshot' };
+  return { cables: CABLES, recipes: RECIPES.map(row => ({ ...row, baseId: row.id, color: 'all', origin: 'handwritten', revision: 1, updatedAt: '2026-09-29T00:00:00.000Z' })),
+    calibrations: PUBLIC_CALIBRATIONS.map(row => ({ ...row })), calibrationSnapshot: CALIBRATION_SNAPSHOT, source: 'snapshot' };
+}
+// Once a full server catalogue has been received, its omissions/retractions are
+// authoritative, including offline use of that cache. Never add bundled rows
+// back to an authoritative server result or silently resurrect a removed row.
+export function withOfflineCalibrations(catalog) {
+  if (catalog.calibrationAuthority === 'server' || catalog.source === 'server' || typeof catalog.lastSyncedAt === 'string') return catalog;
+  const existing = [...(catalog.recipes ?? []), ...(catalog.calibrations ?? [])];
+  const identity = row => `${row.optionId ?? row.cableId}|${row.section}|${row.mode}`;
+  const present = new Set(existing.filter(row => row.origin === 'measurement' || row.deletedAt || row.withdrawnAt || row.retired).map(identity));
+  return { ...catalog, calibrations: [...(catalog.calibrations ?? []), ...PUBLIC_CALIBRATIONS.filter(row => !present.has(identity(row))).map(row => ({ ...row }))],
+    calibrationSnapshot: CALIBRATION_SNAPSHOT };
 }
 export function cachedCatalog() {
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE));
-    if (Array.isArray(cached?.recipes) && cached.recipes.length && Array.isArray(cached?.cables)) return { ...cached, source: 'cache' };
+    if (Array.isArray(cached?.recipes) && cached.recipes.length && Array.isArray(cached?.cables)) return { ...withOfflineCalibrations(cached), source: 'cache' };
   } catch { /* Original data is always available. */ }
   return baseline();
 }
 export async function loadCatalog() {
   const result = await api('/catalog');
   if (!Array.isArray(result.recipes) || !result.recipes.length) throw new Error('Таблиця ще не заповнена.');
-  try { localStorage.setItem(CACHE, JSON.stringify(result)); } catch { /* Online use still works. */ }
-  return result;
+  const authoritative = { ...result, calibrationAuthority: 'server', lastSyncedAt: new Date().toISOString() };
+  try { localStorage.setItem(CACHE, JSON.stringify(authoritative)); } catch { /* Online use still works. */ }
+  return authoritative;
 }
 export function findRecipe(catalog, cableId, section, color) {
   const rows = catalog.recipes.filter(row => row.cableId === cableId && row.section === Number(section));

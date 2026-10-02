@@ -1,0 +1,75 @@
+// Public numeric admin measurements bundled for a fresh offline installation.
+// Private notes, operator identity and Telegram data are deliberately excluded.
+export const CALIBRATION_SNAPSHOT = Object.freeze({
+  source: 'https://zavod-data.lordskamp.workers.dev/catalog',
+  retrievedOn: '2026-10-02',
+  version: '2026-10-02-h07-v1',
+});
+export const PUBLIC_CALIBRATIONS = [
+  {
+    "id": "h07v-k--h07v-k-1-5",
+    "source": "IMG_3852.JPG",
+    "baseId": "h07v-k--h07v-k-1-5",
+    "cableId": "h07v-k--h07v-k",
+    "optionId": "h07v-k--h07v-k",
+    "section": 1.5,
+    "color": "all",
+    "mode": "dual",
+    "measurementId": "21769c29-3bf2-447f-9363-c5af70929ee6",
+    "revision": 1,
+    "updatedAt": "2026-10-01T12:56:35.616Z",
+    "extruder1": 37.5,
+    "extruder2": 65,
+    "maxSpeed": 150,
+    "dorn": 1.7,
+    "matrix": 2.95,
+    "sikoraWire": 1.53,
+    "sikoraOuter": 3.1,
+    "colorLead2": 300
+  },
+  {
+    "id": "h07v-k--h07v-k-2-5",
+    "source": "IMG_3852.JPG",
+    "baseId": "h07v-k--h07v-k-2-5",
+    "cableId": "h07v-k--h07v-k",
+    "optionId": "h07v-k--h07v-k",
+    "section": 2.5,
+    "color": "all",
+    "mode": "dual",
+    "measurementId": "be26d01d-1d12-45c5-9316-17e39dc6a547",
+    "revision": 2,
+    "updatedAt": "2026-10-01T11:43:12.274Z",
+    "extruder1": 53.7,
+    "extruder2": 72.2,
+    "maxSpeed": 150,
+    "dorn": 2.1,
+    "matrix": 3.6,
+    "sikoraWire": 1.97,
+    "sikoraOuter": 3.75,
+    "colorLead2": 300
+  },
+  {
+    "id": "h07v-k--h07v-k-6",
+    "source": "IMG_3852.JPG",
+    "baseId": "h07v-k--h07v-k-6",
+    "cableId": "h07v-k--h07v-k",
+    "optionId": "h07v-k--h07v-k",
+    "section": 6,
+    "color": "all",
+    "mode": "dual",
+    "measurementId": "34b14828-b788-4333-b17f-dd6ba80153fc",
+    "revision": 3,
+    "updatedAt": "2026-10-01T15:33:57.704Z",
+    "extruder1": 59,
+    "extruder2": 95,
+    "maxSpeed": 120,
+    "dorn": 3.2,
+    "matrix": 4.65,
+    "sikoraWire": 3.05,
+    "sikoraOuter": 4.85,
+    "colorLead2": 300
+  }
+].map(record => Object.freeze({
+  ...record, origin: 'measurement',
+  bundledCalibration: CALIBRATION_SNAPSHOT.version,
+}));

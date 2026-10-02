@@ -1,8 +1,8 @@
 import { RECIPES } from './data.js';
-import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance } from './core.js?v=20';
-import { CATALOG_OPTIONS } from './catalog-options.js?v=20';
-import { REFERENCE_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=20';
-import { operatingRecords } from './pv3-modes.js?v=20';
+import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=21';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=21';
+import { REFERENCE_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=21';
+import { operatingRecords } from './pv3-modes.js?v=21';
 
 const HANDWRITTEN = {
   'pvs-380': ['pvs-shvvp'], 'vvg-066': ['vvg'], 'vvg-p-066': ['vvgng-p'],
@@ -113,7 +113,23 @@ function groupsFor(records, target, own) {
 function closestGroups(groups, key) {
   const usable = groups.filter(group => fieldAnchors(group.records, key).length);
   const best = Math.max(0, ...usable.map(group => group.weight));
-  return usable.filter(group => group.weight >= best * .8);
+  const compatible = usable.filter(group => group.weight >= best * .8);
+  // Recent admin measurements calibrate the current line better than a mixture
+  // of older handwritten settings. Prefer them among equally compatible
+  // families; a physically closer family still wins over a distant donor.
+  const measured = compatible.filter(group => group.records.some(record => record.origin === 'measurement' && valid(key, valueFor(record, key))));
+  return measured.length ? measured : compatible;
+}
+
+function measuredCurve(records, key) {
+  const families = new Map();
+  for (const record of records) {
+    if (record.origin !== 'measurement' || !positive(record.section) || !valid(key, valueFor(record, key))) continue;
+    const id = record.optionId ?? record.cableId;
+    if (!families.has(id)) families.set(id, new Set());
+    families.get(id).add(record.section);
+  }
+  return [...families.values()].some(sections => sections.size >= 2);
 }
 
 function mergedSection(records, section) {
@@ -385,6 +401,8 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
   const targetArea = area(result.sikoraWire, result.sikoraOuter) ?? (flat(card) && positive(result.sikoraWire)
     ? 2 * area(result.sikoraWire, result.sikoraWire + 2 * row.thicknessNom) : null);
   setEstimate('workingSpeed', speedEstimate(anchorsFor('workingSpeed'), matchingOwn, related, row, targetArea));
+  result.calibratedSpeedCurve = measuredCurve([...matchingOwn, ...linked], 'workingSpeed')
+    || !anchorsFor('workingSpeed').length && closestGroups(related, 'workingSpeed').some(group => measuredCurve(group.records, 'workingSpeed'));
   for (const key of ['extruder1', 'extruder2']) {
     if (key === 'extruder2' && mode === 'single') continue;
     setEstimate(key, rpmEstimate(key, anchorsFor(key), matchingOwn, related, row, targetArea, result.workingSpeed));
@@ -410,6 +428,15 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
         result.rpmSpeedBasis[key] = options.workingSpeed;
       }
     }
+  }
+  // This limit applies only to calculated settings, never to recorded machine
+  // values. It must be checked after rescaling to the selected speed.
+  if (mode === 'dual' && positive(result.extruder1) && positive(result.extruder2)
+      && result.fieldMethods.extruder2 !== 'measured-value' && result.extruder2 > result.extruder1 + MAX_EXTRUDER_RPM_DIFFERENCE) {
+    result.rpmLimit = { key: 'extruder2', original: result.extruder2, maximumDifference: MAX_EXTRUDER_RPM_DIFFERENCE };
+    result.extruder2 = round(limitPredictedExtruder2(result.extruder1, result.extruder2), 'extruder2');
+    result.fieldMethods.extruder2 += '-limited-gap';
+    result.fieldConfidence.extruder2 = 'low';
   }
   const bases = Object.values(result.rpmSpeedBasis);
   result.rpmWorkingSpeed = bases.length && bases.every(basis => positive(basis) && basis === bases[0]) ? bases[0] : null;

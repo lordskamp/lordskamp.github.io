@@ -119,7 +119,7 @@ test('reference values stay primary where practical values are absent and foreca
   assert.equal(result.sources.workingSpeed, 'reference');
   assert.deepEqual(result.stages, { first: 80, second: 260, working: 450, source: 'reference' });
   assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source,item.value]), [['reference',117], ['forecast',60.3]]);
-  assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані' });
+  assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю' });
 });
 
 test('PV3 pairs supply dual RPM without becoming practical single-extruder RPM', () => {

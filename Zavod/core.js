@@ -11,6 +11,7 @@ export const COLORS = [
 ];
 
 export const DEFAULT_RULES = Object.freeze({ bath: 150, reserve: 1000, lead2: 2000, lead1: 300, splice: 30, sikoraOffset: 0.15 });
+export const MAX_EXTRUDER_RPM_DIFFERENCE = 40;
 
 export function number(value) {
   if (value === null || value === undefined || typeof value === 'boolean' || String(value).trim() === '') return null;
@@ -21,6 +22,12 @@ export function number(value) {
 export function positive(value) {
   const parsed = number(value);
   return parsed !== null && parsed > 0 ? parsed : null;
+}
+
+/** Limit derived RPM only; recorded measurements retain their original values. */
+export function limitPredictedExtruder2(firstRpm, secondRpm) {
+  const first = positive(firstRpm), second = positive(secondRpm);
+  return first === null || second === null ? second : Math.min(second, first + MAX_EXTRUDER_RPM_DIFFERENCE);
 }
 
 export function firstSpeed(workingSpeed) {

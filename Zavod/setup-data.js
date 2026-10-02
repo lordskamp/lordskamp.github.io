@@ -1,11 +1,11 @@
-import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=20';
+import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=21';
 import { RECIPES } from './data.js';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=20';
-import { forecastFor } from './forecast.js?v=20';
-import { number, firstSpeed, secondSpeed } from './core.js?v=20';
-import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=20';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=21';
+import { forecastFor } from './forecast.js?v=21';
+import { number, firstSpeed, secondSpeed, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=21';
+import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=21';
 
-export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані' };
+export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю' };
 const metric = row => ({
   extruder1: number(row?.extruder1), extruder2: number(row?.extruder2), workingSpeed: number(row?.maxSpeed),
   dorn: number(row?.dorn), matrix: number(row?.matrix), sikoraWire: number(row?.sikoraWire), sikoraOuter: number(row?.sikoraOuter),
@@ -69,9 +69,17 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
   // curve to an unrelated speed between the measured sections.
   const learnedSpeedCurve = new Set(ownRecords.filter(record => record.origin === 'measurement' && !record.retired
     && record.mode === mode && number(record.maxSpeed) > 0).map(record => Number(record.section))).size >= 2;
-  const forecast = forecastFor(card, row, [...RECIPES, ...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])], { optionId: option.id, mode: mode === 'unknown' ? undefined : mode,
+  const forecastRecords = [...RECIPES, ...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])];
+  const forecastOptions = { optionId: option.id, mode: mode === 'unknown' ? undefined : mode,
     normalMode, color, workingSpeed: practical.workingSpeed ?? (learnedSpeedCurve ? null : reference.workingSpeed), matrix: number(practical.matrix ?? reference.matrix),
-    cableId: option.brand === '(H)05VV-F' && card.id === 'ysly-shared' ? 'ysly' : option.practicalCableId });
+    cableId: option.brand === '(H)05VV-F' && card.id === 'ysly-shared' ? 'ysly' : option.practicalCableId };
+  let forecast = forecastFor(card, row, forecastRecords, forecastOptions);
+  // An equally compatible measured donor curve is also a production speed
+  // basis. Do not inflate its RPM back to a printed nominal maximum.
+  if (!learnedSpeedCurve && practical.workingSpeed == null && forecast.calibratedSpeedCurve) {
+    forecast = forecastFor(card, row, forecastRecords, { ...forecastOptions, workingSpeed: null });
+  }
+  const calibratedOperatingCurve = learnedSpeedCurve || forecast.calibratedSpeedCurve;
   const effective = {}, sources = {};
   for (const key of Object.keys(reference)) {
     const predicted = key === 'workingSpeed' ? forecast.workingSpeed : forecast[key];
@@ -80,13 +88,27 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
     // remain their original reference text instead of a circular estimate.
     const nominal = key === 'sikoraWire' ? row.wireNom : key === 'sikoraOuter' ? row.outerNomText : null;
     const operating = ['extruder1', 'extruder2', 'workingSpeed'].includes(key);
-    const choices = learnedSpeedCurve && operating
+    const choices = calibratedOperatingCurve && operating
       ? [['practical', practical[key]], ['forecast', predicted], ['reference', reference[key] ?? nominal]]
       : [['practical', practical[key]], ['reference', reference[key] ?? nominal], ['forecast', predicted]];
     const chosen = choices.find(([,value]) => value !== null && value !== undefined && value !== '');
     sources[key] = chosen?.[0] ?? null; effective[key] = chosen?.[1] ?? null;
   }
-  return { option, card, row, base, stored, practical, practicalSources: [...practicalSources].filter(Boolean), reference, forecast, effective, sources,
+  // The effective main RPM can be an exact practical/reference value while
+  // the second RPM is estimated. Apply the estimate-only bound to that final
+  // pair too; keep recorded second-extruder values untouched.
+  if (sources.extruder2 === 'forecast' && number(effective.extruder1) > 0 && number(effective.extruder2) > number(effective.extruder1) + MAX_EXTRUDER_RPM_DIFFERENCE) {
+    forecast.rpmLimit = { key: 'extruder2', original: effective.extruder2, maximumDifference: MAX_EXTRUDER_RPM_DIFFERENCE };
+    effective.extruder2 = Math.round(limitPredictedExtruder2(effective.extruder1, effective.extruder2) * 10) / 10;
+    forecast.extruder2 = effective.extruder2;
+    if (!forecast.fieldMethods.extruder2.endsWith('-limited-gap')) forecast.fieldMethods.extruder2 += '-limited-gap';
+    forecast.fieldConfidence.extruder2 = 'low';
+    forecast.confidence = 'low';
+  }
+  const rpmConflict = number(effective.extruder1) > 0 && number(effective.extruder2) > number(effective.extruder1) + MAX_EXTRUDER_RPM_DIFFERENCE
+    ? { first: number(effective.extruder1), second: number(effective.extruder2), difference: Math.round((number(effective.extruder2) - number(effective.extruder1)) * 10) / 10,
+      sources: [sources.extruder1, sources.extruder2] } : null;
+  return { option, card, row, base, stored, practical, practicalSources: [...practicalSources].filter(Boolean), reference, forecast, effective, sources, rpmConflict,
     mode: mode === 'unknown' ? forecast.mode ?? 'unknown' : mode, normalMode, color,
     stages: speedStages(effective.workingSpeed, sources.workingSpeed) };
 }

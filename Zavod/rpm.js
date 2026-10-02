@@ -1,4 +1,4 @@
-import { number, positive } from './core.js';
+import { number, positive, limitPredictedExtruder2 } from './core.js?v=21';
 import { TRIAL_LIMIT, OPERATOR_REFERENCE, OPERATOR_HANDWRITTEN } from './operator-data.js';
 import { referenceFor } from './reference-data.js';
 
@@ -14,7 +14,21 @@ export function trialRpm(recipe, target, color) {
   if (speed>baseSpeed) return empty('Швидкість перевищує записаний максимум.');
   if (Math.abs(speed/baseSpeed-1)>TRIAL_LIMIT+1e-9) return empty('Для більшої зміни швидкості потрібен замір.');
   const scale = value => number(value)===null ? null : Math.round(number(value)*speed/baseSpeed*10)/10;
-  return {first:scale(recipe.extruder1),second:recipe.mode==='single'?null:scale(recipe.extruder2),message:'Той самий режим · орієнтир для проби.'};
+  const first = scale(recipe.extruder1), rawSecond = recipe.mode==='single'?null:scale(recipe.extruder2);
+  return {first,second:limitPredictedExtruder2(first,rawSecond),message:'Той самий режим · орієнтир для проби.'};
+}
+
+/** Approximate feed adjustment for one unchanged wire, insulation and machine mode. */
+export function speedRpm(recipe, target) {
+  const speed = positive(target), baseSpeed = positive(recipe.maxSpeed);
+  const empty = message => ({ first: null, second: null, message });
+  if (!speed) return empty('Вкажи швидкість більшу за нуль.');
+  if (!['single', 'dual'].includes(recipe.mode) || !baseSpeed || !positive(recipe.extruder1)
+      || recipe.mode === 'dual' && !positive(recipe.extruder2)) return empty('Для перерахунку потрібні оберти та швидкість цього режиму.');
+  const scale = value => Math.round(number(value) * speed / baseSpeed * 10) / 10;
+  const first = scale(recipe.extruder1), second = recipe.mode === 'dual' ? limitPredictedExtruder2(first,scale(recipe.extruder2)) : null;
+  if (![first, second ?? first].every(value => Number.isFinite(value) && value > 0)) return empty('Вкажи швидкість, за якої оберти більші за нуль.');
+  return { first, second, message: 'Орієнтовно · за твоєю швидкістю' };
 }
 
 export function additionalRpm(recipe, extruder) {

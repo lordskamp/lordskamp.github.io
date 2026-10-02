@@ -17,7 +17,7 @@ test('перерахунок обертів за швидкістю зберіг
 test('обидва екструдери перераховуються для того самого режиму', () => {
   const result = trialRpm(vvg, '760', 'blue');
   assert.equal(result.first, 133);
-  assert.equal(result.second, 185.3);
+  assert.equal(result.second, 173);
 });
 
 test('прогноз не виходить за межі швидкості й не приймає порожні або хибні числа', () => {

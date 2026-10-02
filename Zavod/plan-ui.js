@@ -1,6 +1,6 @@
-import { COLORS, colorName, fmt, number, planDrum, planSplices } from './core.js?v=20';
-import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=20';
-import { CATALOG_CABLES, optionFor } from './catalog-base.js?v=20';
+import { COLORS, colorName, fmt, number, planDrum, planSplices } from './core.js?v=21';
+import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=21';
+import { CATALOG_CABLES, optionFor } from './catalog-base.js?v=21';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -36,7 +36,7 @@ export function restorePlanner(saved, state) {
     return newJob(cable.id, cable.sections.includes(Number(j.section)) ? Number(j.section) : cable.sections[0], {
       id: savedId(j.id),
       cores: j.cores ?? 3, colors: Array.isArray(j.colors) ? j.colors.filter(c => COLORS.some(row => row.id === c)) : [],
-      lengthsText: String(j.lengthsText ?? '').slice(0, 2000), urgent: j.urgent === true, batchSize: j.batchSize ?? 3
+      lengthsText: String(j.lengthsText ?? '').slice(0, 2000).replaceAll('*', '×'), urgent: j.urgent === true, batchSize: j.batchSize ?? 3
     });
   });
   state.jobs = restoreJobs(saved?.jobs);
@@ -231,6 +231,11 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const card = event.target.closest('[data-job]');
     if (!card) return;
     const job = state.jobs.find(j => j.id === card.dataset.job), field = event.target.dataset.jobField;
+    if (field === 'lengthsText' && event.target.value.includes('*')) {
+      const { selectionStart, selectionEnd, selectionDirection } = event.target;
+      event.target.value = event.target.value.replaceAll('*', '×');
+      if (selectionStart !== null && selectionStart !== undefined) event.target.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+    }
     if (event.target.dataset.jobColor) {
       const color = event.target.dataset.jobColor;
       job.colors = event.target.checked ? [...new Set([...job.colors, color])] : job.colors.filter(c => c !== color);

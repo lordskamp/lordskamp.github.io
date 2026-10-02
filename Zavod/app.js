@@ -1,13 +1,14 @@
-import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=20';
-import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=20';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=20';
-import { drumStatus } from './planner.js?v=20';
+import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=21';
+import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=21';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=21';
+import { drumStatus } from './planner.js?v=21';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
-import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=20';
-import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=20';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=20';
-import { initSplicePlanner } from './splice-ui.js?v=20';
-import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=20';
+import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=21';
+import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=21';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=21';
+import { initSplicePlanner } from './splice-ui.js?v=21';
+import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=21';
+import { SPEED_STORAGE, speedKey, speedLimit, speedSetup } from './speed-override.js?v=21';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -44,7 +45,14 @@ let view = 'setup', toastTimer, syncing = false, catalogRequest = null, authoriz
 let formReady = false, formMode = null, formDraftContext = null, expectedRevision = 0, pendingSave = null, journal = [], nextJournal = null, busy = false;
 let deletedMeasurement = null;
 let setupFromPlan = false;
-const setup = (color = state.color) => setupFor(state.cableId, state.section, catalog, color);
+const savedSpeeds = read(SPEED_STORAGE);
+const localSpeeds = savedSpeeds && typeof savedSpeeds === 'object' && !Array.isArray(savedSpeeds) ? savedSpeeds : {};
+let speedEditContext = null;
+const localSetup = (cableId, section, color) => {
+  const original = setupFor(cableId, section, catalog, color), selected = localSpeeds[speedKey(original)];
+  return selected == null ? original : speedSetup(original, selected).info;
+};
+const setup = (color = state.color) => localSetup(state.cableId, state.section, color);
 const recipe = color => {
   const result = setup(color);
   return { ...result.stored, ...result.effective, color: state.color, mode: result.mode, maxSpeed: result.effective.workingSpeed, optionId: result.option.id };
@@ -53,7 +61,7 @@ const display = value => typeof value === 'string' && number(value) === null ? e
 const persist = () => { if (!write(STORAGE, state)) toast('План не зберігся на пристрої. Скопіюй його перед закриттям.'); };
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4500); }
 initSplicePlanner({ toast, initialDraft: read(STORAGE)?.splicePlan });
-const planner = createPlannerUI({ state, getSetup: (cableId, section, color) => setupFor(cableId, section, catalog, color), persist, toast, haptic, onCableInfo: drum => {
+const planner = createPlannerUI({ state, getSetup: localSetup, persist, toast, haptic, onCableInfo: drum => {
   state.cableId = drum.cableId; state.section = drum.section; state.color = drum.color;
   setupFromPlan = true; persist(); renderSelectors(); showView('setup');
 } });
@@ -84,7 +92,9 @@ function renderSetup() {
   $('open-splice').textContent = `Вхідний закінчився · +${fmt(state.rules.splice)} м`;
   const dyes = dyePlan(state.color, r.mode);
   const extra = item => item.value == null ? '' : `<p class="metric-extra">${esc(item.label)}: <b>${item.confirmed ? 'підтверджено' : display(item.value)}</b></p>`;
-  const value = key => metricValues(info, key).filter((item, index) => index === 0 || item.value != null).map((item, index) => index === 0 ? `<strong>${display(item.value)}</strong>${item.value == null ? '' : `<small class="value-kind">${esc(item.label)}</small>`}` : extra(item)).join('');
+  const value = key => info.manualSpeed && ['extruder1', 'extruder2'].includes(key)
+    ? `<strong>${display(info.effective[key])}</strong><small class="value-kind">Орієнтовно · за твоєю швидкістю</small>`
+    : metricValues(info, key).filter((item, index) => index === 0 || item.value != null).map((item, index) => index === 0 ? `<strong>${display(item.value)}</strong>${item.value == null ? '' : `<small class="value-kind">${esc(item.label)}</small>`}` : extra(item)).join('');
   const speeds = info.stages;
   const matrix = number(info.effective.matrix), outer = number(info.effective.sikoraOuter);
   const sikoraOffset = matrix !== null && outer !== null ? Math.round((outer - matrix) * 100) / 100 : null;
@@ -99,11 +109,41 @@ function renderSetup() {
     <section class="card readings"><h2>SIKORA <small>мм</small></h2><div class="pair"><div><span>1 · Діаметр жили</span>${value('sikoraWire')}</div><div><span>2 · З ізоляцією</span>${value('sikoraOuter')}</div></div><p class="reference">${esc(sikoraGuide)}</p>
       <details class="sikora-help"><summary>Які це діаметри?</summary><p>Перше число — фактичний діаметр жили. Друге у записах — діаметр з ізоляцією. Номінальний діаметр із довідки показано окремо; він не підставляється замість налаштування SIKORA.</p><p>На <a class="source-link" href="./Screen.JPG">фото головного екрана</a> є «Гор. Ø» і окреме поле «Допуск». Це інша пара полів. Допуск у записах не вказаний.</p><p>За твоїми замірами середня поправка до матриці для 2,5 мм² — близько +0,15 мм, для тоншої жили менша. Без практичного значення прогноз враховує вибрану матрицю, переріз і доступні заміри.</p></details></section>
     <section class="card tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн</span><div class="tool-values">${value('dorn')}</div></div><div><img src="./MATRIX.svg" alt=""><span>Матриця</span><div class="tool-values">${value('matrix')}</div></div><small>мм</small></section>
-    <section class="card speeds"><h2>Швидкості <small>м/хв</small></h2><div class="speed-stages"><div><span>1 · Запуск</span><strong>${fmt(speeds.first)}</strong><small>40 або 80</small></div><div><span>2 · Проміжна</span><strong>${fmt(speeds.second)}</strong><small>Між запуском і робочою</small></div><div><span>3 · Робоча</span><strong>${fmt(speeds.working)}</strong><small>${VALUE_LABELS[speeds.source] ?? 'Ще не визначено'}</small></div></div>${metricValues(info, 'workingSpeed').slice(1).filter(item => item.value != null).map(item => `<p class="speed-extra">${esc(item.label)}: <b>${item.confirmed ? 'підтверджено' : fmt(item.value) + ' м/хв'}</b></p>`).join('')}</section>
+    <section class="card speeds"><h2>Швидкості <small>м/хв</small></h2><div class="speed-stages"><div><span>1 · Запуск</span><strong>${fmt(speeds.first)}</strong><small>40 або 80</small></div><div><span>2 · Проміжна</span><strong>${fmt(speeds.second)}</strong><small>Між запуском і робочою</small></div><div><span>3 · Робоча</span><button type="button" id="edit-working-speed" class="speed-edit" aria-label="Змінити робочу швидкість"><strong>${fmt(speeds.working)}</strong><span aria-hidden="true">✎</span></button><small>${speeds.source === 'manual' ? 'Твоя швидкість' : VALUE_LABELS[speeds.source] ?? 'Ще не визначено'} · змінити</small></div></div>${info.manualSpeed ? '' : metricValues(info, 'workingSpeed').slice(1).filter(item => item.value != null).map(item => `<p class="speed-extra">${esc(item.label)}: <b>${item.confirmed ? 'підтверджено' : fmt(item.value) + ' м/хв'}</b></p>`).join('')}</section>
     ${r.mode === 'dual' ? '<p class="quiet forecast-note">Спільні налаштування для роботи двох екструдерів, незалежно від кольору.</p>' : ''}
     ${Object.values(info.sources).includes('forecast') ? '<p class="quiet forecast-note">Прогнозовані значення ще не перевірені на лінії.</p>' : ''}
     ${!dyes?.valid ? `<p class="notice">${esc(dyes?.note)}</p>` : ''}`;
   $('source-content').innerHTML = sourceContent(r);
+}
+function previewWorkingSpeed() {
+  if (!speedEditContext) return;
+  const { info, error } = speedSetup(speedEditContext.info, $('working-speed-input').value);
+  $('working-speed-message').textContent = error ?? '';
+  $('working-speed-message').hidden = !error;
+  $('working-speed-preview').textContent = error ? '—' : `№1: ${fmt(info.effective.extruder1)}${info.mode === 'dual' ? ` · №2: ${fmt(info.effective.extruder2)}` : ' · №2 вимкнено'} об/хв`;
+  $('apply-working-speed').disabled = Boolean(error);
+}
+function openWorkingSpeed() {
+  const info = setupFor(state.cableId, state.section, catalog, state.color);
+  speedEditContext = { info, key: speedKey(info) };
+  $('working-speed-input').value = String(localSpeeds[speedEditContext.key] ?? info.effective.workingSpeed ?? '');
+  const limit = speedLimit(info);
+  $('working-speed-limit').textContent = limit === null ? '' : `До ${fmt(limit)} м/хв за наявними записами. Початкова: ${fmt(info.effective.workingSpeed)} м/хв.`;
+  $('reset-working-speed').hidden = localSpeeds[speedEditContext.key] == null;
+  previewWorkingSpeed(); $('working-speed-dialog').showModal();
+  $('working-speed-input').focus(); $('working-speed-input').select();
+}
+function saveWorkingSpeed(reset = false) {
+  if (!speedEditContext) return;
+  const speed = number($('working-speed-input').value);
+  if (!reset && speedSetup(speedEditContext.info, speed).error) { previewWorkingSpeed(); return; }
+  if (reset || speed === number(speedEditContext.info.effective.workingSpeed)) delete localSpeeds[speedEditContext.key];
+  else localSpeeds[speedEditContext.key] = speed;
+  const saved = write(SPEED_STORAGE, localSpeeds);
+  $('working-speed-dialog').close(); renderSetup();
+  if (view === 'plan') renderPlan();
+  toast(saved ? reset ? 'Початкову швидкість повернуто' : 'Швидкість та оберти перераховано' : 'Швидкість застосовано. Не вдалося зберегти її на пристрої.');
+  haptic();
 }
 function sourceContent(r) {
   const original = RECIPES.find(row => row.id === (r.baseId || r.id));
@@ -117,11 +157,12 @@ function sourceContent(r) {
     info.row.note,
   ].filter(Boolean);
   const practicalDetails = [r.origin === 'measurement' ? 'адмінські заміри' : '', date(r.updatedAt), ...info.practicalSources.map(source => `<a class="source-link" href="./${esc(source)}">Фото запису</a>`)].filter(Boolean);
+  const rpmConflict = info.rpmConflict ? `<p>У вихідних записах різниця обертів №2 і №1 — ${fmt(info.rpmConflict.difference)} об/хв, більше 40. Значення залишено за джерелом; варто уточнити цей запис.</p>` : '';
   const notes = r.origin === 'measurement' && !authorized ? [] : [...(r.notes || []), ...(r.uncertain || [])];
   return `<p>Довідкові · <a class="source-link" href="./${esc(info.card.source)}">Фото</a></p>${Object.values(info.practical).some(value=>value!=null) ? `<p>Практичні${practicalDetails.length ? ' · ' + practicalDetails.join(' · ') : ''}</p>` : '<p>Практичні значення ще не визначено.</p>'}
     ${notes.map(note => `<p>${esc(note.replace(/максимальна швидкість/gi, 'робоча швидкість'))}</p>`).join('')}
     ${r.origin === 'measurement' && original ? `<details><summary>Початковий рукописний запис</summary>${numbersList(original)}${[...original.notes, ...original.uncertain].map(note => `<p>${esc(note)}</p>`).join('')}</details>` : ''}
-    ${forecastContent(info.forecast)}${annotations.length ? `<details><summary>Приписки на фото</summary>${annotations.map(([photo,brand,,label,value,note]) => `<p><b>${esc(brand)} · ${esc(label)}: ${display(value)}</b><br>${esc(note)} · <a class="source-link" href="./${esc(photo)}">Фото</a></p>`).join('')}</details>` : ''}<details><summary>Примітки до довідкових карт</summary>${rowNotes.map(note => `<p>${esc(note)}</p>`).join('')}${references.map(card => `<p><b>${esc(info.option.label)}</b> · <a class="source-link" href="./${esc(card.source)}">Фото</a></p>${card.notes.map(note => `<p>${esc(note)}</p>`).join('')}`).join('')}</details>`;
+    ${rpmConflict}${forecastContent(info.forecast)}${annotations.length ? `<details><summary>Приписки на фото</summary>${annotations.map(([photo,brand,,label,value,note]) => `<p><b>${esc(brand)} · ${esc(label)}: ${display(value)}</b><br>${esc(note)} · <a class="source-link" href="./${esc(photo)}">Фото</a></p>`).join('')}</details>` : ''}<details><summary>Примітки до довідкових карт</summary>${rowNotes.map(note => `<p>${esc(note)}</p>`).join('')}${references.map(card => `<p><b>${esc(info.option.label)}</b> · <a class="source-link" href="./${esc(card.source)}">Фото</a></p>${card.notes.map(note => `<p>${esc(note)}</p>`).join('')}`).join('')}</details>`;
 }
 function forecastContent(forecast) {
   const methods = forecast.fieldMethods || {};
@@ -165,7 +206,9 @@ async function syncCatalog(notify = false) {
     if (notify) toast('Таблицю оновлено');
     return true;
   } catch {
-    $('connection').textContent = catalog.source === 'snapshot' ? 'Без зв’язку · показано початкові записи' : 'Без зв’язку · показано останню збережену таблицю';
+    const snapshotDate = /^\d{4}-\d{2}-\d{2}$/.test(catalog.calibrationSnapshot?.retrievedOn ?? '')
+      ? new Date(catalog.calibrationSnapshot.retrievedOn + 'T12:00:00').toLocaleDateString('uk-UA') : null;
+    $('connection').textContent = catalog.source === 'snapshot' ? snapshotDate ? `Без зв’язку · заміри станом на ${snapshotDate}` : 'Без зв’язку · показано початкові записи' : 'Без зв’язку · показано останню збережену таблицю';
     $('table-status').textContent = $('connection').textContent;
     if (notify) toast('Немає зв’язку. Показано збережені значення.');
     return false;
@@ -211,7 +254,7 @@ async function copyPlan() {
   const lines = ['План барабанів · довжини кожного кольору окремо'];
   state.drums.forEach((drum, i) => {
     const result = planner.result(drum, i), info = planner.setup(drum), r = { mode: info.mode };
-    const labeled = key => `${display(info.effective[key])} (${VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;
+    const labeled = key => `${display(info.effective[key])} (${info.sources[key] === 'manual' ? 'орієнтовно · за твоєю швидкістю' : VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;
     lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${planner.drumTitle(drum)} · ${colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв. Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}. Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — ${fmt(info.stages.first)}, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `Стан: ${drumStatus(drum) === 'done' ? 'готово' : drumStatus(drum) === 'active' ? 'в роботі' : 'у черзі'}. ${result.target > 0 ? `На екрані: ${fmt(result.target)} м.` : 'Завдання зупинки потребує уточнення.'}`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
     if (result.transition) lines.push('Стравити та перекинути вручну за потрібним кольором у 4-му рядку ванни.');
     if (result.setupChange) lines.push(planner.transitionText(drum, i));
@@ -432,6 +475,7 @@ document.addEventListener('click', event => {
   if (target.dataset.close) $(target.dataset.close).close();
   if (target.classList.contains('source-link')) { event.preventDefault(); openSource(target.href); }
   if (target.dataset.record) openRecord(target.dataset.record);
+  if (target.id === 'edit-working-speed') openWorkingSpeed();
   if (target.dataset.edit) { const base = RECIPES.find(r => r.id === target.dataset.edit); const info = setupFor(target.dataset.option, base.section, catalog, target.dataset.color || 'blue', { mode: target.dataset.mode }); $('record-dialog').close(); showView('admin'); fillMeasurement({ ...info.stored, mode: info.mode, color: 'all', optionId: target.dataset.option, note: '' }); }
   if (target.dataset.history) void showHistory(target.dataset.history);
   if (target.dataset.reuse) { fillMeasurement(journal.find(row => row.id === target.dataset.reuse)); saveDraft(); }
@@ -485,6 +529,9 @@ $('measurement-form').addEventListener('input', event => {
   saveDraft();
 });
 $('measurement-form').addEventListener('submit', event => void saveMeasurement(event));
+$('working-speed-input').addEventListener('input', previewWorkingSpeed);
+$('working-speed-form').addEventListener('submit', event => { event.preventDefault(); saveWorkingSpeed(); });
+$('reset-working-speed').addEventListener('click', () => saveWorkingSpeed(true));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void syncCatalog(); });
 function startTelegram() { initTelegram(); if (window.Telegram?.WebApp?.initDataUnsafe?.start_param === 'admin' && view === 'setup') showView('admin'); }
 renderSelectors(); renderSetup(); renderTable(); startTelegram();

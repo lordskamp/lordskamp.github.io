@@ -2,8 +2,8 @@
 <html lang="uk"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=20">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=20"></script>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=21">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=21"></script>
 </head><body>
   <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
@@ -67,6 +67,7 @@
     </section>
   </main>
   <dialog id="record-dialog"><div class="dialog-head"><h2>Запис</h2><button class="close" type="button" data-close="record-dialog" aria-label="Закрити">×</button></div><div id="record-content"></div></dialog>
+  <dialog id="working-speed-dialog" aria-labelledby="working-speed-title"><div class="dialog-head"><h2 id="working-speed-title">Робоча швидкість</h2><button class="close" type="button" data-close="working-speed-dialog" aria-label="Закрити">×</button></div><form id="working-speed-form"><label>Швидкість, м/хв<input id="working-speed-input" inputmode="decimal" autocomplete="off" maxlength="12" aria-describedby="working-speed-limit working-speed-message"></label><p id="working-speed-limit" class="quiet"></p><output id="working-speed-preview" class="speed-preview" aria-live="polite"></output><p class="quiet">Оберти — приблизний перерахунок для цього проводу й режиму.</p><p id="working-speed-message" class="form-message error" role="status"></p><div class="actions"><button class="primary" id="apply-working-speed" type="submit">Застосувати</button><button class="secondary" id="reset-working-speed" type="button">Повернути початкову</button></div></form></dialog>
   <dialog id="splice-dialog"><div class="dialog-head"><h2>Додати запас</h2><button class="close" type="button" data-close="splice-dialog" aria-label="Закрити">×</button></div><label>Зараз на екрані, м<input id="current-target" inputmode="numeric" autocomplete="off" value="15000"></label><div class="splice-number"><span>Постав на екрані</span><strong id="splice-result"></strong></div><p class="quiet">Напис для лейбла розрахуй у «Плануванні скрутки» вгорі плану барабанів.</p></dialog>
   <div id="toast" class="toast" role="status" hidden></div><noscript>Увімкніть JavaScript, щоб обрати провід. <a href="./catalog.json">Таблиця даних</a>.</noscript>
 </body></html>

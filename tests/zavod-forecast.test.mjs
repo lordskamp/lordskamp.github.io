@@ -266,6 +266,65 @@ test('an exact practical RPM is never rescaled or relabelled by an unrelated sel
   assert.deepEqual(result.rpmSpeedBasis, { extruder1: 120, extruder2: 120 });
 });
 
+test('estimated second RPM is bounded by the final main RPM plus 40, including selected-speed scaling', () => {
+  const records = [measured(2.5, { extruder1: 40, extruder2: 120, maxSpeed: 150 }, { mode: 'dual' }),
+    measured(6, { extruder1: 40, extruder2: 120, maxSpeed: 120 }, { mode: 'dual' })];
+  for (const workingSpeed of [undefined, 300]) {
+    const result = predict('h07v-k', 4, records, { optionId: h07, mode: 'dual', workingSpeed });
+    assert.equal(result.extruder2, Math.round((result.extruder1 + 40) * 10) / 10);
+    assert.equal(result.rpmLimit.maximumDifference, 40);
+    assert(result.fieldMethods.extruder2.endsWith('-limited-gap'));
+    assert.equal(result.confidence, 'low');
+  }
+  const recorded = predict('h07v-k', 6, records, { optionId: h07, mode: 'dual' });
+  assert.deepEqual([recorded.extruder1, recorded.extruder2], [40, 120]);
+  assert.equal(recorded.fieldMethods.extruder2, 'measured-value');
+  const handwritten = predict('pv3', 1, RECIPES, { mode: 'dual' });
+  assert.deepEqual([handwritten.extruder1, handwritten.extruder2], [50, 130]);
+});
+
+test('an estimated second RPM also respects an exact practical main RPM in the effective setup', () => {
+  const records = [measured(2.5, { extruder1: 100, extruder2: 120, maxSpeed: 150 }, { mode: 'dual' }),
+    measured(6, { extruder1: 100, extruder2: 120, maxSpeed: 120 }, { mode: 'dual' }),
+    measured(4, { extruder1: 25 }, { mode: 'dual', updatedAt: '2026-10-03T12:00:00Z' })]
+    .map(record => ({ ...record, baseId: baseFor(h07, record.section).id }));
+  const result = setupFor(h07, 4, { calibrations: records }, 'blue');
+  assert.equal(result.effective.extruder1, 25);
+  assert.equal(result.sources.extruder1, 'practical');
+  assert.equal(result.effective.extruder2, 65);
+  assert.equal(result.sources.extruder2, 'forecast');
+  assert(result.forecast.fieldMethods.extruder2.endsWith('-limited-gap'));
+  assert.equal(result.rpmConflict, null);
+});
+
+test('retained actual or reference RPM conflicts are reported without rewriting their values', () => {
+  const records = [measured(6, { extruder1: 40, extruder2: 120, maxSpeed: 120 }, { mode: 'dual' })]
+    .map(record => ({ ...record, baseId: baseFor(h07, record.section).id }));
+  const actual = setupFor(h07, 6, { calibrations: records }, 'blue');
+  assert.deepEqual([actual.effective.extruder1, actual.effective.extruder2], [40, 120]);
+  assert.deepEqual(actual.rpmConflict, { first: 40, second: 120, difference: 80, sources: ['practical', 'practical'] });
+  const printed = setupFor('pvs-380--pvsng', 4, {}, 'blue');
+  assert.deepEqual([printed.effective.extruder1, printed.effective.extruder2], [122, 244]);
+  assert.equal(printed.rpmConflict.difference, 122);
+});
+
+test('compatible same-mode admin donors replace older mixed operating curves without relabelling borrowed values as practical', () => {
+  const records = realRecords.map(record => ({ ...record, baseId: baseFor(h07, record.section).id }));
+  for (const [optionId, section] of [['h07v-k--h05v-k', 1], ['pv5--pv5', 4]]) {
+    const result = setupFor(optionId, section, { calibrations: records }, 'blue', { mode: 'dual' });
+    assert(result.forecast.calibratedSpeedCurve, optionId);
+    assert(result.forecast.borrowedFrom.includes('H07V-K'), optionId);
+    assert.equal(result.sources.workingSpeed, 'forecast', optionId);
+    assert.equal(result.sources.extruder1, 'forecast', optionId);
+    assert.equal(result.practical.extruder1, null, optionId);
+    assert(result.effective.extruder1 < 60, optionId);
+    assert(result.effective.extruder2 <= result.effective.extruder1 + 40, optionId);
+  }
+  const single = setupFor('pv5--pv5', 4, { calibrations: records }, 'brown');
+  assert.equal(single.mode, 'single');
+  assert.equal(single.forecast.calibratedSpeedCurve, false, 'dual printing limits are not a single-mode measurement');
+});
+
 test('adding held-out actual measurements replaces the estimate and subsequent partial saves preserve older fields', () => {
   const result = predict('h07v-k', 6, realRecords, { optionId: h07, mode: 'dual' });
   assert.deepEqual([result.extruder1, result.extruder2, result.workingSpeed], [59, 95, 120]);

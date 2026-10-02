@@ -53,6 +53,25 @@ test('the untouched initial planning task follows the main cable and section wit
   assert.equal(syncPlannerSelection(state), false, 'repeated entry is idempotent');
 });
 
+test('multiplication notation updates while editing without moving the caret and survives reload', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  restorePlanner(null, state);
+  const job = state.jobs[0], total = { textContent: '' };
+  const card = { dataset: { job: job.id }, querySelector: () => total };
+  const input = { value: '3*15 + 11', dataset: { jobField: 'lengthsText' }, selectionStart: 2, selectionEnd: 2, selectionDirection: 'none',
+    closest: () => card, setSelectionRange(start, end, direction) { this.selectionStart = start; this.selectionEnd = end; this.selectionDirection = direction; } };
+  withPlannerHarness(state, ({ element }) => element('jobs').listeners.get('input')({ target: input }));
+  assert.equal(input.value, '3×15 + 11');
+  assert.equal(input.selectionStart, 2);
+  assert.equal(input.selectionEnd, 2);
+  assert.equal(job.lengthsText, input.value);
+  assert.match(total.textContent, /56/);
+  const restored = initialState();
+  restorePlanner({ jobs: [{ ...job, lengthsText: '3*15 + 11' }], planJobs: [{ ...job, lengthsText: '3*15' }] }, restored);
+  assert.equal(restored.jobs[0].lengthsText, '3×15 + 11');
+  assert.equal(restored.planJobs[0].lengthsText, '3×15');
+});
+
 test('restored drum fault records do not control the independent splice module', () => {
   const saved = { ...initialState(), drums: [oldDrum({ id: 'spliced', breakdowns: '5385; 8459' })],
     splicePlan: { drumId: 'spliced', length: '11000', breakdowns: '6838' } };
