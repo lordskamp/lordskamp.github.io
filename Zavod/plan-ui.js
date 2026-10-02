@@ -1,6 +1,6 @@
-import { COLORS, colorName, fmt, number, planDrum, planSplices } from './core.js?v=16';
-import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=16';
-import { CATALOG_CABLES, optionFor } from './catalog-base.js?v=16';
+import { COLORS, colorName, fmt, number, planDrum, planSplices } from './core.js?v=20';
+import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=20';
+import { CATALOG_CABLES, optionFor } from './catalog-base.js?v=20';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -60,11 +60,6 @@ export function restorePlanner(saved, state) {
   else state.drums = validDrums(state.drums);
   const seen = new Set();
   for (const drum of state.drums) { if (seen.has(drum.id)) drum.id = crypto.randomUUID(); seen.add(drum.id); }
-  state.splicePlan = {
-    drumId: typeof saved?.splicePlan?.drumId === 'string' && state.drums.some(drum => drum.id === saved.splicePlan.drumId) ? saved.splicePlan.drumId : 'manual',
-    length: typeof saved?.splicePlan?.length === 'string' ? saved.splicePlan.length.slice(0, 20) : '15000',
-    breakdowns: typeof saved?.splicePlan?.breakdowns === 'string' ? saved.splicePlan.breakdowns.slice(0, 2000) : '',
-  };
   state.previousPlan = saved?.previousPlan && Array.isArray(saved.previousPlan.drums) ? {
     drums: validDrums(saved.previousPlan.drums), planJobs: restoreJobs(saved.previousPlan.planJobs), manualOrder: saved.previousPlan.manualOrder === true,
     reason: ['clear', 'status', 'edit'].includes(saved.previousPlan.reason) ? saved.previousPlan.reason : 'edit'
@@ -74,7 +69,6 @@ export function restorePlanner(saved, state) {
 export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCableInfo }) {
   let drag = null, scrollFrame = null;
   const setupCache = new Map();
-  state.splicePlan ??= { drumId: 'manual', length: '15000', breakdowns: '' };
 
   const jobTitle = job => `${cableLabel(job.cableId)} ${fmt(job.cores)}×${fmt(job.section)}`;
   const drumTitle = drum => {
@@ -124,38 +118,6 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     return `${r.target > 0 ? `<div class="target"><span>Довжина на екрані</span><strong>${fmt(r.target)} <small>м</small></strong></div>` : ''}
       ${r.transition ? `<ol class="steps">${r.events.map(e => `<li><b>≈ ${fmt(e.at)} м</b> — барвник №${e.extruder}: ${esc(e.dye.toLowerCase())} (за ${fmt(e.lead)} м до кінця)</li>`).join('')}<li>Стравити. Коли ${esc(colorName(r.nextColor).toLowerCase())} з’явиться у 4-му рядку ванни — перекинути вручну.</li>${r.setupChange ? '<li>Розсікач або режим екструдерів змінити після зупинки.</li>' : ''}</ol><p class="quiet formula">${esc(r.formula)}</p>` : `<p class="quiet">${r.cableChange ? 'Зупинися раніше: решта жили вже у ванні. Резерв зміни кольору не додається.' : r.setupChange ? 'Перехід після зупинки. Випередження зміни барвника не розраховується.' : 'Без поправки на зміну кольору.'}</p>${r.cableChange ? `<p class="quiet formula">${esc(r.formula)}</p>` : ''}`}
       ${r.warnings.map(w => `<p class="error">${esc(w)}</p>`).join('')}${r.splice.spliceCount ? `<p class="drum-splice-label">На лейбл: <b>${esc(r.splice.label)}</b></p><p class="quiet">З’єднань: ${r.splice.spliceCount} · +${fmt(r.splice.target - r.splice.length)} м тільки на екрані.</p>` : ''}`;
-  }
-  function spliceSelection() {
-    const drum = state.drums.find(drum => drum.id === state.splicePlan.drumId);
-    return { drum, length: drum?.length ?? state.splicePlan.length, breakdowns: drum?.breakdowns ?? state.splicePlan.breakdowns };
-  }
-  function renderSplicePlanner(syncFields = true) {
-    if (state.splicePlan.drumId !== 'manual' && !state.drums.some(drum => drum.id === state.splicePlan.drumId)) {
-      state.splicePlan.drumId = 'manual'; persist();
-    }
-    const { drum, length, breakdowns } = spliceSelection();
-    if (syncFields) {
-      $('splice-drum').innerHTML = '<option value="manual">Окремий розрахунок</option>' + state.drums.map((item, i) => `<option value="${esc(item.id)}">${i + 1}. ${esc(drumTitle(item))} · ${fmt(number(item.length) / 1000, 3)} км · ${colorName(item.color)}${drumStatus(item) === 'active' ? ' · в роботі' : drumStatus(item) === 'done' ? ' · готово' : ''}</option>`).join('');
-      $('splice-drum').value = state.splicePlan.drumId;
-      $('splice-length').value = length;
-      $('splice-breakdowns').value = breakdowns;
-    }
-    $('splice-length').disabled = Boolean(drum && drumStatus(drum) !== 'queued');
-    const splice = planSplices(length, breakdowns, state.rules.splice);
-    const planned = drum ? result(drum, state.drums.indexOf(drum)) : null;
-    const errors = planned?.errors ?? splice.errors;
-    $('splice-label').textContent = splice.label || '—';
-    const target = planned ? planned.target : splice.target;
-    $('splice-screen').textContent = target > 0 ? fmt(target) + ' м' : '—';
-    $('copy-splice-label').disabled = !splice.label;
-    $('splice-message').classList.toggle('error', errors.length > 0);
-    $('splice-length').setAttribute('aria-invalid', String(splice.errors.length > 0 && (!splice.length || !Number.isInteger(splice.length))));
-    $('splice-breakdowns').setAttribute('aria-invalid', String(splice.errors.length > 0));
-    const reserve = splice.spliceCount * number(state.rules.splice);
-    const rounding = splice.spliceCount ? `Позначки: ${splice.marks.map((mark, i) => `${fmt(mark)} → ${fmt(splice.roundedMarks[i])}`).join('; ')} м. ${splice.spliceCount} × ${fmt(state.rules.splice)} = +${fmt(reserve)} м лише на екрані.` : 'Вкажи позначки пробоїв, коли вхідний барабан закінчиться.';
-    const transition = planned?.transition || planned?.cableChange ? ` Поправка для переходу: ${planned.formula}.` : '';
-    const saved = drum ? ' Позначки збережено в цьому барабані.' : '';
-    $('splice-message').textContent = errors.length ? errors.join(' ') : rounding + transition + saved;
   }
   function jobTotal(job) {
     if (!String(job.lengthsText ?? '').trim()) return 'Впиши довжини із завдання. Приклад у полі — лише підказка.';
@@ -227,9 +189,8 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const opened = new Set([...$('drums').querySelectorAll('.drum-details[open]')].map(el => el.dataset.details));
     renderSummary();
     $('drums').innerHTML = state.drums.map((drum, i) => cardMarkup(drum, i, opened)).join('') || '<div class="empty-queue"><p>Черга порожня.</p><button class="primary" type="button" data-generate-queue>Скласти із завдання</button></div>';
-    renderSplicePlanner();
   }
-  function renderOutputs({ syncSpliceFields = true } = {}) {
+  function renderOutputs() {
     setupCache.clear(); renderSummary();
     state.drums.forEach((drum, i) => {
       const card = $('drums').querySelector(`[data-drum="${window.CSS.escape(drum.id)}"]`);
@@ -241,12 +202,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
       card.querySelector('[data-output]').innerHTML = output(drum, i);
       const note = card.querySelector('[data-transition]');
       note.textContent = transitionText(drum, i); note.hidden = !note.textContent;
-      for (const field of ['length', 'breakdowns']) {
-        const input = card.querySelector(`[data-field="${field}"]`);
-        if (input && input !== document.activeElement) input.value = drum[field];
-      }
     });
-    renderSplicePlanner(syncSpliceFields);
   }
   function render() {
     $('plan-title').textContent = 'Заплануй, виконай, познач готове.';
@@ -336,25 +292,6 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     if (state.drums.length >= MAX_DRUMS) return toast(`У плані вже ${MAX_DRUMS} барабанів.`);
     savePrevious(); state.drums.push({ id: crypto.randomUUID(), jobId: '', cableId: state.cableId, section: state.section, color: state.color, length: '15000', name: '', breakdowns: '', status: 'queued' });
     state.manualOrder = true; persist(); renderQueue();
-  });
-  $('splice-drum').addEventListener('change', () => {
-    state.splicePlan.drumId = $('splice-drum').value;
-    persist(); renderSplicePlanner();
-  });
-  for (const [id, field] of [['splice-length', 'length'], ['splice-breakdowns', 'breakdowns']]) {
-    $(id).addEventListener('input', () => {
-      const { drum } = spliceSelection();
-      if (drum && field === 'length' && drumStatus(drum) !== 'queued') return;
-      if (drum) { drum[field] = $(id).value; if (field === 'length') state.manualOrder = true; }
-      else state.splicePlan[field] = $(id).value;
-      persist(); renderOutputs({ syncSpliceFields: false });
-    });
-  }
-  $('copy-splice-label').addEventListener('click', async () => {
-    const { length, breakdowns } = spliceSelection(), splice = planSplices(length, breakdowns, state.rules.splice);
-    if (!splice.label) return;
-    try { await navigator.clipboard.writeText(splice.label); toast('Лейбл скопійовано.'); }
-    catch { toast('Копіювання недоступне. Виділи напис для лейбла вручну.'); }
   });
   $('drums').addEventListener('input', event => {
     const card = event.target.closest('[data-drum]'), field = event.target.dataset.field;

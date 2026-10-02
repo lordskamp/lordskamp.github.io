@@ -1,5 +1,6 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from '../Zavod/catalog-base.js';
 import { COLORS } from '../Zavod/core.js';
+import { modeFor } from '../Zavod/pv3-modes.js';
 
 const NUMERIC = ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'extruder1', 'extruder2', 'maxSpeed', 'colorLead1', 'colorLead2'];
 const COLOR_LEADS = ['colorLead1', 'colorLead2'];
@@ -81,13 +82,15 @@ export function validateMeasurement(input) {
   if (!/^[a-f\d-]{36}$/i.test(input.id ?? '')) fail(400, 'Некоректний номер запису.');
   if (input.color !== 'all' && !COLORS.some(color => color.id === input.color)) fail(400, 'Оберіть колір.');
   if (!['single', 'dual', 'unknown'].includes(input.mode)) fail(400, 'Оберіть режим екструдерів.');
-  if (['black', 'yellow-green'].includes(input.color) && input.mode === 'single') fail(400, 'Для цього кольору потрібні два екструдери.');
   if (typeof input.note !== 'string' || input.note.length > 2000) fail(400, 'Примітка має містити до 2000 символів.');
   const result = { id: input.id, baseId: base.id, cableId: base.cableId, section: base.section, color: input.color, mode: input.mode, note: input.note.trim() };
   if (input.optionId !== undefined) {
     const option = CABLES.find(option => option.id === input.optionId);
     if (!option || baseFor(option.id, base.section)?.id !== base.id) fail(400, 'Замір належить іншій марці або карті.');
     result.optionId = optionFor(option.id).id;
+  }
+  if (input.mode === 'single' && input.color !== 'all' && modeFor(optionFor(result.optionId ?? base.cableId), input.color, 'single') === 'dual') {
+    fail(400, 'Для цього кольору потрібні два екструдери.');
   }
   for (const field of NUMERIC) {
     const value = input[field];

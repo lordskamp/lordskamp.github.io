@@ -11,11 +11,14 @@ const MODES = {
 };
 
 export const hasPv3Modes = option => option?.practicalCableId === 'pv3';
-export const pv3Mode = color => ['yellow-green', 'black'].includes(color) ? 'dual' : 'single';
+export const supportsSingleColorMode = option => /^(?:H|\(H\)|ПВ)/iu.test(option?.brand ?? '');
+export const pv3Mode = color => ['blue', 'yellow-green'].includes(color) ? 'dual' : 'single';
 
-// Black dye and the striped yellow-green head require both extruders.
-// Both colours use the same recorded dual-extruder operating values.
+// Confirmed H*/ПВ* families use both extruders for blue and yellow-green.
+// Other colours can run on one; measurements belong to a mode, not a dye.
+// Keep the previously established black/striped rule for other cable families.
 export function modeFor(option, color, defaultMode = option?.mode) {
+  if (supportsSingleColorMode(option) || hasPv3Modes(option)) return pv3Mode(color);
   if (['black', 'yellow-green'].includes(color)) return 'dual';
   const normal = ['single', 'dual'].includes(defaultMode) ? defaultMode : hasPv3Modes(option) ? 'single' : defaultMode ?? option?.mode ?? 'unknown';
   return normal;
@@ -29,7 +32,7 @@ export function pv3Recipe(record, mode) {
     ...record, mode, modeResolved: true,
     extruder1: values[0], extruder2: values[1], maxSpeed: values[2],
     notes: [
-      'ПВ3: один екструдер для звичайного кольору; два — для жовто-зеленого та чорного. Робочі значення спільні для всіх кольорів одного режиму.',
+      'ПВ3: два екструдери для синього та жовто-зеленого; для інших кольорів — один. Робочі значення спільні для всіх кольорів одного режиму.',
       ...(record.section === .75 ? ['Основний запис: 68 для одного екструдера; 65/85 для двох; робоча швидкість 350. Додаткові 57 і 300 залишені у джерелі, умови не уточнені.'] : []),
       ...(record.section === 6 ? ['Робоча швидкість: 120 для одного екструдера, 130 для двох. Підтверджено оператором 30.09.2026.'] : []),
       ...(record.notes ?? []).filter(note => !/екструд|швидк|68|57|65\s*\/\s*85|74|67/.test(note)),

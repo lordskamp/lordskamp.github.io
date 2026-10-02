@@ -43,7 +43,7 @@ test('практичні рецепти не переносяться на не�
   for (const option of CATALOG_OPTIONS) assert.equal(option.practicalCableId, expected[option.id] ?? null, option.label);
   for (const option of CATALOG_OPTIONS.filter(item => item.cardId === 'pv5')) {
     assert.equal(option.practicalCableId, null);
-    assert.equal(option.mode, 'unknown');
+    assert.equal(option.mode, 'single');
   }
   assert.equal(catalogOption('h05-en--h05vv-f').practicalCableId, null);
   assert.equal(catalogOption('ysly-1000--ysly-jz').practicalCableId, null);
@@ -57,10 +57,22 @@ test('український підпис зберігає точну марку
   assert.equal(catalogOption('ysly-shared--h05vv-f').brand, 'H05VV-F');
 });
 
-test('режим ПВ3 не прирівнює непідтверджені негорючі марки до базової', () => {
+test('режим кольорів спільний для ПВ3, але практичні записи не переносяться між марками', () => {
   assert.equal(catalogOption('pv3--pv3').mode, 'single');
-  assert.equal(catalogOption('pv3--pv3ng').mode, 'unknown');
-  assert.equal(catalogOption('pv3--pv3ngd').mode, 'unknown');
+  assert.equal(catalogOption('pv3--pv3ng').mode, 'single');
+  assert.equal(catalogOption('pv3--pv3ngd').mode, 'single');
+  assert.equal(catalogOption('pv3--pv3ng').practicalCableId, null);
+  assert.equal(catalogOption('pv3--pv3ngd').practicalCableId, null);
+});
+
+test('H and ПВ families allow one extruder while preserving the original reference mode', () => {
+  for (const option of CATALOG_OPTIONS.filter(item => /^(?:H|\(H\)|ПВ)/iu.test(item.brand))) {
+    assert.equal(option.mode, 'single', option.brand);
+    assert.match(option.modeHint, /Синій і жовто-зелений/);
+  }
+  assert.equal(catalogOption('h05-en--h05vv-f').referenceMode, 'dual');
+  assert.equal(catalogOption('pv1--pv1').referenceMode, 'single');
+  assert.equal(catalogOption('ysly-1000--ysly-jz').mode, 'dual');
 });
 
 test('назви не містять напругу, але початкові специфікації та ідентифікатори збережені', () => {

@@ -1,8 +1,8 @@
 import { RECIPES } from './data.js';
-import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance } from './core.js?v=16';
-import { CATALOG_OPTIONS } from './catalog-options.js?v=16';
-import { REFERENCE_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=16';
-import { operatingRecords } from './pv3-modes.js?v=16';
+import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance } from './core.js?v=20';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=20';
+import { REFERENCE_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=20';
+import { operatingRecords } from './pv3-modes.js?v=20';
 
 const HANDWRITTEN = {
   'pvs-380': ['pvs-shvvp'], 'vvg-066': ['vvg'], 'vvg-p-066': ['vvgng-p'],
@@ -401,7 +401,10 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
     // it interpolates or follows a sparse empirical extrapolation.
     for (const key of ['extruder1', 'extruder2']) {
       const speedBasis = result.rpmSpeedBasis[key];
-      if (positive(result[key]) && positive(speedBasis)) {
+      // An actual setting remains the operator's recorded setting. A selected
+      // speed can adjust an estimate, but cannot relabel a rescaled measurement
+      // as another actual RPM value at this exact section.
+      if (result.fieldMethods[key] !== 'measured-value' && positive(result[key]) && positive(speedBasis)) {
         result[key] = round(result[key] * options.workingSpeed / speedBasis, key);
         result.fieldMethods[key] += '-at-selected-speed';
         result.rpmSpeedBasis[key] = options.workingSpeed;

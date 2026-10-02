@@ -1,11 +1,13 @@
-import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=16';
-import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=16';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=16';
-import { drumStatus } from './planner.js?v=16';
+import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=20';
+import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=20';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=20';
+import { drumStatus } from './planner.js?v=20';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
-import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=16';
-import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=16';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=16';
+import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=20';
+import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=20';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=20';
+import { initSplicePlanner } from './splice-ui.js?v=20';
+import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=20';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -39,7 +41,7 @@ function restore() {
 const state = restore();
 let catalog = cachedCatalog();
 let view = 'setup', toastTimer, syncing = false, catalogRequest = null, authorized = false, authenticating = false;
-let formReady = false, formMode = null, expectedRevision = 0, pendingSave = null, journal = [], nextJournal = null, busy = false;
+let formReady = false, formMode = null, formDraftContext = null, expectedRevision = 0, pendingSave = null, journal = [], nextJournal = null, busy = false;
 let deletedMeasurement = null;
 let setupFromPlan = false;
 const setup = (color = state.color) => setupFor(state.cableId, state.section, catalog, color);
@@ -50,6 +52,7 @@ const recipe = color => {
 const display = value => typeof value === 'string' && number(value) === null ? esc(value) : fmt(value);
 const persist = () => { if (!write(STORAGE, state)) toast('План не зберігся на пристрої. Скопіюй його перед закриттям.'); };
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4500); }
+initSplicePlanner({ toast, initialDraft: read(STORAGE)?.splicePlan });
 const planner = createPlannerUI({ state, getSetup: (cableId, section, color) => setupFor(cableId, section, catalog, color), persist, toast, haptic, onCableInfo: drum => {
   state.cableId = drum.cableId; state.section = drum.section; state.color = drum.color;
   setupFromPlan = true; persist(); renderSelectors(); showView('setup');
@@ -97,7 +100,7 @@ function renderSetup() {
       <details class="sikora-help"><summary>Які це діаметри?</summary><p>Перше число — фактичний діаметр жили. Друге у записах — діаметр з ізоляцією. Номінальний діаметр із довідки показано окремо; він не підставляється замість налаштування SIKORA.</p><p>На <a class="source-link" href="./Screen.JPG">фото головного екрана</a> є «Гор. Ø» і окреме поле «Допуск». Це інша пара полів. Допуск у записах не вказаний.</p><p>За твоїми замірами середня поправка до матриці для 2,5 мм² — близько +0,15 мм, для тоншої жили менша. Без практичного значення прогноз враховує вибрану матрицю, переріз і доступні заміри.</p></details></section>
     <section class="card tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн</span><div class="tool-values">${value('dorn')}</div></div><div><img src="./MATRIX.svg" alt=""><span>Матриця</span><div class="tool-values">${value('matrix')}</div></div><small>мм</small></section>
     <section class="card speeds"><h2>Швидкості <small>м/хв</small></h2><div class="speed-stages"><div><span>1 · Запуск</span><strong>${fmt(speeds.first)}</strong><small>40 або 80</small></div><div><span>2 · Проміжна</span><strong>${fmt(speeds.second)}</strong><small>Між запуском і робочою</small></div><div><span>3 · Робоча</span><strong>${fmt(speeds.working)}</strong><small>${VALUE_LABELS[speeds.source] ?? 'Ще не визначено'}</small></div></div>${metricValues(info, 'workingSpeed').slice(1).filter(item => item.value != null).map(item => `<p class="speed-extra">${esc(item.label)}: <b>${item.confirmed ? 'підтверджено' : fmt(item.value) + ' м/хв'}</b></p>`).join('')}</section>
-    ${['black', 'yellow-green'].includes(state.color) && r.mode === 'dual' ? '<p class="quiet forecast-note">Режим №1 + №2: спільні налаштування для чорного та жовто-зеленого.</p>' : ''}
+    ${r.mode === 'dual' ? '<p class="quiet forecast-note">Спільні налаштування для роботи двох екструдерів, незалежно від кольору.</p>' : ''}
     ${Object.values(info.sources).includes('forecast') ? '<p class="quiet forecast-note">Прогнозовані значення ще не перевірені на лінії.</p>' : ''}
     ${!dyes?.valid ? `<p class="notice">${esc(dyes?.note)}</p>` : ''}`;
   $('source-content').innerHTML = sourceContent(r);
@@ -236,16 +239,21 @@ function exactRevision(baseId, color, optionId, mode) {
   return catalog.recipes.find(row => row.id === id)?.revision ?? catalog.recipeRevisions?.[id] ?? 0;
 }
 const draftKey = row => `${row.optionId || optionFor(row.cableId)?.id}|${row.section ?? RECIPES.find(base => base.id === row.baseId)?.section}|${row.mode || 'unknown'}`;
+function draftFor(optionId, section, mode) {
+  const drafts = read(DRAFTS) || {}, context = draftKey({ optionId, section, mode });
+  return [read(DRAFT), drafts[context], ...Object.values(drafts).reverse(), ...Object.values(read(LEGACY_DRAFTS) || {}).reverse()].find(row => row
+    && (row.optionId || optionFor(row.cableId)?.id) === optionId
+    && baseFor(optionId, section)?.id === row.baseId);
+}
 function prepareAdminMeasurement() {
   if (busy) return;
-  const info = setup(), context = draftKey({ optionId: state.cableId, section: state.section, mode: info.mode });
-  if (formReady && context === draftKey(formValues())) return;
+  const info = setup();
+  if (formReady && $('measure-cable').value === state.cableId && Number($('measure-section').value) === state.section) return;
   saveDraft();
-  const drafts = read(DRAFTS) || {}, legacy = [read(DRAFT), ...Object.values(read(LEGACY_DRAFTS) || {}).reverse()].find(row => row && draftKey(row) === context);
-  const draft = drafts[context] || legacy;
+  const draft = draftFor(state.cableId, state.section, info.mode);
   if (draft && baseFor(draft.optionId || state.cableId, state.section)?.id === draft.baseId) {
     fillMeasurement(draft, draft.expectedRevision);
-    if (draft.pendingSave?.id && draft.pendingSave?.signature) pendingSave = draft.pendingSave;
+    if ((draft.pendingSave?.id || draft.pendingSave?.entries?.length) && draft.pendingSave?.signature) pendingSave = draft.pendingSave;
     $('save-message').textContent = 'Відновлено незавершений замір для цього проводу.';
     return 'draft';
   }
@@ -259,38 +267,46 @@ function fillMeasurement(row, revision) {
   const option = row.optionId ? optionFor(row.optionId) : optionFor(base.cableId);
   $('measure-cable').innerHTML = cableOptions(); $('measure-cable').value = option.id;
   $('measure-section').innerHTML = sectionOptions(option.id); $('measure-section').value = String(base.section);
-  $('measure-mode').value = row.mode || 'unknown';
-  formMode = $('measure-mode').value;
+  formMode = row.mode || 'unknown';
+  formDraftContext = draftKey({ ...row, optionId: option.id, section: base.section });
   const fieldOrder = ['extruder1', 'extruder2', 'sikoraWire', 'sikoraOuter', 'dorn', 'matrix', 'colorLead1', 'colorLead2', 'maxSpeed'];
   $('measurement-fields').innerHTML = fieldOrder.map(key => {
     const label = FIELDS.find(([field]) => field === key)[1], lead = key.startsWith('colorLead');
-    const heading = key === 'colorLead1' ? '<div class="measurement-color-heading"><h3>Зміна барвника</h3><p id="measurement-color-help">За скільки метрів до кінця барабана.</p></div>' : '';
-    const title = lead ? `Барвник №${key.at(-1)} — за, м` : label;
-    return `${heading}<label${key === 'maxSpeed' ? ' class="measurement-speed"' : ''}>${esc(title)}<input name="${key}" inputmode="${lead ? 'numeric' : 'decimal'}"${lead ? ' aria-describedby="measurement-color-help"' : ''} autocomplete="off" value="${row[key] == null ? '' : esc(row[key])}" placeholder="Не записано" maxlength="12"></label>`;
+    const heading = key === 'colorLead1' ? '<div class="measurement-color-heading"><h3>Зміна барвника</h3></div>' : '';
+    const rpm = key.startsWith('extruder');
+    const title = rpm ? `№${key.at(-1)}` : lead ? `№${key.at(-1)} — за, м` : label;
+    return `${heading}<label${key === 'maxSpeed' ? ' class="measurement-speed"' : ''}>${rpm ? `<span data-rpm-label="${key}">${esc(title)}</span>` : esc(title)}<input name="${key}" inputmode="${rpm ? 'text' : lead ? 'numeric' : 'decimal'}"${rpm ? ' aria-describedby="measurement-rpm-help"' : ''} autocomplete="off" value="${row[key] == null ? key === 'extruder2' && row.mode === 'single' ? '0' : '' : esc(row[key])}" placeholder="${rpm ? key === 'extruder2' ? '0 або 53,7/72,2' : '75' : 'Не записано'}" maxlength="${rpm ? 25 : 12}"></label>`;
   }).join('');
   updateMeasurementControls();
   $('measure-note').value = row.note || '';
-  expectedRevision = revision ?? exactRevision(base.id, 'all', option.id, $('measure-mode').value);
+  if ($('measurement-note')) $('measurement-note').open = Boolean(row.note);
+  expectedRevision = row.mode === formMode && revision != null ? revision : exactRevision(base.id, 'all', option.id, formMode);
   pendingSave = null; formReady = true; $('save-message').textContent = '';
   $('refresh-measurement').hidden = true;
 }
 function formValues() {
-  const values = { baseId: selectedBase().id, optionId: $('measure-cable').value, section: Number($('measure-section').value), color: 'all', mode: $('measure-mode').value, note: $('measure-note').value };
+  const values = { baseId: selectedBase().id, optionId: $('measure-cable').value, section: Number($('measure-section').value), color: 'all', note: $('measure-note').value };
   for (const [key] of FIELDS) values[key] = $('measurement-form').elements.namedItem(key).value;
+  values.mode = inferMeasurementMode(values);
   return values;
 }
-function saveDraft(mode) {
+function saveDraft() {
   if (!formReady || !selectedBase()) return;
   const draft = { ...formValues(), publish: true, expectedRevision, pendingSave }, drafts = read(DRAFTS) || {};
-  if (typeof mode === 'string') draft.mode = mode;
-  drafts[draftKey(draft)] = draft; write(DRAFTS, drafts); write(DRAFT, draft);
+  const context = draftKey(draft);
+  if (formDraftContext && formDraftContext !== context) delete drafts[formDraftContext];
+  formDraftContext = context;
+  drafts[context] = draft; write(DRAFTS, drafts); write(DRAFT, draft);
 }
 function updateMeasurementControls() {
-  const single = $('measure-mode').value === 'single';
-  for (const key of ['extruder2', 'colorLead2']) {
-    const input = $('measurement-form').elements.namedItem(key);
-    if (input) input.disabled = single;
+  const form = $('measurement-form');
+  const mode = inferMeasurementMode({ extruder1: form.elements.namedItem('extruder1')?.value, extruder2: form.elements.namedItem('extruder2')?.value });
+  if (formMode !== mode) {
+    formMode = mode;
+    expectedRevision = exactRevision(selectedBase().id, 'all', $('measure-cable').value, mode);
   }
+  const input = form.elements.namedItem('colorLead2');
+  if (input) input.disabled = mode === 'single';
 }
 function loadSelectedMeasurement(mode, restoreDraft = false) {
   const optionId = $('measure-cable').value;
@@ -298,12 +314,10 @@ function loadSelectedMeasurement(mode, restoreDraft = false) {
   const info = setupFor(optionId, section, catalog, state.color, { mode: typeof mode === 'string' ? mode : undefined });
   const selectedMode = typeof mode === 'string' ? mode : info.mode;
   if (restoreDraft) {
-    const context = draftKey({optionId, section, mode:selectedMode});
-    const draft = (read(DRAFTS) || {})[context]
-      || [read(DRAFT), ...Object.values(read(LEGACY_DRAFTS) || {}).reverse()].find(row => row && draftKey(row) === context);
+    const draft = draftFor(optionId, section, selectedMode);
     if (draft && baseFor(optionId, section)?.id === draft.baseId) {
       fillMeasurement(draft, draft.expectedRevision);
-      if (draft.pendingSave?.id && draft.pendingSave?.signature) pendingSave = draft.pendingSave;
+      if ((draft.pendingSave?.id || draft.pendingSave?.entries?.length) && draft.pendingSave?.signature) pendingSave = draft.pendingSave;
       saveDraft(); return 'draft';
     }
   }
@@ -314,38 +328,46 @@ function loadSelectedMeasurement(mode, restoreDraft = false) {
 async function saveMeasurement(event) {
   event.preventDefault();
   if (busy) return;
-  const input = formValues();
-  for (const [key, label] of FIELDS) {
-    const raw = input[key]; input[key] = number(raw);
-    const lead = key.startsWith('colorLead');
-    if (String(raw).trim() && (input[key] === null || (lead ? input[key] < 0 : input[key] <= 0))) { $('save-message').textContent = `${label}: введи ${lead ? 'невід’ємне' : 'додатне'} число або залиш поле порожнім.`; return; }
-    if (lead && input[key] !== null && !Number.isInteger(input[key])) { $('save-message').textContent = `${label}: введи цілі метри.`; return; }
-  }
-  if (input.mode === 'single') { input.extruder2 = null; input.colorLead2 = null; }
-  if (input.mode === 'unknown') { $('save-message').textContent = 'Обери, які екструдери працюють, щоб зберегти практичний замір.'; return; }
-  const signature = JSON.stringify(input);
-  if (pendingSave?.signature !== signature) pendingSave = { signature, id: crypto.randomUUID() };
+  const raw = formValues();
+  let inputs;
+  try { inputs = measurementRecords(raw); } catch (error) { $('save-message').textContent = error.message; return; }
+  const signature = measurementSignature(inputs);
+  if (measurementSignature(pendingSave?.signature) !== signature || !pendingSave?.entries?.length) pendingSave = { signature, entries: inputs.map(input => ({
+    mode: input.mode, id: inputs.length === 1 && measurementSignature(pendingSave?.signature) === signature && pendingSave.id ? pendingSave.id : crypto.randomUUID(), expectedRevision: input.mode === raw.mode ? expectedRevision : exactRevision(input.baseId, input.color, input.optionId, input.mode), recorded: false, published: false,
+  })) };
+  pendingSave.signature = signature;
   saveDraft();
   busy = true; $('save-measurement').disabled = true; $('save-message').textContent = 'Зберігаю…';
   $('measurement-form').querySelectorAll('input, select, textarea').forEach(control => { control.disabled = true; });
-  let recorded = false;
+  let activeEntry = null;
   try {
-    await api('/admin/measurements', { method: 'POST', admin: true, body: { ...input, id: pendingSave.id } });
-    recorded = true;
-    const id = recipeIdFor(input.baseId, input.color, input.optionId, input.mode);
-    const result = await api('/admin/recipes/' + encodeURIComponent(id), { method: 'PUT', admin: true, body: { measurementId: pendingSave.id, expectedRevision } });
-    catalog.recipes = [...catalog.recipes.filter(row => row.id !== result.recipe.id), result.recipe];
-    catalog.recipeRevisions = { ...(catalog.recipeRevisions || {}), [result.recipe.id]: result.recipe.revision };
-    expectedRevision = result.recipe.revision; renderSetup();
+    for (const input of inputs) {
+      const entry = pendingSave.entries.find(row => row.mode === input.mode);
+      if (entry.published) continue;
+      activeEntry = entry;
+      if (!entry.recorded) {
+        await api('/admin/measurements', { method: 'POST', admin: true, body: { ...input, id: entry.id } });
+        entry.recorded = true; saveDraft();
+      }
+      const id = recipeIdFor(input.baseId, input.color, input.optionId, input.mode);
+      const result = await api('/admin/recipes/' + encodeURIComponent(id), { method: 'PUT', admin: true, body: { measurementId: entry.id, expectedRevision: entry.expectedRevision } });
+      catalog.recipes = [...catalog.recipes.filter(row => row.id !== result.recipe.id), result.recipe];
+      catalog.recipeRevisions = { ...(catalog.recipeRevisions || {}), [result.recipe.id]: result.recipe.revision };
+      entry.published = true; entry.expectedRevision = result.recipe.revision;
+      if (input.mode === raw.mode) expectedRevision = result.recipe.revision;
+      saveDraft(); renderSetup();
+    }
     const refreshed = await syncCatalog();
-    $('save-message').textContent = refreshed ? 'Збережено. Практичні значення й прогнози оновлено для всіх користувачів.' : 'Замір збережено. Онови таблицю після відновлення зв’язку, щоб отримати перераховані прогнози.';
+    $('save-message').textContent = refreshed ? `${inputs.length > 1 ? 'Обидва режими збережено.' : 'Збережено.'} Практичні значення й прогнози оновлено для всіх користувачів.` : 'Замір збережено. Онови таблицю після відновлення зв’язку, щоб отримати перераховані прогнози.';
     $('refresh-measurement').hidden = true;
-    const drafts = read(DRAFTS) || {}; delete drafts[draftKey(input)]; write(DRAFTS, drafts);
+    const drafts = read(DRAFTS) || {}; delete drafts[draftKey(raw)]; write(DRAFTS, drafts);
     write(DRAFT, null); pendingSave = null; haptic('success');
   } catch (error) {
+    if (error.status === 409 && activeEntry) { activeEntry.conflict = true; saveDraft(); }
+    const recorded = pendingSave.entries.some(entry => entry.recorded), completed = pendingSave.entries.filter(entry => entry.published).length;
     if (recorded) await syncCatalog();
-    $('save-message').textContent = (recorded ? 'Замір збережено як спільні практичні значення. Оновлення основного запису та його історії не підтверджено. ' : '') + error.message;
-    $('refresh-measurement').hidden = !recorded;
+    $('save-message').textContent = (completed ? 'Один режим збережено. Другий ще не завершено; введені значення залишилися у формі. ' : error.status !== 409 && recorded ? 'Замір уже доповнює практичні значення. Оновлення основного запису ще не підтверджено. ' : '') + (error.status === 409 ? 'Інший замір змінив цей режим. Онови таблицю, перевір свої значення та збережи їх як новий замір.' : error.message);
+    $('refresh-measurement').hidden = !recorded && !activeEntry?.conflict;
     saveDraft(); haptic('error');
   } finally {
     busy = false; $('save-measurement').disabled = false;
@@ -438,7 +460,7 @@ $('retry-admin').addEventListener('click', () => void enterAdmin());
 $('new-measurement').addEventListener('click', () => {
   if (busy) return;
   if (formReady) {
-    loadSelectedMeasurement($('measure-mode').value);
+    loadSelectedMeasurement(formValues().mode);
   } else newMeasurement();
   saveDraft();
 });
@@ -448,29 +470,18 @@ $('refresh-measurement').addEventListener('click', async () => {
   if (busy) return;
   const refreshed = await syncCatalog();
   if (!refreshed) { $('save-message').textContent = 'Не вдалося оновити таблицю. Введені значення залишилися у формі.'; return; }
-  const input = formValues(); expectedRevision = exactRevision(input.baseId, input.color, input.optionId, input.mode); saveDraft();
+  const input = formValues(); expectedRevision = exactRevision(input.baseId, input.color, input.optionId, input.mode);
+  const renewed = refreshPendingMeasurements(pendingSave, { revisionFor: mode => exactRevision(input.baseId, input.color, input.optionId, mode), createId: () => crypto.randomUUID() });
+  saveDraft();
   $('refresh-measurement').hidden = true;
-  $('save-message').textContent = 'Таблицю оновлено. Введені значення залишилися у формі — перевір їх і натисни «Зберегти замір».';
+  $('save-message').textContent = renewed ? 'Таблицю оновлено. Перевір свої значення й натисни «Зберегти замір»: незавершений режим буде записано як новий замір. Уже збережений режим не дублюється.' : 'Таблицю оновлено. Введені значення залишилися у формі — перевір їх і натисни «Зберегти замір».';
 });
 $('import-old').addEventListener('click', importOld);
 $('measure-cable').addEventListener('change', () => { $('measure-section').innerHTML = sectionOptions($('measure-cable').value); loadSelectedMeasurement(); });
 $('measure-section').addEventListener('change', loadSelectedMeasurement);
-$('measure-mode').addEventListener('change', () => {
-  const mode = $('measure-mode').value;
-  saveDraft(formMode);
-  const restored = loadSelectedMeasurement(mode, true) === 'draft';
-  updateMeasurementControls();
-  $('save-message').textContent = restored ? 'Відновлено незавершений замір цього режиму.' : mode === 'unknown'
-    ? 'Без визначеного режиму замір можна зберегти тільки в журналі.'
-    : 'Підставлено практичні значення цього режиму. Перевір їх для нового заміру.';
-  saveDraft();
-});
 $('measurement-form').addEventListener('input', event => {
   if (event.target.tagName === 'SELECT') return;
-  if (event.target.name === 'extruder2' && number(event.target.value) > 0 && $('measure-mode').value !== 'dual') {
-    saveDraft(formMode);
-    $('measure-mode').value = 'dual'; formMode = 'dual'; expectedRevision = exactRevision(selectedBase().id, 'all', $('measure-cable').value, 'dual'); updateMeasurementControls();
-  }
+  if (['extruder1', 'extruder2'].includes(event.target.name)) updateMeasurementControls();
   saveDraft();
 });
 $('measurement-form').addEventListener('submit', event => void saveMeasurement(event));

@@ -2,8 +2,8 @@
 <html lang="uk"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=16">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=16"></script>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=20">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=20"></script>
 </head><body>
   <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
@@ -16,14 +16,15 @@
     </section>
     <section id="view-plan" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>План барабанів</h1></div><button class="secondary" id="add-drum" type="button">Окремий барабан</button></div>
-      <details class="card splice-planner" id="splice-planner" open>
+      <details class="card splice-planner" id="splice-planner">
         <summary>Планування скрутки</summary>
-        <div class="splice-preview" aria-live="polite"><div><span>На лейбл</span><strong id="splice-label"></strong></div><div><span>Ввести на екрані</span><strong id="splice-screen"></strong></div></div>
-        <label class="splice-selection">Розрахунок для<select id="splice-drum"><option value="manual">Окремий розрахунок</option></select></label>
-        <div class="form-grid splice-fields"><label>Потрібна довжина, м<input id="splice-length" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="15000" aria-describedby="splice-message"></label><label>Пробої на лічильнику, м<textarea id="splice-breakdowns" rows="2" maxlength="2000" placeholder="5385; 8459" aria-describedby="splice-help splice-message"></textarea></label></div>
-        <p id="splice-help" class="quiet">Впиши всі позначки через «;». Округлюємо вниз до десятків і рахуємо відрізки. Запас на скрутку додається тільки на екрані.</p>
+        <div class="splice-rows">
+          <label class="splice-row"><span>Потрібна довжина, м</span><input id="splice-length" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="15000" aria-describedby="splice-message"></label>
+          <label class="splice-row"><span>Пробої на лічильнику, м</span><textarea id="splice-breakdowns" rows="1" maxlength="2000" placeholder="5385, 8459" aria-describedby="splice-help splice-message"></textarea></label>
+          <div id="splice-preview" class="splice-preview" aria-live="polite"><div class="splice-row"><span>Записати на лейбл</span><strong id="splice-label" class="splice-value">—</strong></div><div class="splice-row"><span>Ввести на екрані, м</span><strong id="splice-screen" class="splice-value">—</strong></div></div>
+        </div>
+        <p id="splice-help" class="quiet">Декілька пробоїв — через кому або з нового рядка. Позначки округлюються вниз до 10 м.</p>
         <p id="splice-message" class="form-message" role="status"></p>
-        <button class="secondary" id="copy-splice-label" type="button">Копіювати лейбл</button>
       </details>
       <p id="plan-title" class="quiet"></p>
       <details class="card job-builder" id="job-builder" open>
@@ -55,10 +56,10 @@
       <div id="admin-content" hidden>
         <div class="admin-tabs"><button class="secondary" id="new-measurement" type="button">＋ Новий замір</button><button class="secondary" id="show-journal" type="button">Попередні заміри</button><button class="back" id="import-old" type="button" hidden>Мої старі уточнення</button></div>
         <form id="measurement-form" class="card">
-          <div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label><label class="measurement-mode">Працюють екструдери<select id="measure-mode"><option value="dual">№1 і №2</option><option value="single">Тільки №1</option><option value="unknown">Ще не знаю</option></select></label></div>
-          <p class="quiet">Заміри спільні для всіх кольорів з однаковою кількістю увімкнених екструдерів. Запиши перевірені значення. Зміну барвника вкажи окремо для №1 і №2: за скільки метрів до кінця барабана.</p><div class="form-grid" id="measurement-fields"></div>
-          <label class="note-label">Примітка<textarea id="measure-note" rows="2" maxlength="2000" placeholder="Наприклад: рівний колір, без пробоїв"></textarea></label>
-          <p class="quiet measurement-sharing">Кожен збережений замір одразу доповнює практичні значення та прогноз для всіх користувачів. Примітка залишається приватною.</p>
+          <div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label></div>
+          <div class="measurement-rpm-heading"><h2>Оберти шнека <small>об/хв</small></h2><p class="quiet" id="measurement-rpm-help">0 — вимкнено · / — два екструдери</p></div>
+          <div class="form-grid" id="measurement-fields"></div>
+          <details id="measurement-note" class="measurement-note"><summary>Примітка</summary><label class="sr-only" for="measure-note">Примітка до заміру</label><textarea id="measure-note" rows="2" maxlength="2000" placeholder="За потреби"></textarea></details>
           <p id="save-message" role="status" class="form-message"></p><button class="back" id="refresh-measurement" type="button" hidden>Оновити таблицю для повторного збереження</button><button class="primary save" id="save-measurement" type="submit">Зберегти замір</button>
         </form>
         <div id="journal" hidden><p id="journal-message" class="form-message" role="status"></p><button class="back" id="undo-delete-measurement" type="button" hidden>Повернути видалений замір</button><div id="journal-list"></div><button class="secondary" id="more-journal" type="button" hidden>Ще записи</button></div>

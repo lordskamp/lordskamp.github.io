@@ -1,4 +1,5 @@
-import { REFERENCE_CARDS } from './reference-data.js?v=16';
+import { REFERENCE_CARDS } from './reference-data.js?v=20';
+import { supportsSingleColorMode } from './pv3-modes.js?v=20';
 
 // Names are the brands in the printed tables. A missing practicalCableId means
 // that no handwritten operating recipe has been established for this brand.
@@ -83,6 +84,11 @@ export const CATALOG_OPTIONS = [
     ['YSLY-JZ', 'ysly-jz'], ['YSLY-OZ', 'ysly-oz'], ['YSLY-JB', 'ysly-jb'], ['YSLY-OB', 'ysly-ob'],
   ], { suffix: '600/1000 В', mode: 'dual', modeHint: 'У довідковій карті є оберти обох екструдерів.' }),
 ].map(option => {
+  // Colour requirements now establish the normal mode for all confirmed H*/ПВ*
+  // families. Retain the original source mode: printed dual RPM cannot become
+  // single-extruder settings just because an ordinary colour uses one extruder.
+  if (supportsSingleColorMode(option)) return { ...option, referenceMode: option.mode, mode: 'single',
+    modeHint: 'Синій і жовто-зелений — два екструдери. Для інших кольорів можна працювати одним. Значення належать режиму роботи, а не кольору.' };
   // A mode confirmed for a base brand cannot establish its flame-retardant variants.
   if ((option.cardId === 'pv1' || option.cardId === 'pv3') && !option.practicalCableId) {
     return { ...option, mode: 'unknown', modeHint: 'Кількість екструдерів для цієї марки ще не уточнено.' };

@@ -1,5 +1,5 @@
 import { CABLES, RECIPES } from './data.js';
-import { colorName } from './core.js?v=16';
+import { colorName } from './core.js?v=20';
 import { API_URL } from './config.js?v=3';
 const CACHE = 'zavod-shared-table-v1';
 export const FIELDS = [['extruder1', 'Оберти №1, об/хв'], ['extruder2', 'Оберти №2, об/хв'], ['sikoraWire', 'SIKORA: діаметр жили, мм'], ['sikoraOuter', 'SIKORA: з ізоляцією, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Робоча швидкість, м/хв'], ['colorLead1', 'Зміна кольору №1 за, м'], ['colorLead2', 'Зміна кольору №2 за, м']];
@@ -37,7 +37,11 @@ export async function api(path, { method = 'GET', body, admin = false } = {}) {
   catch { throw new Error('Немає зв’язку. Запис залишився у формі — спробуйте ще раз.'); }
   let result;
   try { result = await response.json(); } catch { throw new Error('Сервер не відповів. Спробуйте ще раз.'); }
-  if (!response.ok) throw new Error(result.error || 'Не вдалося виконати дію.');
+  if (!response.ok) {
+    const error = new Error(result.error || 'Не вдалося виконати дію.');
+    error.status = response.status;
+    throw error;
+  }
   return result;
 }
 export function csv(catalog) {

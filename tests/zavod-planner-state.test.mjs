@@ -53,27 +53,26 @@ test('the untouched initial planning task follows the main cable and section wit
   assert.equal(syncPlannerSelection(state), false, 'repeated entry is idempotent');
 });
 
-test('splice labels and reserve survive restoration without adding reserve to nominal lengths', () => {
+test('restored drum fault records do not control the independent splice module', () => {
   const saved = { ...initialState(), drums: [oldDrum({ id: 'spliced', breakdowns: '5385; 8459' })],
     splicePlan: { drumId: 'spliced', length: '11000', breakdowns: '6838' } };
   const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
   restorePlanner(saved, state);
-  assert.deepEqual(state.splicePlan, saved.splicePlan);
+  assert.equal(state.splicePlan, undefined);
   assert.equal(state.drums[0].length, '15000');
   withPlannerHarness(state, ({ planner, element }) => {
+    element('splice-label').textContent = '(6830+4170)';
     planner.renderQueue();
-    assert.equal(element('splice-label').textContent, '(5380+3070+6550)');
-    assert.equal(Number(element('splice-screen').textContent.replace(/[^\d]/g, '')), 15060);
-    assert.equal(element('splice-breakdowns').value, '5385; 8459');
+    assert.equal(element('splice-label').textContent, '(6830+4170)', 'the queue cannot replace the independent result');
+    assert.equal(planner.result(state.drums[0], 0).target, 15060);
     assert.match(element('drums').innerHTML, /data-splice-label>\(5380\+3070\+6550\)/);
-    element('splice-drum').value = 'manual';
-    element('splice-drum').listeners.get('change')();
-    assert.equal(element('splice-label').textContent, '(6830+4170)', 'manual draft is independent of the linked drum');
+    state.rules.splice = 45;
+    planner.renderOutputs();
+    assert.equal(element('splice-label').textContent, '(6830+4170)');
   });
   const deleted = { ...initialState(), rules: { ...DEFAULT_RULES } };
   restorePlanner({ ...saved, drums: [] }, deleted);
-  assert.equal(deleted.splicePlan.drumId, 'manual');
-  assert.equal(deleted.splicePlan.breakdowns, '6838');
+  assert.equal(deleted.splicePlan, undefined);
 });
 
 test('splice reserves combine with transitions while labels and production totals use nominal metres', () => {
@@ -95,31 +94,6 @@ test('splice reserves combine with transitions while labels and production total
     assert.equal(invalid.target, null);
     assert.equal(invalid.splice.label, '');
     assert.ok(invalid.errors.length);
-  });
-});
-
-test('splice input updates its linked drum while standalone calculations do not alter the queue', () => {
-  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
-  restorePlanner(null, state);
-  withPlannerHarness(state, ({ planner, element }) => {
-    planner.renderQueue();
-    element('splice-breakdowns').value = '6838';
-    element('splice-breakdowns').listeners.get('input')();
-    assert.equal(state.drums[0].breakdowns, '');
-    assert.equal(state.splicePlan.breakdowns, '6838');
-    element('splice-drum').value = state.drums[0].id;
-    element('splice-drum').listeners.get('change')();
-    element('splice-breakdowns').value = '5385; 8459';
-    element('splice-breakdowns').listeners.get('input')();
-    assert.equal(state.drums[0].breakdowns, '5385; 8459');
-    assert.equal(state.splicePlan.breakdowns, '6838');
-    assert.equal(element('splice-label').textContent, '(5380+3070+6550)');
-    state.drums[0].status = 'active';
-    planner.renderQueue();
-    assert.equal(element('splice-length').disabled, true);
-    element('splice-length').value = '11000';
-    element('splice-length').listeners.get('input')();
-    assert.equal(state.drums[0].length, '15000');
   });
 });
 

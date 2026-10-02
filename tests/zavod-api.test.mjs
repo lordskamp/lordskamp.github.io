@@ -150,16 +150,28 @@ test('PV3 single and yellow-green measurements persist independently and retain 
   assert.equal((await call('/admin/measurements',authenticated(dual))).status,200);
   assert.equal((await call('/admin/recipes/'+measurementRecipeId(dual),authenticated({measurementId:dual.id,expectedRevision:0},'PUT'))).status,200);
   catalog = (await call('/catalog')).data;
-  for (const color of ['blue','brown','white']) {
+  for (const color of ['brown','white','black']) {
     const result = setupFor(option.id,.75,catalog,color);
     assert.deepEqual([result.effective.extruder1,result.effective.extruder2,result.effective.workingSpeed],[70,null,340]);
   }
   const striped = setupFor(option.id,.75,catalog,'yellow-green');
   assert.deepEqual([striped.effective.extruder1,striped.effective.extruder2,striped.effective.workingSpeed],[66,86,345]);
+  assert.deepEqual(setupFor(option.id,.75,catalog,'blue').effective, striped.effective);
   assert.equal(catalog.recipes.find(row => row.id === measurementRecipeId(single)).extruder1,70);
   assert.equal(catalog.recipes.find(row => row.id === measurementRecipeId(dual)).extruder1,66);
   assert.equal(catalog.recipes.find(row => row.id === base.id).origin,'handwritten');
   assert.equal((await call('/admin/measurements',{initData:signed()})).data.measurements.length,2);
+});
+
+test('H and ПВ colour validation follows the same modes as the public setup', async t => {
+  const { call, db } = fixture(); t.after(() => db.close());
+  for (const optionId of ['h07v-k--h07v-k', 'pv3--pv3', 'pv5--pv5', 'pvs-380--pvs']) {
+    const option = CATALOG_OPTIONS.find(row => row.id === optionId), base = baseFor(optionId, option.sections[0]);
+    const draft = { baseId: base.id, optionId, mode: 'single', extruder1: 75, extruder2: null };
+    for (const color of ['blue', 'yellow-green']) assert.equal((await call('/admin/measurements', authenticated(measurement({ ...draft, color })))).status, 400);
+    for (const color of ['black', 'brown', 'red']) assert.equal((await call('/admin/measurements', authenticated(measurement({ ...draft, color })))).status, 200);
+    for (const color of ['all', 'blue', 'yellow-green']) assert.equal((await call('/admin/measurements', authenticated(measurement({ ...draft, color, mode: 'dual', extruder1: 53.7, extruder2: 72.2 })))).status, 200);
+  }
 });
 
 test('Journal pagination never skips records with identical timestamps', async t => {
@@ -358,7 +370,7 @@ test('Deleting a migrated calibration never restores a sibling marketing option 
   assert.equal(catalogue.calibrations.length, 1); assert.equal(catalogue.calibrations[0].optionId, options[0].id);
 });
 
-test('Black and yellow-green share a dual calibration, while single mode stays independent and deletion restores the previous dual value', async t => {
+test('Blue and yellow-green share a dual calibration, while single mode stays independent and deletion restores the previous dual value', async t => {
   const { call, db } = fixture(); t.after(() => db.close());
   const option = CATALOG_OPTIONS.find(row => row.practicalCableId === 'pv3'), base = baseFor(option.id, .75);
   const single = measurement({ baseId: base.id, optionId: option.id, color: 'all', mode: 'single', extruder1: 70, extruder2: null, maxSpeed: 340 });
@@ -373,14 +385,14 @@ test('Black and yellow-green share a dual calibration, while single mode stays i
   assert.equal(dualId, measurementRecipeId(striped)); assert.notEqual(dualId, singleId);
   let catalogue = (await call('/catalog')).data;
   assert.equal(catalogue.recipes.find(row => row.id === singleId).extruder1, 70);
-  for (const color of ['black', 'yellow-green']) assert.deepEqual([setupFor(option.id, .75, catalogue, color).effective.extruder1, setupFor(option.id, .75, catalogue, color).effective.extruder2], [68, 90]);
-  assert.equal(setupFor(option.id, .75, catalogue, 'blue').effective.extruder1, 70);
+  for (const color of ['blue', 'yellow-green']) assert.deepEqual([setupFor(option.id, .75, catalogue, color).effective.extruder1, setupFor(option.id, .75, catalogue, color).effective.extruder2], [68, 90]);
+  assert.equal(setupFor(option.id, .75, catalogue, 'black').effective.extruder1, 70);
   const journal = (await call('/admin/measurements', { initData: signed() })).data.measurements;
   assert.equal(journal.find(row => row.id === striped.id).color, 'yellow-green'); assert.equal(journal.find(row => row.id === black.id).color, 'black');
   await call('/admin/measurements/' + black.id, { method: 'DELETE', initData: signed() });
   catalogue = (await call('/catalog')).data;
   assert.equal(catalogue.recipes.find(row => row.id === dualId).measurementId, striped.id);
-  for (const color of ['black', 'yellow-green']) assert.equal(setupFor(option.id, .75, catalogue, color).effective.extruder1, 66);
+  for (const color of ['blue', 'yellow-green']) assert.equal(setupFor(option.id, .75, catalogue, color).effective.extruder1, 66);
   assert.equal(catalogue.recipes.find(row => row.id === singleId).extruder1, 70);
 });
 
