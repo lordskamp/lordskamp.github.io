@@ -23,9 +23,21 @@ export function positive(value) {
   return parsed !== null && parsed > 0 ? parsed : null;
 }
 
-export function secondSpeed(workingSpeed) {
+export function firstSpeed(workingSpeed) {
   const working = positive(workingSpeed);
-  return working === null ? null : Math.min(working, Math.max(20, Math.floor(working / 40) * 20));
+  return working === null ? null : Math.min(working, working > 200 ? 80 : 40);
+}
+
+export function secondSpeed(workingSpeed) {
+  const working = positive(workingSpeed), first = firstSpeed(working);
+  if (working === null) return null;
+  if (first === working) return working;
+  const midpoint = (first + working) / 2;
+  for (const step of [20, 10, 5, 1]) {
+    const rounded = Math.round(midpoint / step) * step;
+    if (rounded > first && rounded < working) return rounded;
+  }
+  return midpoint;
 }
 
 export function fmt(value, digits = 2) {
@@ -38,6 +50,13 @@ export function outerEstimate(matrix, offset = DEFAULT_RULES.sikoraOffset) {
   const extra = number(offset);
   if (m === null || extra === null || extra < 0) return null;
   return Math.round((m + extra) * 1000) / 1000;
+}
+
+/** Operator's average allowance: 0.15 mm at 2.5 mm², less for thinner cores. */
+export function sikoraAllowance(section) {
+  const area = positive(section);
+  if (area === null) return null;
+  return Math.max(0.01, Math.round(DEFAULT_RULES.sikoraOffset * Math.sqrt(Math.min(area / 2.5, 1)) * 100) / 100);
 }
 
 export function colorName(id) {
@@ -83,20 +102,24 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
   if (nextDrum && !COLORS.some(color => color.id === nextDrum.color)) errors.push('Оберіть колір наступного барабана.');
   if (errors.length) return { errors: [...new Set(errors)], warnings: [], events: [], target: null, ...changes };
 
-  // A cable, distributor or extruder change requires a separate setup. The
-  // in-run dye countdown only applies while the current setup continues.
-  const transition = Boolean(nextDrum && nextDrum.color !== drum.color && !setupChange);
+  // A conductor change leaves the last bath length to finish. Color changes
+  // on the same conductor keep the reserve, including a later head/mode stop.
+  const transition = Boolean(nextDrum && nextDrum.color !== drum.color && !cableChange);
   const events = [];
   const warnings = [];
   let target = length;
   let formula = `${fmt(length)} м`;
-  if (transition) {
+  if (cableChange) {
+    target = Math.max(0, length - rules.bath);
+    formula = length > rules.bath ? `${fmt(length)} − ${fmt(rules.bath)} = ${fmt(target)} м` : `${fmt(length)} − ${fmt(rules.bath)} ≤ 0 м`;
+    if (length <= rules.bath) warnings.push('Довжина барабана не перевищує довжину ванни. Для зміни жили потрібен окремий план зупинки; автоматичне завдання не встановлюй.');
+  } else if (transition) {
     target = length - rules.bath + rules.reserve;
     formula = `${fmt(length)} − ${fmt(rules.bath)} + ${fmt(rules.reserve)} = ${fmt(target)} м`;
     if (length <= rules.bath) errors.push('Довжина барабана має перевищувати запас кабелю у ванні.');
     if (target <= length) warnings.push('Запас не перевищує довжину кабелю у ванні: завдання може не відкласти автоматичне перекидання.');
     const first = dyePlan(drum.color, mode);
-    const next = dyePlan(nextDrum.color, mode);
+    const next = dyePlan(nextDrum.color, nextDrum.mode ?? mode);
     if (!first?.valid || !next?.valid) {
       warnings.push('Для цього режиму спочатку уточніть схему барвників. Метрові підказки зміни барвника не розраховано.');
     } else {
@@ -128,4 +151,37 @@ export function parseBreakdowns(value) {
   const values = parts.map(number);
   if (values.some(item => item === null || item < 0 || !Number.isInteger(item))) return { values: [], error: 'Метрові позначки — цілі невід’ємні числа, розділені крапкою з комою.' };
   return { values, error: null };
+}
+
+/** Faults use the cumulative output counter; labels contain only nominal metres. */
+export function planSplices(lengthInput, breakdowns, reserve = DEFAULT_RULES.splice) {
+  const length = positive(lengthInput);
+  const extra = number(reserve);
+  const parsed = parseBreakdowns(breakdowns);
+  const errors = [];
+  const result = { length, marks: [], roundedMarks: [], parts: [], label: '', spliceCount: 0, target: null, errors };
+  if (!Number.isSafeInteger(length)) errors.push('Вкажіть довжину барабана цілим числом метрів, більшим за нуль.');
+  if (!Number.isSafeInteger(extra) || extra < 0) errors.push('Запас на скрутку має бути цілим невід’ємним числом метрів.');
+  if (parsed.error) errors.push(parsed.error);
+  if (errors.length) return result;
+
+  const marks = [...parsed.values].sort((a, b) => a - b);
+  const roundedMarks = marks.map(mark => Math.floor(mark / 10) * 10);
+  result.marks = marks;
+  result.roundedMarks = roundedMarks;
+  result.spliceCount = marks.length;
+  if (marks.some(mark => !Number.isSafeInteger(mark) || mark <= 0 || mark >= length)) {
+    errors.push('Кожен пробій має бути після початку та до кінця барабана.');
+  }
+  if (roundedMarks.some(mark => mark === 0)) errors.push('Пробій раніше 10 м після округлення дає нульову ділянку. Уточніть позначку.');
+  if (new Set(roundedMarks).size !== roundedMarks.length) errors.push('Пробої після округлення збігаються. Уточніть позначки, щоб кожне з’єднання мало окрему ділянку.');
+  const target = length + marks.length * extra;
+  if (!Number.isSafeInteger(target)) errors.push('Задана довжина із запасом завелика для розрахунку.');
+  if (errors.length) return result;
+
+  const ends = [...roundedMarks, length];
+  result.parts = ends.map((end, index) => end - (index ? ends[index - 1] : 0));
+  result.label = `(${result.parts.join('+')})`;
+  result.target = target;
+  return result;
 }

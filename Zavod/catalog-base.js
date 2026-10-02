@@ -1,7 +1,7 @@
-import { CATALOG_OPTIONS } from './catalog-options.js?v=9';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=16';
 import { RECIPES } from './data.js';
-import { REFERENCE_CARDS } from './reference-data.js?v=9';
-import { hasPv3Modes, pv3Recipe } from './pv3-modes.js?v=9';
+import { REFERENCE_CARDS } from './reference-data.js?v=16';
+import { hasPv3Modes, pv3Recipe, modeFor } from './pv3-modes.js?v=16';
 
 export { CATALOG_OPTIONS };
 export const CATALOG_CABLES = CATALOG_OPTIONS;
@@ -18,7 +18,7 @@ export function baseFor(optionId, section) {
   return {
     id: `${option.id}-${String(section).replace('.', '-')}`, cableId: option.id, section: Number(section),
     dorn: null, matrix: null, sikoraWire: null, sikoraOuter: null,
-    extruder1: null, extruder2: null, maxSpeed: null, colorLead2: null,
+    extruder1: null, extruder2: null, maxSpeed: null, colorLead1: null, colorLead2: null,
     mode: option.mode ?? 'unknown', source: referenceCard(option).source,
     notes: [], uncertain: [],
   };
@@ -30,16 +30,43 @@ export const CATALOG_BASES = [...new Map([
   ...CATALOG_OPTIONS.flatMap(option => option.sections.map(section => baseFor(option.id, section))),
 ].map(base => [base.id, base])).values()];
 
-export const measurementColor = (optionId, mode) => hasPv3Modes(optionFor(optionId)) && mode === 'dual' ? 'yellow-green' : 'all';
+export const recipeIdFor = (baseId, color = 'all', optionId, mode) => `${optionId ? `${optionId}::` : ''}${baseId}${mode ? `~${mode}` : color === 'all' ? '' : `~${color}`}`;
 
-export function practicalFor(optionId, section, catalog, mode) {
-  const splitModes = hasPv3Modes(optionFor(optionId)) && mode;
+// Kept as the shared form/API helper: measurements belong to an extruder mode,
+// while the selected colour only determines which mode the operator needs.
+export const measurementColor = () => 'all';
+
+export function practicalFor(optionId, section, catalog, mode, color = 'blue') {
+  const option = optionFor(optionId);
   const base = baseFor(optionId, section);
   if (!base) return null;
-  const rows = (catalog?.recipes ?? []).filter(row => (row.baseId || row.id) === base.id);
-  // PV3 has separate single/dual measurements. Other colours share one setup.
-  const latest = rows.filter(row => row.origin === 'measurement' && (!splitModes || row.mode === mode)).sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')) || b.revision - a.revision)[0];
-  if (latest) return latest;
+  const applied = [...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])].filter(row => !row.deletedAt && !row.withdrawnAt);
+  const rows = applied.filter(row => (row.baseId || row.id) === base.id && (!row.optionId || row.optionId === option.id));
+  const byLatest = (a, b) => Number(Boolean(b.optionId)) - Number(Boolean(a.optionId)) || String(b.updatedAt ?? b.createdAt ?? '').localeCompare(String(a.updatedAt ?? a.createdAt ?? '')) || Number(b.revision ?? 0) - Number(a.revision ?? 0);
+  const latestMode = applied.filter(row => row.origin === 'measurement' && !row.deletedAt && ['single', 'dual'].includes(row.mode)
+    && (row.optionId === option.id || !row.optionId && (row.cableId === option.id || row.cableId === option.practicalCableId)))
+    .sort((a, b) => Number(b.section === Number(section)) - Number(a.section === Number(section)) || byLatest(a, b))[0];
+  const normalMode = option.mode !== 'unknown' ? option.mode : applied.some(row => row.origin === 'measurement' && !row.deletedAt && row.mode === 'single'
+    && (row.optionId === option.id || !row.optionId && (row.cableId === option.id || row.cableId === option.practicalCableId))) ? 'single' : latestMode?.mode ?? base.mode;
+  const desiredMode = mode ?? modeFor(option, color, normalMode);
+  const candidates = rows.filter(row => row.origin === 'measurement' && (!['single', 'dual'].includes(desiredMode) || row.mode === desiredMode));
+  const geometryRows = rows.filter(row => row.origin === 'measurement' && (row.mode === desiredMode || row.mode === 'unknown')).sort(byLatest);
+  const latest = candidates.sort(byLatest)[0] ?? geometryRows[0];
+  if (latest) {
+    const merged = { ...latest, mode: ['single', 'dual'].includes(desiredMode) ? desiredMode : latest.mode, color: 'all', fieldSources: {} };
+    for (const key of ['extruder1', 'extruder2', 'maxSpeed', 'dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'colorLead1', 'colorLead2']) {
+      const geometry = ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter'].includes(key);
+      const source = (geometry ? geometryRows : candidates).find(row => (row.mode === merged.mode || geometry && row.mode === 'unknown') && typeof row[key] === 'number' && Number.isFinite(row[key]) && (key.startsWith('colorLead') ? row[key] >= 0 : row[key] > 0));
+      merged[key] = source?.[key] ?? null;
+      if (source) merged.fieldSources[key] = { measurementId: source.measurementId ?? source.id, source: source.source, updatedAt: source.updatedAt };
+    }
+    return merged;
+  }
   const original = rows.find(row => row.origin !== 'measurement' && row.color === 'all') ?? { ...base, baseId: base.id, color: 'all', origin: 'handwritten', revision: 0 };
-  return splitModes ? pv3Recipe(original, mode) : original;
+  const selectedMode = desiredMode ?? modeFor(option, color, original.mode === 'unknown' ? option.mode : original.mode);
+  if (hasPv3Modes(option) && selectedMode) return { ...pv3Recipe(original, selectedMode), color: 'all' };
+  if (['single', 'dual'].includes(selectedMode) && selectedMode !== original.mode) {
+    return { ...original, mode: selectedMode, extruder1: null, extruder2: null, maxSpeed: null, colorLead1: null, colorLead2: null };
+  }
+  return original;
 }

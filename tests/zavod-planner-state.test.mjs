@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { CATALOG_CABLES, optionFor } from '../Zavod/catalog-base.js';
-import { newJob, restorePlanner } from '../Zavod/plan-ui.js';
+import { createPlannerUI, newJob, restorePlanner, syncPlannerSelection } from '../Zavod/plan-ui.js';
+import { DEFAULT_RULES } from '../Zavod/core.js';
 
 const globalCable = optionFor('vvgng-p');
 const initialState = () => ({
@@ -12,6 +13,226 @@ const initialState = () => ({
 });
 const oldDrum = (overrides = {}) => ({
   id: 'old-drum', color: 'blue', length: '15000', name: 'Барабан № 27', breakdowns: '3682; 9240', ...overrides
+});
+
+function withPlannerHarness(state, run, getSetup = () => ({ mode: 'dual', stored: {} })) {
+  const previousDocument = globalThis.document, previousWindow = globalThis.window, elements = new Map();
+  const element = id => {
+    if (!elements.has(id)) elements.set(id, {
+      innerHTML: '', textContent: '', listeners: new Map(), value: '',
+      classList: { toggle() {} }, setAttribute() {},
+      addEventListener(type, listener) { this.listeners.set(type, listener); },
+      querySelector() { return null; }, querySelectorAll() { return []; }, scrollIntoView() {}
+    });
+    return elements.get(id);
+  };
+  globalThis.document = { getElementById: element, addEventListener() {} };
+  globalThis.window = { addEventListener() {}, CSS: { escape: value => value } };
+  try {
+    const planner = createPlannerUI({ state, getSetup, persist() {}, toast() {}, haptic() {} });
+    const clickAction = (id, action) => {
+      const button = { dataset: { action }, closest: () => ({ dataset: { drum: id } }) };
+      element('drums').listeners.get('click')({ target: { closest: selector => selector === '[data-action]' ? button : null } });
+    };
+    run({ planner, element, clickAction });
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow;
+  }
+}
+
+test('the untouched initial planning task follows the main cable and section without rewriting the queue', () => {
+  const state = initialState(); restorePlanner(null, state);
+  const queue = structuredClone(state.drums), id = state.jobs[0].id;
+  state.cableId = optionFor('pv3').id; state.section = 4;
+  assert.equal(syncPlannerSelection(state), true);
+  assert.equal(state.jobs[0].cableId, state.cableId);
+  assert.equal(state.jobs[0].section, 4);
+  assert.equal(state.jobs[0].id, id);
+  assert.deepEqual(state.drums, queue);
+  assert.equal(syncPlannerSelection(state), false, 'repeated entry is idempotent');
+});
+
+test('splice labels and reserve survive restoration without adding reserve to nominal lengths', () => {
+  const saved = { ...initialState(), drums: [oldDrum({ id: 'spliced', breakdowns: '5385; 8459' })],
+    splicePlan: { drumId: 'spliced', length: '11000', breakdowns: '6838' } };
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  restorePlanner(saved, state);
+  assert.deepEqual(state.splicePlan, saved.splicePlan);
+  assert.equal(state.drums[0].length, '15000');
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.renderQueue();
+    assert.equal(element('splice-label').textContent, '(5380+3070+6550)');
+    assert.equal(Number(element('splice-screen').textContent.replace(/[^\d]/g, '')), 15060);
+    assert.equal(element('splice-breakdowns').value, '5385; 8459');
+    assert.match(element('drums').innerHTML, /data-splice-label>\(5380\+3070\+6550\)/);
+    element('splice-drum').value = 'manual';
+    element('splice-drum').listeners.get('change')();
+    assert.equal(element('splice-label').textContent, '(6830+4170)', 'manual draft is independent of the linked drum');
+  });
+  const deleted = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  restorePlanner({ ...saved, drums: [] }, deleted);
+  assert.equal(deleted.splicePlan.drumId, 'manual');
+  assert.equal(deleted.splicePlan.breakdowns, '6838');
+});
+
+test('splice reserves combine with transitions while labels and production totals use nominal metres', () => {
+  const first = oldDrum({ id: 'spliced', cableId: globalCable.id, section: 2.5, breakdowns: '6838' });
+  const next = oldDrum({ id: 'next', cableId: globalCable.id, section: 2.5, color: 'brown', breakdowns: '' });
+  const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [first, next] };
+  withPlannerHarness(state, ({ planner }) => {
+    const transition = planner.result(first, 0);
+    assert.equal(transition.splice.label, '(6830+8170)');
+    assert.equal(transition.target, 15880);
+    assert.equal(transition.events[0].at, 13030);
+    assert.equal(first.length, '15000');
+    next.section = 1.5;
+    assert.equal(planner.result(first, 0).target, 14880);
+    first.breakdowns = '5385; 8459';
+    assert.equal(planner.result(first, 0).target, 14910);
+    first.breakdowns = '8459; 8450';
+    const invalid = planner.result(first, 0);
+    assert.equal(invalid.target, null);
+    assert.equal(invalid.splice.label, '');
+    assert.ok(invalid.errors.length);
+  });
+});
+
+test('splice input updates its linked drum while standalone calculations do not alter the queue', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  restorePlanner(null, state);
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.renderQueue();
+    element('splice-breakdowns').value = '6838';
+    element('splice-breakdowns').listeners.get('input')();
+    assert.equal(state.drums[0].breakdowns, '');
+    assert.equal(state.splicePlan.breakdowns, '6838');
+    element('splice-drum').value = state.drums[0].id;
+    element('splice-drum').listeners.get('change')();
+    element('splice-breakdowns').value = '5385; 8459';
+    element('splice-breakdowns').listeners.get('input')();
+    assert.equal(state.drums[0].breakdowns, '5385; 8459');
+    assert.equal(state.splicePlan.breakdowns, '6838');
+    assert.equal(element('splice-label').textContent, '(5380+3070+6550)');
+    state.drums[0].status = 'active';
+    planner.renderQueue();
+    assert.equal(element('splice-length').disabled, true);
+    element('splice-length').value = '11000';
+    element('splice-length').listeners.get('input')();
+    assert.equal(state.drums[0].length, '15000');
+  });
+});
+
+test('main cable changes preserve filled, edited, customized and generated planning tasks', () => {
+  for (const customization of [
+    state => { state.jobs[0].lengthsText = '3×15 + 11'; },
+    state => { state.planDirty = true; },
+    state => { state.manualOrder = true; },
+    state => { state.planJobs = [structuredClone(state.jobs[0])]; },
+    state => { state.jobs[0].colors = ['black', 'white', 'red']; },
+    state => { state.jobs[0].urgent = true; },
+    state => { state.jobs.push(newJob(globalCable.id, 2.5)); }
+  ]) {
+    const state = initialState(); restorePlanner(null, state); customization(state);
+    const before = structuredClone(state.jobs);
+    state.cableId = optionFor('pv3').id; state.section = 4;
+    assert.equal(syncPlannerSelection(state), false);
+    assert.deepEqual(state.jobs, before);
+  }
+});
+
+test('compact queue rows always display color transition formula and default dye leads', () => {
+  const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [
+    oldDrum({ id: 'blue', cableId: globalCable.id, section: 2.5, name: '', breakdowns: '' }),
+    oldDrum({ id: 'brown', cableId: globalCable.id, section: 2.5, color: 'brown', name: '', breakdowns: '' }),
+    oldDrum({ id: 'striped', cableId: globalCable.id, section: 2.5, color: 'yellow-green', name: '', breakdowns: '' })
+  ] };
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.renderQueue();
+    const first = planner.transitionText(state.drums[0], 0);
+    assert.match(first, /15\s?000 − 150 \+ 1\s?000 = 15\s?850 м/);
+    assert.match(first, /№2 — за 2\s?000 м до кінця, на 13\s?000 м/);
+    const head = planner.transitionText(state.drums[1], 1);
+    assert.match(head, /№1 — за 300 м до кінця, на 14\s?700 м/);
+    assert.match(head, /розсікач/);
+    assert.ok(element('drums').innerHTML.includes(`<p class="drum-transition" data-transition="blue" >${first}</p>`), 'the countdown is outside the collapsed details');
+    assert.ok(element('drums').innerHTML.includes(`<p class="drum-transition" data-transition="brown" >${head}</p>`));
+  });
+});
+
+test('done rows keep their positions, expose undo and still participate in manual movement', () => {
+  const task = newJob(globalCable.id, 2.5, { id: 'task', lengthsText: '15' });
+  const state = { ...initialState(), jobs: [task], planJobs: [task], rules: { ...DEFAULT_RULES }, drums: [
+    oldDrum({ id: 'blue', jobId: 'task', cableId: globalCable.id, section: 2.5, color: 'blue', status: 'done' }),
+    oldDrum({ id: 'brown', jobId: 'task', cableId: globalCable.id, section: 2.5, color: 'brown', status: 'done' }),
+    oldDrum({ id: 'striped', jobId: 'task', cableId: globalCable.id, section: 2.5, color: 'yellow-green', status: 'queued' })
+  ] };
+  const initialIds = state.drums.map(drum => drum.id);
+  withPlannerHarness(state, ({ planner, element, clickAction }) => {
+    planner.renderQueue();
+    const html = element('drums').innerHTML;
+    assert.ok(html.indexOf('data-drum="blue"') < html.indexOf('data-drum="brown"') && html.indexOf('data-drum="brown"') < html.indexOf('data-drum="striped"'));
+    assert.equal(html.includes('completed-queue'), false);
+    assert.match(html, /data-status="done" data-color="blue" style="--done-color:#3874bc"/);
+    assert.match(html, />Не готово<\/button>/);
+    assert.equal((html.match(/data-drag-handle/g) || []).length, 3, 'finished rows remain movable');
+    clickAction('striped', 'done');
+    assert.deepEqual(state.drums.map(drum => drum.id), initialIds);
+    assert.equal(state.drums[2].status, 'done');
+    assert.match(element('plan-summary').innerHTML, /15 км \(2,5 мм²\)/);
+    clickAction('striped', 'done');
+    assert.equal(state.drums[2].status, 'queued');
+    assert.deepEqual(state.drums.map(drum => drum.id), initialIds);
+    assert.match(element('plan-summary').innerHTML, /ще немає комплекту кольорів/);
+    clickAction('blue', 'down');
+    assert.deepEqual(state.drums.map(drum => drum.id), ['brown', 'blue', 'striped']);
+    assert.equal(state.drums[1].status, 'done');
+  });
+});
+
+test('new planning tasks leave lengths empty while explicitly saved lengths survive restoration', () => {
+  assert.equal(newJob(globalCable.id, 1.5).lengthsText, '');
+  const savedTask = newJob(globalCable.id, 2.5, { id: 'actual-lengths', lengthsText: '2×8,5 + 4' });
+  const state = initialState();
+  restorePlanner({ jobs: [savedTask], planJobs: [savedTask], drums: [] }, state);
+  assert.equal(state.jobs[0].lengthsText, '2×8,5 + 4');
+  assert.equal(state.planJobs[0].lengthsText, '2×8,5 + 4');
+});
+
+test('the queue uses practical lead measurements for each extruder and falls back independently to general rules', () => {
+  const previousDocument = globalThis.document, previousWindow = globalThis.window;
+  const elements = new Map();
+  globalThis.document = {
+    getElementById(id) { if (!elements.has(id)) elements.set(id, { addEventListener() {} }); return elements.get(id); },
+    addEventListener() {}
+  };
+  globalThis.window = { addEventListener() {} };
+  try {
+    const drums = [oldDrum({ id: 'blue', cableId: globalCable.id, section: 2.5, breakdowns: '' }), oldDrum({ id: 'brown', cableId: globalCable.id, section: 2.5, color: 'brown', breakdowns: '' })];
+    let mode = 'dual', stored = { colorLead1: 450, colorLead2: 2500 };
+    const planner = createPlannerUI({
+      state: { ...initialState(), drums, planJobs: [], rules: { ...DEFAULT_RULES } },
+      getSetup: () => ({ mode, stored }), persist() {}, toast() {}, haptic() {}
+    });
+    assert.equal(planner.result(drums[0], 0).events[0].at, 12500, 'E2 uses its own practical lead');
+    // Each new UI instance owns a setup cache, just as a rerender refreshes it.
+    mode = 'single'; stored = { colorLead1: 450, colorLead2: null };
+    const single = createPlannerUI({
+      state: { ...initialState(), drums, planJobs: [], rules: { ...DEFAULT_RULES } },
+      getSetup: () => ({ mode, stored }), persist() {}, toast() {}, haptic() {}
+    });
+    assert.equal(single.result(drums[0], 0).events[0].at, 14550, 'E1 uses its own practical lead');
+    stored = { colorLead1: null, colorLead2: -1 }; mode = 'dual';
+    const fallback = createPlannerUI({
+      state: { ...initialState(), drums, planJobs: [], rules: { ...DEFAULT_RULES } },
+      getSetup: () => ({ mode, stored }), persist() {}, toast() {}, haptic() {}
+    });
+    assert.equal(fallback.result(drums[0], 0).events[0].at, 13000);
+    assert.equal(DEFAULT_RULES.lead2, 2000, 'practical values do not modify shared defaults');
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow;
+  }
 });
 
 test('legacy version 1 queues preserve operator order, ids, labels and faults with global cable settings', () => {

@@ -2,8 +2,8 @@
 <html lang="uk"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=11">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=11"></script>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=16">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=16"></script>
 </head><body>
   <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
@@ -16,6 +16,15 @@
     </section>
     <section id="view-plan" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>План барабанів</h1></div><button class="secondary" id="add-drum" type="button">Окремий барабан</button></div>
+      <details class="card splice-planner" id="splice-planner" open>
+        <summary>Планування скрутки</summary>
+        <div class="splice-preview" aria-live="polite"><div><span>На лейбл</span><strong id="splice-label"></strong></div><div><span>Ввести на екрані</span><strong id="splice-screen"></strong></div></div>
+        <label class="splice-selection">Розрахунок для<select id="splice-drum"><option value="manual">Окремий розрахунок</option></select></label>
+        <div class="form-grid splice-fields"><label>Потрібна довжина, м<input id="splice-length" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="15000" aria-describedby="splice-message"></label><label>Пробої на лічильнику, м<textarea id="splice-breakdowns" rows="2" maxlength="2000" placeholder="5385; 8459" aria-describedby="splice-help splice-message"></textarea></label></div>
+        <p id="splice-help" class="quiet">Впиши всі позначки через «;». Округлюємо вниз до десятків і рахуємо відрізки. Запас на скрутку додається тільки на екрані.</p>
+        <p id="splice-message" class="form-message" role="status"></p>
+        <button class="secondary" id="copy-splice-label" type="button">Копіювати лейбл</button>
+      </details>
       <p id="plan-title" class="quiet"></p>
       <details class="card job-builder" id="job-builder" open>
         <summary>Завдання</summary>
@@ -37,8 +46,8 @@
     <section id="view-table" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Таблиця налаштувань</h1></div><button class="secondary" id="refresh-table" type="button">Оновити</button></div>
       <div class="table-toolbar"><label>Провід<select id="table-filter"></select></label><span id="table-count" class="quiet"></span></div>
-      <p id="table-status" class="quiet" role="status"></p><div class="table-scroll"><table><caption class="sr-only">Налаштування обпресування за довідкою, практикою та прогнозом</caption><thead><tr><th>Провід</th><th>мм²</th><th>Значення</th><th>№1<br>об/хв</th><th>№2<br>об/хв</th><th>SIKORA<br>жила, мм</th><th>SIKORA<br>з ізоляцією, мм</th><th>Дорн<br>мм</th><th>Матриця<br>мм</th><th>1 · Запуск<br>м/хв</th><th>2 · Проміжна<br>м/хв</th><th>Робоча<br>м/хв</th><th>Джерела</th></tr></thead><tbody id="table-body"></tbody></table></div>
-      <p class="quiet">«—» означає, що значення ще не визначене. Натисни «Фото», щоб побачити джерела й примітки.</p>
+      <p id="table-status" class="quiet" role="status"></p><div class="table-scroll"><table><caption class="sr-only">Рекомендовані налаштування обпресування з джерелом кожного значення</caption><thead><tr><th>Провід</th><th>мм²</th><th>№1<br>об/хв</th><th>№2<br>об/хв</th><th>SIKORA<br>жила, мм</th><th>SIKORA<br>з ізоляцією, мм</th><th>Дорн<br>мм</th><th>Матриця<br>мм</th><th>1 · Запуск<br>м/хв</th><th>2 · Проміжна<br>м/хв</th><th>Робоча<br>м/хв</th><th>Джерела</th></tr></thead><tbody id="table-body"></tbody></table></div>
+      <p class="quiet">Спочатку показуємо практичний замір, за його відсутності — довідкове значення або прогноз. Джерело підписане під кожною цифрою. «—» означає, що значення ще немає. Натисни «Фото», щоб побачити пояснення.</p>
     </section>
     <section id="view-admin" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Мої заміри</h1></div><span id="admin-who" class="quiet"></span></div>
@@ -46,17 +55,17 @@
       <div id="admin-content" hidden>
         <div class="admin-tabs"><button class="secondary" id="new-measurement" type="button">＋ Новий замір</button><button class="secondary" id="show-journal" type="button">Попередні заміри</button><button class="back" id="import-old" type="button" hidden>Мої старі уточнення</button></div>
         <form id="measurement-form" class="card">
-          <input type="hidden" id="measure-color" value="all"><div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label><label>Працюють екструдери<select id="measure-mode"><option value="dual">№1 і №2</option><option value="single">Тільки №1</option><option value="unknown">Ще не знаю</option></select></label></div>
-          <p class="quiet">У формі — відомі практичні значення. Запиши те, що перевірив.</p><div class="form-grid" id="measurement-fields"></div>
+          <div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label><label class="measurement-mode">Працюють екструдери<select id="measure-mode"><option value="dual">№1 і №2</option><option value="single">Тільки №1</option><option value="unknown">Ще не знаю</option></select></label></div>
+          <p class="quiet">Заміри спільні для всіх кольорів з однаковою кількістю увімкнених екструдерів. Запиши перевірені значення. Зміну барвника вкажи окремо для №1 і №2: за скільки метрів до кінця барабана.</p><div class="form-grid" id="measurement-fields"></div>
           <label class="note-label">Примітка<textarea id="measure-note" rows="2" maxlength="2000" placeholder="Наприклад: рівний колір, без пробоїв"></textarea></label>
-          <label class="check"><input type="checkbox" id="publish-measurement"> Застосувати ці значення в калькуляторі</label>
-          <p id="save-message" role="status" class="form-message"></p><button class="primary save" id="save-measurement" type="submit">Зберегти замір</button>
+          <p class="quiet measurement-sharing">Кожен збережений замір одразу доповнює практичні значення та прогноз для всіх користувачів. Примітка залишається приватною.</p>
+          <p id="save-message" role="status" class="form-message"></p><button class="back" id="refresh-measurement" type="button" hidden>Оновити таблицю для повторного збереження</button><button class="primary save" id="save-measurement" type="submit">Зберегти замір</button>
         </form>
-        <div id="journal" hidden><div id="journal-list"></div><button class="secondary" id="more-journal" type="button" hidden>Ще записи</button></div>
+        <div id="journal" hidden><p id="journal-message" class="form-message" role="status"></p><button class="back" id="undo-delete-measurement" type="button" hidden>Повернути видалений замір</button><div id="journal-list"></div><button class="secondary" id="more-journal" type="button" hidden>Ще записи</button></div>
       </div>
     </section>
   </main>
   <dialog id="record-dialog"><div class="dialog-head"><h2>Запис</h2><button class="close" type="button" data-close="record-dialog" aria-label="Закрити">×</button></div><div id="record-content"></div></dialog>
-  <dialog id="splice-dialog"><div class="dialog-head"><h2>Додати запас</h2><button class="close" type="button" data-close="splice-dialog" aria-label="Закрити">×</button></div><label>Зараз на екрані, м<input id="current-target" inputmode="numeric" autocomplete="off" value="15000"></label><div class="splice-number"><span>Постав на екрані</span><strong id="splice-result"></strong></div><p class="quiet">Позначку пробою з екрана запиши на ярлик.</p></dialog>
+  <dialog id="splice-dialog"><div class="dialog-head"><h2>Додати запас</h2><button class="close" type="button" data-close="splice-dialog" aria-label="Закрити">×</button></div><label>Зараз на екрані, м<input id="current-target" inputmode="numeric" autocomplete="off" value="15000"></label><div class="splice-number"><span>Постав на екрані</span><strong id="splice-result"></strong></div><p class="quiet">Напис для лейбла розрахуй у «Плануванні скрутки» вгорі плану барабанів.</p></dialog>
   <div id="toast" class="toast" role="status" hidden></div><noscript>Увімкніть JavaScript, щоб обрати провід. <a href="./catalog.json">Таблиця даних</a>.</noscript>
 </body></html>

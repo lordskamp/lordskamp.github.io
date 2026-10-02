@@ -1,75 +1,98 @@
-import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=9';
+import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=16';
 import { RECIPES } from './data.js';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=9';
-import { forecastFor } from './forecast.js?v=9';
-import { number, secondSpeed, fmt } from './core.js?v=9';
-import { hasPv3Modes, pv3Mode, operatingRecords } from './pv3-modes.js?v=9';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=16';
+import { forecastFor } from './forecast.js?v=16';
+import { number, firstSpeed, secondSpeed } from './core.js?v=16';
+import { hasPv3Modes, modeFor } from './pv3-modes.js?v=16';
 
 export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані' };
 const metric = row => ({
   extruder1: number(row?.extruder1), extruder2: number(row?.extruder2), workingSpeed: number(row?.maxSpeed),
   dorn: number(row?.dorn), matrix: number(row?.matrix), sikoraWire: number(row?.sikoraWire), sikoraOuter: number(row?.sikoraOuter),
+  colorLead1: number(row?.colorLead1), colorLead2: number(row?.colorLead2),
 });
 export function speedStages(workingSpeed, source) {
   const working = number(workingSpeed);
-  return { first: 20, second: secondSpeed(working), working, source };
+  return { first: firstSpeed(working), second: secondSpeed(working), working, source };
 }
 
 export function metricValues(info, key) {
-  const nominal = key === 'sikoraWire' ? info.row.wireNom : key === 'sikoraOuter' ? info.row.outerNom : null;
+  const nominal = key === 'sikoraWire' ? info.row.wireNom : key === 'sikoraOuter' ? info.row.outerNomText ?? info.row.outerNom : null;
   const reference = info.reference[key] ?? nominal ?? null;
-  const referenceLabel = info.reference[key] == null && nominal != null ? 'Довідкові · номінальний' : VALUE_LABELS.reference;
+  const referenceLabel = info.reference[key] == null && nominal != null ? 'Довідкові · номінальний діаметр' : VALUE_LABELS.reference;
   const source = info.sources[key] ?? 'reference';
-  const adjustedRpm = ['extruder1','extruder2'].includes(key) && info.practical.workingSpeed != null && info.forecast.workingSpeed != null && info.practical.workingSpeed !== info.forecast.workingSpeed;
-  const mainLabel = source === 'reference' ? referenceLabel : source === 'forecast' && adjustedRpm ? `Прогнозовані · для ${fmt(info.practical.workingSpeed)} м/хв` : VALUE_LABELS[source];
+  const mainLabel = source === 'reference' ? referenceLabel : VALUE_LABELS[source];
   const main = { source, value: source === 'reference' ? reference : info.effective[key], label: mainLabel };
-  const forecastLabel = adjustedRpm ? `Прогнозовані · для ${fmt(info.forecast.workingSpeed)} м/хв` : VALUE_LABELS.forecast;
+  const forecastLabel = VALUE_LABELS.forecast;
   return [main,
-    ...(source === 'reference' ? [] : [{ source: 'reference', value: reference, label: referenceLabel }]),
+    ...(source === 'reference' || reference == null ? [] : [{ source: 'reference', value: reference, label: referenceLabel }]),
     ...(source === 'forecast' && main.value === info.forecast[key] || info.forecast[key] == null ? [] : [{ source: 'forecast', value: info.forecast[key], label: forecastLabel }]),
-  ].map((item, index) => ({ ...item, confirmed: index > 0 && info.practical[key] != null && item.value === info.practical[key] && !(item.source === 'forecast' && adjustedRpm) }));
+  ].map((item, index) => ({ ...item, confirmed: index > 0 && info.practical[key] != null && item.value === info.practical[key] }));
 }
 
-export function setupFor(optionId, section, catalog, color = 'blue') {
+export function setupFor(optionId, section, catalog, color = 'blue', options = {}) {
   const option = optionFor(optionId), card = referenceCard(option), row = card.rows.find(row => row.section === Number(section));
-  const selectedMode = hasPv3Modes(option) ? pv3Mode(color) : undefined;
-  const base = baseFor(option.id, section), stored = practicalFor(option.id, section, catalog, selectedMode);
+  const base = baseFor(option.id, section);
+  const ownRecords = [...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])].filter(record => !record.deletedAt && !record.withdrawnAt && (!record.optionId || record.optionId === option.id)
+    && (record.optionId === option.id || record.cableId === option.id || option.practicalCableId && record.cableId === option.practicalCableId));
+  const measured = ownRecords.filter(record => record.origin === 'measurement' && ['single', 'dual'].includes(record.mode))
+    .sort((a, b) => Number(b.section === Number(section)) - Number(a.section === Number(section)) || Number(Boolean(b.optionId)) - Number(Boolean(a.optionId))
+      || String(b.updatedAt ?? b.createdAt ?? '').localeCompare(String(a.updatedAt ?? a.createdAt ?? '')) || Number(b.revision ?? 0) - Number(a.revision ?? 0))[0];
+  const normalMode = option.mode !== 'unknown' ? option.mode : ownRecords.some(record => record.origin === 'measurement' && record.mode === 'single') ? 'single' : measured?.mode ?? base.mode;
+  const selectedMode = ['single', 'dual'].includes(options.mode) ? options.mode : modeFor(option, color, normalMode);
+  const stored = practicalFor(option.id, section, catalog, selectedMode === 'unknown' ? undefined : selectedMode, color);
   const practical = metric(stored);
-  const reference = { extruder1: row.rpm1, extruder2: row.rpm2, workingSpeed: row.maxSpeed,
-    dorn: row.dornText ?? row.dorn, matrix: row.matrixText ?? row.matrix, sikoraWire: null, sikoraOuter: null };
   const annotations = SOURCE_ANNOTATIONS.filter(annotation => annotation[0] === card.source && annotation[2] === Number(section) && (annotation[1] === option.brand || annotation[1] === 'ПВС / ШВВП' && ['ПВС','ШВВП'].includes(option.brand)));
+  const handwrittenAnnotation = annotations.find(annotation => annotation[3].startsWith('Шнек'));
+  const reference = { extruder1: row.rpm1, extruder2: row.rpm2, workingSpeed: row.maxSpeed,
+    dorn: row.dornText ?? row.dorn, matrix: row.matrixText ?? row.matrix, sikoraWire: null, sikoraOuter: null, colorLead1: null, colorLead2: null };
+  // A source with an established extruder mode cannot supply operating values
+  // for a different mode. PV3's source has separately confirmed single/dual rows.
+  const referenceMode = hasPv3Modes(option) ? selectedMode : option.mode !== 'unknown' ? option.mode
+    : handwrittenAnnotation || number(row.rpm2) > 0 ? 'dual' : base.mode;
+  if (['single', 'dual'].includes(selectedMode) && ['single', 'dual'].includes(referenceMode) && selectedMode !== referenceMode) {
+    reference.extruder1 = null; reference.extruder2 = null; reference.workingSpeed = null;
+  }
   const practicalSources = new Set(Object.values(practical).some(value => value != null) ? [stored.source] : []);
   for (const annotation of annotations) {
     const key = annotation[3] === 'Дорн, мм' ? 'dorn' : annotation[3] === 'Діаметр жили, мм' ? 'sikoraWire' : null;
     if (key && practical[key] == null && typeof annotation[4] === 'number') { practical[key] = annotation[4]; practicalSources.add(annotation[0]); }
   }
-  const handwrittenAnnotation = annotations.find(annotation => annotation[3].startsWith('Шнек'));
-  if (handwrittenAnnotation && stored.origin !== 'measurement') {
+  if (handwrittenAnnotation && stored.origin !== 'measurement' && selectedMode !== 'single') {
     [practical.extruder1, practical.extruder2] = String(handwrittenAnnotation[4]).split('/').map(number);
     practicalSources.add(handwrittenAnnotation[0]);
   }
-  const mode = selectedMode ?? (stored.origin === 'measurement' ? stored.mode : handwrittenAnnotation ? 'dual' : stored.mode !== 'unknown' ? stored.mode : option.mode ?? 'unknown');
-  const all = operatingRecords([...RECIPES.filter(record => record.cableId === 'pv3'), ...(catalog?.recipes ?? RECIPES)]);
-  // Keep modes independent, but never count colour duplicates as new anchors.
-  const anchors = [...new Map([...all].sort((a,b) => String(a.updatedAt ?? '').localeCompare(String(b.updatedAt ?? ''))).map(record => [`${record.baseId || record.id}:${record.mode}`, record])).values()];
-  const direct = anchors.filter(record => record.cableId === option.id).map(record => ({ ...record, referenceCardId: card.id }));
-  const forecast = forecastFor(card, row, [...anchors.filter(record => record.cableId !== option.id), ...direct], { mode: mode === 'unknown' ? undefined : mode, cableId: option.brand === '(H)05VV-F' && card.id === 'ysly-shared' ? 'ysly' : option.practicalCableId });
-  // Keep estimates available for comparison; effective values still prefer practice.
-  if (number(practical.matrix ?? reference.matrix) !== null) forecast.sikoraOuter = Math.round((number(practical.matrix ?? reference.matrix) + .15) * 100) / 100;
+  const mode = selectedMode !== 'unknown' ? selectedMode : stored.origin === 'measurement' ? stored.mode : handwrittenAnnotation ? 'dual' : stored.mode !== 'unknown' ? stored.mode : option.mode ?? 'unknown';
+  const forecast = forecastFor(card, row, [...RECIPES, ...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])], { optionId: option.id, mode: mode === 'unknown' ? undefined : mode,
+    normalMode, color, workingSpeed: practical.workingSpeed ?? reference.workingSpeed, matrix: number(practical.matrix ?? reference.matrix),
+    cableId: option.brand === '(H)05VV-F' && card.id === 'ysly-shared' ? 'ysly' : option.practicalCableId });
   const effective = {}, sources = {};
   for (const key of Object.keys(reference)) {
     const predicted = key === 'workingSpeed' ? forecast.workingSpeed : forecast[key];
-    const choices = [['practical', practical[key]], ['forecast', predicted], ['reference', reference[key]]];
+    // A catalogue's nominal outside diameter is a comparison dimension, not
+    // the SIKORA setting above the selected matrix. Flat paired dimensions
+    // remain their original reference text instead of a circular estimate.
+    const nominal = key === 'sikoraWire' ? row.wireNom : key === 'sikoraOuter' ? row.outerNomText : null;
+    const choices = [['practical', practical[key]], ['reference', reference[key] ?? nominal], ['forecast', predicted]];
     const chosen = choices.find(([,value]) => value !== null && value !== undefined && value !== '');
     sources[key] = chosen?.[0] ?? null; effective[key] = chosen?.[1] ?? null;
-    if (sources[key] === 'forecast' && ['extruder1','extruder2'].includes(key) && practical.workingSpeed != null && forecast.workingSpeed > 0) effective[key] = Math.round(effective[key] * practical.workingSpeed / forecast.workingSpeed);
   }
   return { option, card, row, base, stored, practical, practicalSources: [...practicalSources].filter(Boolean), reference, forecast, effective, sources,
-    mode: mode === 'unknown' ? forecast.mode ?? 'unknown' : mode,
+    mode: mode === 'unknown' ? forecast.mode ?? 'unknown' : mode, normalMode, color,
     stages: speedStages(effective.workingSpeed, sources.workingSpeed) };
 }
 
 export function tableSetups(catalog, selected = '') {
-  return CATALOG_OPTIONS.filter(option => !selected || option.id === selected).flatMap(option => option.sections.flatMap(section =>
-    (hasPv3Modes(option) ? ['blue', 'yellow-green'] : ['blue']).map(color => setupFor(option.id, section, catalog, color))));
+  return CATALOG_OPTIONS.filter(option => !selected || option.id === selected).flatMap(option => option.sections.flatMap(section => {
+    const standard = setupFor(option.id, section, catalog, 'blue');
+    const modes = new Set([standard.mode]);
+    if (hasPv3Modes(option) || standard.mode === 'single') modes.add('dual');
+    for (const record of [...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])]) {
+      if (record.origin === 'measurement' && !record.deletedAt && record.section === section && ['single', 'dual'].includes(record.mode)
+          && (record.optionId === option.id || !record.optionId && (record.cableId === option.id || record.cableId === option.practicalCableId))) modes.add(record.mode);
+    }
+    if (modes.size > 1) modes.delete('unknown');
+    return [...modes].map(mode => mode === standard.mode ? standard : setupFor(option.id, section, catalog,
+      mode === 'single' ? 'blue' : hasPv3Modes(option) ? 'yellow-green' : 'black', {mode}));
+  }));
 }

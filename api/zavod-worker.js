@@ -1,7 +1,8 @@
-import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor } from '../Zavod/catalog-base.js';
+import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from '../Zavod/catalog-base.js';
 import { COLORS } from '../Zavod/core.js';
 
-const NUMERIC = ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'extruder1', 'extruder2', 'maxSpeed', 'colorLead2'];
+const NUMERIC = ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'extruder1', 'extruder2', 'maxSpeed', 'colorLead1', 'colorLead2'];
+const COLOR_LEADS = ['colorLead1', 'colorLead2'];
 const encoder = new TextEncoder();
 const MAX_AGE = 12 * 60 * 60;
 
@@ -80,6 +81,7 @@ export function validateMeasurement(input) {
   if (!/^[a-f\d-]{36}$/i.test(input.id ?? '')) fail(400, 'Некоректний номер запису.');
   if (input.color !== 'all' && !COLORS.some(color => color.id === input.color)) fail(400, 'Оберіть колір.');
   if (!['single', 'dual', 'unknown'].includes(input.mode)) fail(400, 'Оберіть режим екструдерів.');
+  if (['black', 'yellow-green'].includes(input.color) && input.mode === 'single') fail(400, 'Для цього кольору потрібні два екструдери.');
   if (typeof input.note !== 'string' || input.note.length > 2000) fail(400, 'Примітка має містити до 2000 символів.');
   const result = { id: input.id, baseId: base.id, cableId: base.cableId, section: base.section, color: input.color, mode: input.mode, note: input.note.trim() };
   if (input.optionId !== undefined) {
@@ -90,22 +92,73 @@ export function validateMeasurement(input) {
   for (const field of NUMERIC) {
     const value = input[field];
     if (value === null || value === undefined || value === '') { result[field] = null; continue; }
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 100000) fail(400, 'Значення мають бути додатними числами.');
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || (!COLOR_LEADS.includes(field) && value === 0) || value > 100000) fail(400, 'Перевірте числа: значення мають бути додатними, випередження зміни кольору може бути нульовим.');
+    if (COLOR_LEADS.includes(field) && !Number.isInteger(value)) fail(400, 'Випередження зміни кольору вкажіть у цілих метрах.');
     if (['dorn', 'matrix', 'sikoraWire', 'sikoraOuter'].includes(field) && value > 1000) fail(400, 'Перевірте діаметри: одиниця вимірювання — мм.');
     result[field] = value;
   }
-  if (result.mode === 'single') result.extruder2 = null;
+  if (result.mode === 'single') { result.extruder2 = null; result.colorLead2 = null; }
   if (!result.note && !NUMERIC.some(key => result[key] !== null)) fail(400, 'Додайте хоча б одне значення або примітку.');
   return result;
 }
 
 function unpack(row) { return { ...JSON.parse(row.data), id: row.id, revision: row.revision, updatedAt: row.updated_at }; }
 
+async function deleteMeasurement(id, env, user) {
+  const stored = await env.DB.prepare('SELECT * FROM measurements WHERE id = ?').bind(id).first();
+  if (!stored) fail(404, 'Замір не знайдено.');
+  if (stored.deleted_at) return { ok: true, id, deleted: true, catalogChanged: false };
+  const measurement = JSON.parse(stored.data);
+  const original = RECIPES.find(row => row.id === measurement.baseId);
+  const calibration = !stored.withdrawn_at;
+  // Include the recipe slot even if another measurement is currently active:
+  // a simultaneous deletion may revert this slot before our transaction runs.
+  const affected = await env.DB.prepare("SELECT * FROM recipes WHERE base_id = ? AND json_extract(data, '$.mode') = ?").bind(measurement.baseId, measurement.mode).all();
+  const now = new Date().toISOString();
+  const statements = [env.DB.prepare('UPDATE measurements SET deleted_at = ?, deleted_by = ?, withdrawn_at = ? WHERE id = ? AND deleted_at IS NULL').bind(now, String(user.id), now, id)];
+  for (const row of affected.results) {
+    const current = JSON.parse(row.data);
+    const fallback = { ...original, id: row.id, baseId: measurement.baseId, color: 'all', mode: current.mode, origin: 'handwritten', ...(current.optionId ? { optionId: current.optionId } : {}) };
+    // Resolve the previous calibration inside the transaction so a concurrent
+    // deletion cannot bring an already deleted measurement back into use.
+    const prior = `SELECT h.data FROM recipe_history h JOIN measurements m ON m.id = json_extract(h.data, '$.measurementId')
+      WHERE h.recipe_id = recipes.id AND m.deleted_at IS NULL AND m.withdrawn_at IS NULL
+        AND COALESCE(json_extract(h.data, '$.optionId'), '') = COALESCE(json_extract(recipes.data, '$.optionId'), '')
+        AND json_extract(h.data, '$.mode') = json_extract(recipes.data, '$.mode')
+      ORDER BY h.recorded_at DESC, h.revision DESC, h.id DESC LIMIT 1`;
+    statements.push(env.DB.prepare(`UPDATE recipes SET
+      data = json_set(COALESCE((${prior}), ?), '$.id', recipes.id, '$.color', 'all'),
+      retired_at = CASE WHEN EXISTS(${prior}) THEN NULL ELSE ? END,
+      revision = revision + 1, updated_at = ?
+      WHERE id = ? AND json_extract(data, '$.measurementId') = ? AND retired_at IS NULL`)
+      .bind(JSON.stringify(fallback), now, now, row.id, id));
+  }
+  const results = await env.DB.batch(statements);
+  return { ok: true, id, deleted: true, catalogChanged: Boolean(calibration) || results.slice(1).some(result => result.meta.changes > 0) };
+}
+
 export async function handleRequest(request, env) {
   const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
   if (request.method === 'GET' && path === '/catalog') {
-    const { results } = await env.DB.prepare('SELECT * FROM recipes ORDER BY base_id, color').all();
-    return { cables: CABLES, recipes: results.map(unpack), updatedAt: results.reduce((last, row) => row.updated_at > last ? row.updated_at : last, ''), source: 'server' };
+    const [{ results }, { results: measured }] = await Promise.all([
+      env.DB.prepare('SELECT * FROM recipes ORDER BY base_id, color').all(),
+      env.DB.prepare('SELECT data, created_at FROM measurements WHERE deleted_at IS NULL AND withdrawn_at IS NULL ORDER BY created_at DESC, id DESC').all(),
+    ]);
+    const calibrations = measured.map(row => {
+      const measurement = JSON.parse(row.data);
+      const identity = Object.fromEntries(['id', 'baseId', 'cableId', 'section', 'optionId', 'color', 'mode'].filter(key => measurement[key] !== undefined).map(key => [key, measurement[key]]));
+      return { ...identity, ...Object.fromEntries(NUMERIC.map(key => [key, measurement[key] ?? null])), measurementId: measurement.id, origin: 'measurement', createdAt: row.created_at, updatedAt: row.created_at };
+    });
+    const measuredAt = new Map(calibrations.map(row => [row.measurementId, row.createdAt]));
+    const recipes = results.filter(row => !row.retired_at).map(unpack).filter(row => row.origin !== 'measurement' || measuredAt.has(row.measurementId)).map(row => {
+      if (row.origin !== 'measurement') return row;
+      const publicRecipe = { ...row };
+      delete publicRecipe.note;
+      delete publicRecipe.notes;
+      return { ...publicRecipe, notes: [], createdAt: measuredAt.get(row.measurementId), updatedAt: measuredAt.get(row.measurementId), appliedAt: row.updatedAt };
+    });
+    const updatedAt = [...results.map(row => row.updated_at), ...measured.map(row => row.created_at)].reduce((last, timestamp) => timestamp > last ? timestamp : last, '');
+    return { cables: CABLES, recipes, calibrations, recipeRevisions: Object.fromEntries(results.map(row => [row.id, row.revision])), updatedAt, source: 'server' };
   }
   if (!path.startsWith('/admin/')) fail(404, 'Сторінку не знайдено.');
   const user = await admin(request, env);
@@ -114,7 +167,7 @@ export async function handleRequest(request, env) {
     const cursor = new URL(request.url).searchParams.get('before');
     const [before, beforeId] = cursor ? cursor.split('|') : ['9999', ''];
     if (!before || (cursor && !beforeId)) fail(400, 'Некоректна сторінка журналу.');
-    const { results } = await env.DB.prepare('SELECT * FROM measurements WHERE created_at < ? OR (created_at = ? AND id < ?) ORDER BY created_at DESC, id DESC LIMIT 101').bind(before, before, beforeId).all();
+    const { results } = await env.DB.prepare('SELECT * FROM measurements WHERE deleted_at IS NULL AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT 101').bind(before, before, beforeId).all();
     return { measurements: results.slice(0, 100).map(row => ({ ...JSON.parse(row.data), createdAt: row.created_at })), next: results.length > 100 ? results[99].created_at + '|' + results[99].id : null };
   }
   if (request.method === 'POST' && path === '/admin/measurements') {
@@ -122,38 +175,61 @@ export async function handleRequest(request, env) {
     const now = new Date().toISOString();
     const result = await env.DB.prepare('INSERT INTO measurements(id, base_id, color, data, created_at, created_by) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING').bind(measurement.id, measurement.baseId, measurement.color, JSON.stringify(measurement), now, String(user.id)).run();
     if (!result.meta.changes) {
-      const existing = await env.DB.prepare('SELECT data, created_at FROM measurements WHERE id = ?').bind(measurement.id).first();
-      if (existing.data !== JSON.stringify(measurement)) fail(409, 'Запис із цим номером уже існує.');
+      const existing = await env.DB.prepare('SELECT data, created_at, deleted_at FROM measurements WHERE id = ?').bind(measurement.id).first();
+      if (existing.deleted_at) fail(409, 'Цей запис видалено. Спочатку відновіть його.');
+      if (JSON.stringify(validateMeasurement(JSON.parse(existing.data))) !== JSON.stringify(measurement)) fail(409, 'Запис із цим номером уже існує.');
       return { measurement: { ...measurement, createdAt: existing.created_at } };
     }
     return { measurement: { ...measurement, createdAt: now } };
   }
+  const measurementAction = path.match(/^\/admin\/measurements\/([a-f\d-]{36})(\/restore)?$/i);
+  if (measurementAction && request.method === 'DELETE' && !measurementAction[2]) return deleteMeasurement(measurementAction[1], env, user);
+  if (measurementAction?.[2] && request.method === 'POST') {
+    const stored = await env.DB.prepare('SELECT data, created_at FROM measurements WHERE id = ?').bind(measurementAction[1]).first();
+    if (!stored) fail(404, 'Замір не знайдено.');
+    await env.DB.prepare('UPDATE measurements SET deleted_at = NULL, deleted_by = NULL WHERE id = ?').bind(measurementAction[1]).run();
+    return { ok: true, measurement: { ...JSON.parse(stored.data), createdAt: stored.created_at }, published: false };
+  }
   if (request.method === 'PUT' && path.startsWith('/admin/recipes/')) {
     const payload = await bodyJson(request);
-    const id = decodeURIComponent(path.slice('/admin/recipes/'.length));
+    const requestedId = decodeURIComponent(path.slice('/admin/recipes/'.length));
     if (!Number.isInteger(payload.expectedRevision) || payload.expectedRevision < 0) fail(400, 'Оновіть таблицю перед збереженням.');
-    const stored = await env.DB.prepare('SELECT data, created_at FROM measurements WHERE id = ?').bind(String(payload.measurementId)).first();
+    const stored = await env.DB.prepare('SELECT data, created_at FROM measurements WHERE id = ? AND deleted_at IS NULL').bind(String(payload.measurementId)).first();
     if (!stored) fail(404, 'Замір не знайдено.');
     const measurement = JSON.parse(stored.data);
-    const expectedId = measurement.color === 'all' ? measurement.baseId : `${measurement.baseId}~${measurement.color}`;
-    if (id !== expectedId) fail(400, 'Замір належить іншому проводу або кольору.');
+    const id = recipeIdFor(measurement.baseId, measurement.color, measurement.optionId, measurement.mode);
+    const legacyIds = [recipeIdFor(measurement.baseId, measurement.color), recipeIdFor(measurement.baseId, measurement.color, measurement.optionId)];
+    if (requestedId !== id && !legacyIds.includes(requestedId)) fail(400, 'Замір належить іншому проводу або режиму.');
     if (measurement.mode === 'unknown') fail(400, 'Перед застосуванням оберіть кількість екструдерів.');
     const original = RECIPES.find(row => row.id === measurement.baseId);
-    const data = { ...measurement, id, measurementId: measurement.id, source: original.source, origin: 'measurement', notes: measurement.note ? [measurement.note] : [], uncertain: [] };
+    const data = { ...measurement, id, color: 'all', measurementId: measurement.id, createdAt: stored.created_at, source: original.source, origin: 'measurement', notes: measurement.note ? [measurement.note] : [], uncertain: [] };
     const previous = await env.DB.prepare('SELECT * FROM recipes WHERE id = ?').bind(id).first();
-    if (previous && JSON.parse(previous.data).measurementId === measurement.id) return { recipe: unpack(previous) };
-    if ((previous?.revision ?? 0) !== payload.expectedRevision) fail(409, 'Цей рядок уже змінився. Замір збережений; оновіть таблицю перед застосуванням.');
+    if (previous && !previous.retired_at && JSON.parse(previous.data).measurementId === measurement.id) return { recipe: unpack(previous) };
+    // Old clients publish under the handwritten id. Keep accepting their first
+    // application while storing it under the option-specific id.
+    const legacy = !previous && legacyIds.includes(requestedId) && id !== requestedId ? await env.DB.prepare('SELECT revision FROM recipes WHERE id = ?').bind(requestedId).first() : null;
+    const expectedRevision = !previous && legacy?.revision === payload.expectedRevision ? 0 : payload.expectedRevision;
+    if ((previous?.revision ?? 0) !== expectedRevision) fail(409, 'Цей рядок уже змінився. Замір збережений; оновіть таблицю перед застосуванням.');
     const now = new Date().toISOString();
-    const updated = await env.DB.prepare(`INSERT INTO recipes(id, base_id, color, data, revision, updated_at)
-      SELECT ?, ?, ?, ?, 1, ? WHERE ? = 0 OR EXISTS(SELECT 1 FROM recipes WHERE id = ?)
-      ON CONFLICT(id) DO UPDATE SET data = excluded.data, revision = recipes.revision + 1, updated_at = excluded.updated_at WHERE recipes.revision = ?
-      RETURNING *`).bind(id, measurement.baseId, measurement.color, JSON.stringify(data), now, payload.expectedRevision, id, payload.expectedRevision).first();
+    const updateRecipe = env.DB.prepare(`INSERT INTO recipes(id, base_id, color, data, revision, updated_at)
+      SELECT ?, ?, ?, ?, 1, ? WHERE (? = 0 OR EXISTS(SELECT 1 FROM recipes WHERE id = ?))
+        AND EXISTS(SELECT 1 FROM measurements WHERE id = ? AND deleted_at IS NULL)
+      ON CONFLICT(id) DO UPDATE SET data = excluded.data, revision = recipes.revision + 1, updated_at = excluded.updated_at, retired_at = NULL WHERE recipes.revision = ?
+      RETURNING *`).bind(id, measurement.baseId, 'all', JSON.stringify(data), now, expectedRevision, id, measurement.id, expectedRevision);
+    const [applied] = await env.DB.batch([
+      updateRecipe,
+      env.DB.prepare("UPDATE measurements SET withdrawn_at = NULL WHERE id = ? AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM recipes WHERE id = ? AND retired_at IS NULL AND json_extract(data, '$.measurementId') = ?)").bind(measurement.id, id, measurement.id),
+      ...(requestedId !== id ? [env.DB.prepare("INSERT INTO recipe_aliases(id, recipe_id) SELECT ?, ? WHERE EXISTS(SELECT 1 FROM recipes WHERE id = ? AND retired_at IS NULL AND json_extract(data, '$.measurementId') = ?) ON CONFLICT(id) DO UPDATE SET recipe_id = excluded.recipe_id").bind(requestedId, id, id, measurement.id)] : []),
+    ]);
+    const updated = applied.results?.[0];
     if (!updated) fail(409, 'Цей рядок уже змінився. Замір збережений; оновіть таблицю перед застосуванням.');
     return { recipe: unpack(updated) };
   }
   if (request.method === 'GET' && path.startsWith('/admin/history/')) {
-    const id = decodeURIComponent(path.slice('/admin/history/'.length));
-    const { results } = await env.DB.prepare('SELECT revision, data, recorded_at FROM recipe_history WHERE recipe_id = ? ORDER BY revision DESC LIMIT 100').bind(id).all();
+    const requestedId = decodeURIComponent(path.slice('/admin/history/'.length));
+    const alias = await env.DB.prepare('SELECT recipe_id FROM recipe_aliases WHERE id = ?').bind(requestedId).first();
+    const id = alias?.recipe_id ?? requestedId;
+    const { results } = await env.DB.prepare("SELECT revision, data, recorded_at FROM recipe_history h WHERE recipe_id = ? AND NOT EXISTS(SELECT 1 FROM measurements m WHERE m.id = json_extract(h.data, '$.measurementId') AND (m.deleted_at IS NOT NULL OR m.withdrawn_at IS NOT NULL)) ORDER BY recorded_at DESC, revision DESC LIMIT 100").bind(id).all();
     return { history: results.map(row => ({ ...JSON.parse(row.data), revision: row.revision, updatedAt: row.recorded_at })) };
   }
   fail(404, 'Дію не знайдено.');
@@ -166,7 +242,7 @@ export default {
     const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', Vary: 'Origin' };
     if (origin && !allowed.includes(origin)) return new Response(JSON.stringify({ error: 'Цей сайт не має доступу.' }), { status: 403, headers });
     if (origin) headers['Access-Control-Allow-Origin'] = origin;
-    headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, OPTIONS';
+    headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
     headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Telegram-Init-Data';
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
     try { return new Response(JSON.stringify(await handleRequest(request, env)), { headers }); }

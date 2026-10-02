@@ -1,0 +1,12 @@
+{
+  "source": "https://zavod-data.lordskamp.workers.dev/catalog",
+  "retrievedOn": "2026-10-02",
+  "description": "Public administrative measurements. In the held-out comparison, the 6 mm² row is used only as the target, never as a prediction input.",
+  "optionId": "h07v-k--h07v-k",
+  "mode": "dual",
+  "measurements": [
+    { "section": 1.5, "extruder1": 37.5, "extruder2": 65, "maxSpeed": 150, "dorn": 1.7, "matrix": 2.95, "sikoraWire": 1.53, "sikoraOuter": 3.1, "colorLead1": null, "colorLead2": 300, "updatedAt": "2026-10-01T12:56:35.616Z" },
+    { "section": 2.5, "extruder1": 53.7, "extruder2": 72.2, "maxSpeed": 150, "dorn": 2.1, "matrix": 3.6, "sikoraWire": 1.97, "sikoraOuter": 3.75, "colorLead1": null, "colorLead2": 300, "updatedAt": "2026-10-01T11:43:12.274Z" },
+    { "section": 6, "extruder1": 59, "extruder2": 95, "maxSpeed": 120, "dorn": 3.2, "matrix": 4.65, "sikoraWire": 3.05, "sikoraOuter": 4.85, "colorLead1": null, "colorLead2": 300, "updatedAt": "2026-10-01T15:33:57.704Z" }
+  ]
+}
