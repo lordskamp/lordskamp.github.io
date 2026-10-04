@@ -145,3 +145,37 @@ test('exiting or restarting practice cancels both reveal timers', async t => {
   assert.equal(run.state.round.revealed, false);
   run.session.close();
 });
+
+test('practice can replace a card before the clue without changing the lesson target, role or score', async t => {
+  t.mock.method(Math, 'random', () => 0);
+  const run = practice(t);
+  const initial = structuredClone(run.state);
+  const rotation = structuredClone(run.session.room._rotation);
+  await run.action('replace-spectrum');
+  assert.equal(run.state.phase, 'PSYCHIC_VIEW');
+  assert.equal(run.state.you.role, 'psychic');
+  assert.equal(run.state.round.target, initial.round.target);
+  assert.equal(run.state.round.number, initial.round.number);
+  assert.equal(run.state.round.psychicId, initial.round.psychicId);
+  assert.equal(run.state.round.activeTeam, initial.round.activeTeam);
+  assert.notEqual(run.state.round.id, initial.round.id);
+  assert.notEqual(run.state.round.spectrum.id, initial.round.spectrum.id);
+  assert.deepEqual(run.state.teams, initial.teams);
+  assert.deepEqual(run.session.room._rotation, rotation);
+  assert.equal(run.scheduled.size, 0);
+  const firstReplacement = run.state.round.spectrum.id;
+  await run.action('replace-spectrum');
+  assert.equal([initial.round.spectrum.id, firstReplacement].includes(run.state.round.spectrum.id), false);
+  await assert.rejects(run.session.action({ type: 'clue', roundId: initial.round.id, text: 'Підказка до старого спектра' }), { code: 'STALE' });
+  await run.action('clue', { text: 'Підказка до нового спектра' });
+  assert.equal('target' in run.state.round, false);
+  const guessing = structuredClone(run.state);
+  await assert.rejects(run.action('replace-spectrum'), { code: 'PHASE' });
+  assert.deepEqual(run.state, guessing);
+  await run.action('lock', { position: initial.round.target });
+  await run.action('bet', { side: 'right' });
+  run.tick(GAME_CONFIG.revealDelayMs + GAME_CONFIG.scoreDelayMs);
+  assert.equal(run.state.round.target, initial.round.target);
+  assert.equal(run.state.round.result.activePoints, 4);
+  run.session.close();
+});

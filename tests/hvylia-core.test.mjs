@@ -519,3 +519,101 @@ test('verified account identity remains private in all room views', () => {
     assert.equal(encoded.includes('_accountId'), false);
   }
 });
+
+test('psychic replaces only the spectrum and keeps the same target, turn, score and rotation', () => {
+  const initial = started();
+  const snapshot = structuredClone(initial);
+  const next = applyAction(initial, initial.round.psychicId, {
+    type: 'replace-spectrum', roundId: initial.round.id
+  }, () => 0);
+  assert.notEqual(next.round.spectrum.id, initial.round.spectrum.id);
+  assert.notEqual(next.round.id, initial.round.id);
+  assert.equal(next._roundSerial, initial._roundSerial + 1);
+  assert.equal(next.revision, initial.revision + 1);
+  assert.equal(next.phase, 'PSYCHIC_VIEW');
+  assert.deepEqual({ ...next.round, id: initial.round.id, spectrum: initial.round.spectrum }, initial.round);
+  assert.deepEqual(next.teams, initial.teams);
+  assert.deepEqual(next.players, initial.players);
+  assert.deepEqual(next._rotation, initial._rotation);
+  assert.deepEqual(next._usedSpectra, [...initial._usedSpectra, next.round.spectrum.id]);
+  assert.deepEqual(initial, snapshot, 'replacing must not mutate the supplied room');
+  for (const id of ['host', 'ally', 'other', 'other2', null]) {
+    const view = viewFor(next, id);
+    assert.equal(view.round.spectrum.id, next.round.spectrum.id);
+    assert.equal(Object.hasOwn(view.round, 'target'), id === next.round.psychicId);
+    if (id === next.round.psychicId) assert.equal(view.round.target, initial.round.target);
+  }
+});
+
+test('replacement checks psychic role, current round, connection, pause and pre-clue phase', () => {
+  const initial = addPlayer(started(), { id: 'guest', name: 'Гість' });
+  const action = { type: 'replace-spectrum', roundId: initial.round.id };
+  for (const id of ['ally', 'other', 'other2', 'guest']) {
+    throwsCode('ROLE', () => applyAction(initial, id, action));
+  }
+  const otherTeamStarts = applyAction(lobby(), 'host', { type: 'start' }, randomSequence(0.9, 0, 0.5));
+  throwsCode('ROLE', () => applyAction(otherTeamStarts, 'host', { type: 'replace-spectrum', roundId: otherTeamStarts.round.id }));
+  throwsCode('STALE', () => applyAction(initial, 'host', { type: 'replace-spectrum' }));
+  throwsCode('STALE', () => applyAction(initial, 'host', { ...action, roundId: 'old-round' }));
+  throwsCode('DISCONNECTED', () => applyAction(setConnection(initial, 'host', false), 'host', action));
+  const paused = setConnection(initial, 'ally', false);
+  assert.equal(paused.paused, true);
+  throwsCode('PAUSED', () => applyAction(paused, 'host', action));
+  const guessing = applyAction(initial, 'host', { type: 'clue', roundId: initial.round.id, text: 'Кава перед світанком' });
+  throwsCode('PHASE', () => applyAction(guessing, 'host', action));
+  const locked = applyAction(guessing, 'ally', { type: 'lock', roundId: guessing.round.id, position: 50 });
+  throwsCode('PHASE', () => applyAction(locked, 'host', action));
+  const revealed = scored(initial);
+  throwsCode('PHASE', () => applyAction(revealed, 'host', action));
+});
+
+test('replacement invalidates queued commands for the previous card without changing scores', () => {
+  const initial = started();
+  const next = applyAction(initial, 'host', { type: 'replace-spectrum', roundId: initial.round.id }, () => 0);
+  for (const action of [
+    { type: 'clue', text: 'Підказка до старої картки' },
+    { type: 'replace-spectrum' },
+    { type: 'move', position: 50 }
+  ]) throwsCode('STALE', () => applyAction(next, 'host', { ...action, roundId: initial.round.id }));
+  const guessing = applyAction(next, 'host', { type: 'clue', text: 'Підказка до нової картки', roundId: next.round.id });
+  assert.equal(guessing.phase, 'TEAM_GUESS');
+  assert.equal(guessing.round.target, initial.round.target);
+  assert.equal(guessing.round.spectrum.id, next.round.spectrum.id);
+  assert.deepEqual(guessing.teams, initial.teams);
+});
+
+test('replacement draws unused cards from the supplied paid deck and avoids consecutive repeats after exhaustion', () => {
+  for (const [packId, cards] of [['anime', ANIME_SPECTRA], ['games', GAMES_SPECTRA]]) {
+    let state = applyAction(lobby(), 'host', { type: 'settings', packId });
+    state = applyAction(state, 'host', { type: 'start' }, randomSequence(0, 0, 0.5), cards);
+    const seen = new Set([state.round.spectrum.id]);
+    const turn = { target: state.round.target, psychic: state.round.psychicId, team: state.round.activeTeam, number: state.round.number, rotation: structuredClone(state._rotation), scores: structuredClone(state.teams) };
+    for (let index = 1; index < cards.length; index += 1) {
+      state = applyAction(state, state.round.psychicId, { type: 'replace-spectrum', roundId: state.round.id }, () => 0, cards);
+      assert.equal(seen.has(state.round.spectrum.id), false);
+      assert.ok(cards.some(card => card.id === state.round.spectrum.id));
+      assert.equal(SPECTRA.some(card => card.id === state.round.spectrum.id), false);
+      seen.add(state.round.spectrum.id);
+    }
+    assert.equal(seen.size, cards.length);
+    const previous = state.round.spectrum.id;
+    state = applyAction(state, state.round.psychicId, { type: 'replace-spectrum', roundId: state.round.id }, () => 0, cards);
+    assert.notEqual(state.round.spectrum.id, previous);
+    assert.equal(state.round.target, turn.target);
+    assert.equal(state.round.psychicId, turn.psychic);
+    assert.equal(state.round.activeTeam, turn.team);
+    assert.equal(state.round.number, turn.number);
+    assert.deepEqual(state._rotation, turn.rotation);
+    assert.deepEqual(state.teams, turn.scores);
+  }
+});
+
+test('an empty or one-card replacement deck fails atomically instead of changing the target or repeating the card', () => {
+  const initial = started();
+  const snapshot = structuredClone(initial);
+  const action = { type: 'replace-spectrum', roundId: initial.round.id };
+  throwsCode('CONTENT', () => applyAction(initial, 'host', action, () => 0, []));
+  throwsCode('CONTENT', () => applyAction(initial, 'host', action, () => 0, [initial.round.spectrum]));
+  throwsCode('RANDOM', () => applyAction(initial, 'host', action, () => 1));
+  assert.deepEqual(initial, snapshot);
+});

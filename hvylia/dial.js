@@ -20,22 +20,21 @@ export function dialMarkup(id = 'dial') {
     const b = [360 + Math.cos(angle) * 322, 330 + Math.sin(angle) * 322];
     return `<line class="dial-ridge" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
   }).join('');
-  return `<div id="${id}" class="dial" data-shutter="closed" role="slider" aria-label="${t.position}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-disabled="true" tabindex="-1">
-    <svg viewBox="0 0 720 680" class="dial-svg" aria-hidden="true">
+  return `<div id="${id}" class="dial" data-shutter="closed" role="group" aria-label="${t.position}" tabindex="-1">
+    <svg viewBox="0 0 720 680" class="dial-svg" role="group">
       <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="M80 330 A280 280 0 0 1 640 330 Z"/></clipPath></defs>
       <circle class="dial-shell-edge" cx="360" cy="330" r="323"/>
       <g>${ridges}</g>
       <circle class="dial-shell" cx="360" cy="330" r="310"/>
-      <path class="dial-body" d="M112 380 Q360 405 608 380 L592 553 Q570 586 551 605 L169 605 Q150 586 128 553 Z"/>
       <path class="dial-face" d="M80 330 A280 280 0 0 1 640 330 Z"/>
-      <g class="dial-target" clip-path="url(#${id}-window)" visibility="hidden">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
+      <g id="${id}-target" class="dial-target" clip-path="url(#${id}-window)" visibility="hidden" aria-hidden="true">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
       <g clip-path="url(#${id}-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
         <path class="shutter-plate" d="M80 330 A280 280 0 0 1 640 330 Z"/>
       </g></g>
       <path class="dial-rim" d="M80 330 A280 280 0 0 1 640 330"/>
       <g>${ticks}</g>
       <line x1="80" y1="330" x2="640" y2="330" class="dial-baseline"/>
-      <g class="dial-shutter-control" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
+      <g class="dial-shutter-control" role="button" aria-label="${t.shutterOpen}" aria-controls="${id}-target" aria-expanded="false" aria-disabled="true" aria-hidden="true" tabindex="-1" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
         <rect class="shutter-hitarea" x="606" y="294" width="110" height="72" rx="20"/>
         <rect class="shutter-handle" x="622" y="318" width="82" height="24" rx="12"/>
       </g>
@@ -46,7 +45,7 @@ export function dialMarkup(id = 'dial') {
 }
 
 export class Dial {
-  constructor(element, onMove, { shutterButton = null, nudgeControls = [] } = {}) {
+  constructor(element, onMove, { shutterButton = null, nudgeControls = [], preview = false } = {}) {
     this.element = element;
     this.svg = element.querySelector('svg');
     this.onMove = onMove;
@@ -55,6 +54,8 @@ export class Dial {
     this.showNeedle = true;
     this.editable = false;
     this.canPeek = false;
+    this.preview = preview;
+    this.previewInitialized = false;
     this.peekClosed = false;
     this.hasViewedTarget = false;
     this.availableTarget = null;
@@ -72,7 +73,8 @@ export class Dial {
     this.caption = element.querySelector('.dial-caption');
     this.targetElement = element.querySelector('.dial-target');
     this.shutter = element.querySelector('.dial-shutter');
-    this.shutterElements = [this.shutter, element.querySelector('.dial-shutter-control')];
+    this.shutterControl = element.querySelector('.dial-shutter-control');
+    this.shutterElements = [this.shutter, this.shutterControl];
     this.shutterAngle = 0;
     this.shutterAnimation = null;
     this.shutterAnimations = [];
@@ -121,6 +123,13 @@ export class Dial {
     this.on('click', event => {
       if (event.target.closest('.dial-shutter-control')) this.togglePeek();
     });
+    this.listen(this.shutterControl, 'keydown', event => {
+      if (!['Enter', ' '].includes(event.key) && event.code !== 'Space') return;
+      if (!this.canPeek || !this.availableTarget || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || document.querySelector('dialog[open]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) this.togglePeek();
+    });
     if (this.shutterButton) this.listen(this.shutterButton, 'click', () => this.togglePeek());
     this.nudgeControls.forEach(button => {
       this.listen(button, 'pointerdown', event => {
@@ -152,7 +161,7 @@ export class Dial {
     });
     this.listen(document, 'keydown', event => {
       if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || document.querySelector('dialog[open]')) return;
-      if (event.target instanceof window.Element && event.target.closest('input,textarea,select,button,a,[contenteditable]')) return;
+      if (event.target instanceof window.Element && event.target.closest('input,textarea,select,button,a,[role="button"],[contenteditable]')) return;
       if (event.code === 'Space' || event.key === ' ') {
         if (this.canPeek && this.availableTarget) {
           event.preventDefault();
@@ -192,7 +201,12 @@ export class Dial {
   }
   syncPeekControl() {
     this.element.classList.toggle('can-peek', this.canPeek);
-    this.shutterElements[1].style.pointerEvents = this.canPeek ? 'auto' : 'none';
+    this.shutterControl.style.pointerEvents = this.canPeek ? 'auto' : 'none';
+    this.shutterControl.setAttribute('aria-hidden', String(!this.canPeek));
+    this.shutterControl.setAttribute('aria-disabled', String(!this.canPeek || !this.availableTarget));
+    this.shutterControl.setAttribute('aria-label', this.peekClosed ? t.shutterOpen : t.shutterClose);
+    this.shutterControl.setAttribute('aria-expanded', String(this.element.dataset.shutter === 'open'));
+    this.shutterControl.setAttribute('tabindex', this.canPeek && this.availableTarget ? '0' : '-1');
     if (!this.shutterButton) return;
     this.shutterButton.hidden = !this.canPeek;
     this.shutterButton.disabled = !this.canPeek || !this.availableTarget;
@@ -206,7 +220,7 @@ export class Dial {
   togglePeek() {
     if (!this.canPeek || !this.availableTarget || this.destroyed) return;
     this.peekClosed = !this.peekClosed;
-    this.caption.textContent = this.peekClosed ? t.targetHidden : t.targetSecret;
+    this.caption.textContent = this.peekClosed ? t.targetHidden : this.preview ? t.revealInstruction : t.targetSecret;
     this.updateTarget(this.peekClosed ? null : this.availableTarget);
     this.syncPeekControl();
   }
@@ -245,9 +259,11 @@ export class Dial {
   paint(position) {
     this.position = position;
     this.needle.style.transform = `rotate(${(position - 50) * 1.8}deg)`;
-    if (this.showNeedle) {
+    if (this.showNeedle && this.editable) {
       this.element.setAttribute('aria-valuenow', String(Math.round(position)));
       this.element.setAttribute('aria-valuetext', t.positionValue(Math.round(position)));
+    } else if (this.showNeedle) {
+      this.element.setAttribute('aria-label', `${t.position}: ${t.positionValue(Math.round(position))}`);
     }
   }
   paintTarget(snapshot) {
@@ -363,8 +379,11 @@ export class Dial {
     if (this.destroyed) return;
     const newRound = roundId !== null && roundId !== this.roundId;
     const privateTarget = psychic && !revealed && Number.isFinite(target);
-    this.canPeek = canPeek && privateTarget;
-    if (newRound || !privateTarget) this.peekClosed = false;
+    // Public previews may close their disclosed example locally. Live matches
+    // retain the stricter private-psychic condition, including after revelation.
+    const peekableTarget = privateTarget || (this.preview && revealed && Number.isFinite(target));
+    this.canPeek = canPeek && peekableTarget;
+    if (newRound || !peekableTarget) this.peekClosed = false;
     this.roundId = roundId;
     this.showNeedle = showNeedle;
     this.needle.setAttribute('visibility', showNeedle ? 'visible' : 'hidden');
@@ -380,9 +399,12 @@ export class Dial {
       this.element.classList.remove('dragging');
       if (this.pointerId !== undefined && this.element.hasPointerCapture(this.pointerId)) this.element.releasePointerCapture(this.pointerId);
     }
-    this.element.setAttribute('role', showNeedle ? 'slider' : 'img');
+    const slider = showNeedle && editable;
+    // Slider and img roles flatten descendants in the accessibility tree. Use
+    // a group while reading the target so the physical handle remains a button.
+    this.element.setAttribute('role', slider ? 'slider' : 'group');
     this.element.setAttribute('aria-label', showNeedle ? t.position : psychic ? t.targetSecret : t.targetHidden);
-    if (showNeedle) {
+    if (slider) {
       this.element.setAttribute('aria-valuemin', '0');
       this.element.setAttribute('aria-valuemax', '100');
     } else {
@@ -390,7 +412,8 @@ export class Dial {
     }
     this.editable = editable;
     this.nudgeControls.forEach(button => { button.hidden = !editable; button.disabled = !editable; });
-    this.element.setAttribute('aria-disabled', String(!editable));
+    if (slider) this.element.setAttribute('aria-disabled', 'false');
+    else this.element.removeAttribute('aria-disabled');
     this.element.tabIndex = editable ? 0 : -1;
     this.element.classList.toggle('editable', editable);
     this.element.classList.toggle('revealed', revealed);
@@ -405,6 +428,13 @@ export class Dial {
     const visible = Number.isFinite(target);
     this.availableTarget = visible ? { target, position, revealed, result, roundId } : null;
     this.caption.textContent = visible && !this.peekClosed ? (psychic && !revealed ? t.targetSecret : t.revealInstruction) : t.targetHidden;
+    if (this.preview && !this.previewInitialized && this.availableTarget) {
+      this.previewInitialized = true;
+      this.shutterAngle = -180;
+      this.shutterElements.forEach(element => { element.style.transform = 'rotate(-180deg)'; });
+      this.element.dataset.shutter = 'open';
+      this.hasViewedTarget = true;
+    }
     this.updateTarget(visible && !this.peekClosed ? this.availableTarget : null);
     this.syncPeekControl();
   }

@@ -97,6 +97,7 @@ const transport = new RoomTransport({
 
 async function act(action, key = action.type) {
   if (busy.has(key)) return false;
+  if (['clue', 'replace-spectrum'].includes(action.type) && (busy.has('clue') || busy.has('replace-spectrum'))) return false;
   busy.add(key); render();
   try { await activeSession().action(action); return true; }
   catch (error) { notice(errorText(error)); return false; }
@@ -233,11 +234,10 @@ function mountEntry() {
   app.innerHTML = `<section class="entry-intro" aria-labelledby="entry-title"><p class="eyebrow">${t.entryEyebrow}</p><h1 id="entry-title">${t.entryTitle}</h1><p class="entry-description">${t.entryIntro}</p><div class="entry-dial">${dialMarkup('preview-dial')}<div class="preview-poles"><span>${t.previewLeft}</span><span>${t.previewRight}</span></div></div><p class="entry-meta">${t.entryMeta}</p></section>
     <section class="entry-panel" aria-label="${t.joiningLabel}"><div class="entry-tabs" role="tablist" aria-label="${t.actionLabel}"><button type="button" id="create-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.create}</button><button type="button" id="join-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.join}</button></div>
     <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><p class="eyebrow" id="entry-form-context">${t.entryStart}</p><h2 id="entry-form-title"></h2><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="24" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"><p class="field-note">${t.enterCode}</p></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><p class="entry-note">${t.entryNote}</p><button class="text-link" type="button" data-open-rules>${t.firstTime}</button></section>`;
-  dial = new Dial($('#preview-dial'), () => {});
-  dial.update({ position: 63, target: 67, revealed: true });
-  $('#preview-dial').setAttribute('role', 'img');
-  ['aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'aria-valuetext', 'aria-disabled'].forEach(name => $('#preview-dial').removeAttribute(name));
-  $('#preview-dial').setAttribute('aria-label', t.previewLabel);
+  const previewTarget = Math.round(18 + Math.random() * 64);
+  const previewPosition = Math.round(previewTarget + (previewTarget < 50 ? 1 : -1) * (16 + Math.random() * 18));
+  dial = new Dial($('#preview-dial'), () => {}, { preview: true });
+  dial.update({ position: previewPosition, target: previewTarget, revealed: true, canPeek: true, editable: false, showNeedle: true });
   const choose = mode => {
     entryMode = mode;
     const joining = mode === 'join';
@@ -408,19 +408,23 @@ function bindRoomTools() {
 }
 
 function mountGame() {
-  app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><p class="phase-description" id="phase-description"></p><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2><button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button></div></div><button id="shutter-toggle" class="shutter-toggle" type="button" aria-keyshortcuts="Space" title="${t.shutterHint}" hidden>${t.shutterClose}</button><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessHint}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
+  app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><p class="phase-description" id="phase-description"></p><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2><button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button></div></div><div id="spectrum-tools" class="spectrum-tools" hidden><button id="replace-spectrum" class="spectrum-swap" type="button"><span class="spectrum-swap-icon" aria-hidden="true">↻</span><span id="replace-spectrum-label">${t.replaceCard}</span></button><p>${t.replaceCardHint}</p></div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessHint}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
   bindRoomTools();
   if (!practice && state.config.ranked) $('.room-tools').insertAdjacentHTML('beforeend', `<span class="ranked-match">${t.ratingRanked}</span>`);
   dial = new Dial($('#dial'), position => {
     if (state?.phase !== 'TEAM_GUESS' || !online) return;
     sound.play('move');
     activeSession().action({ type: 'move', position, roundId: state.round.id }).catch(error => { if (online) notice(errorText(error)); });
-  }, { shutterButton: $('#shutter-toggle'), nudgeControls: [$('#nudge-left'), $('#nudge-right')] });
+  }, { nudgeControls: [$('#nudge-left'), $('#nudge-right')] });
   $('#dial').addEventListener('shutterchange', updateClueControl);
   $('#clue-form').addEventListener('submit', event => {
     event.preventDefault();
-    if (!dial.clueReady) return;
+    if (!dial.clueReady || busy.has('clue') || busy.has('replace-spectrum')) return;
     roundAction('clue', { text: $('#clue-input').value.trim() });
+  });
+  $('#replace-spectrum').addEventListener('click', () => {
+    if (state?.phase !== 'PSYCHIC_VIEW' || me()?.id !== state.round.psychicId || state.paused) return;
+    roundAction('replace-spectrum');
   });
   $('#lock-button').addEventListener('click', () => roundAction('lock', { position: dial.position }));
   $('#bet-left').addEventListener('click', () => roundAction('bet', { side: 'left' }));
@@ -431,7 +435,10 @@ function mountGame() {
 }
 
 function updateClueControl() {
-  setDisabled('#send-clue', !online || busy.has('clue') || !dial?.clueReady);
+  const changing = busy.has('clue') || busy.has('replace-spectrum');
+  setDisabled('#send-clue', !online || changing || !dial?.clueReady);
+  setDisabled('#replace-spectrum', !online || changing);
+  setDisabled('#clue-input', !online || changing);
 }
 
 function updateGame() {
@@ -490,7 +497,10 @@ function updateGame() {
   setHidden('#spectator-note', !spectator);
   setHidden('#pause-banner', !state.paused); setText('#pause-reason', state.pauseReason || t.defaultPauseReason);
   setHidden('#return-lobby', !isHost()); setDisabled('#return-lobby', !online || busy.has('lobby'));
-  setHidden('#clue-form', !canClue); setDisabled('#send-clue', !online || busy.has('clue'));
+  setHidden('#clue-form', !canClue);
+  setHidden('#spectrum-tools', !canClue);
+  setText('#replace-spectrum-label', busy.has('replace-spectrum') ? t.changingCard : t.replaceCard);
+  $('#replace-spectrum').setAttribute('aria-busy', String(busy.has('replace-spectrum')));
   if ($('#clue-form').dataset.round !== round.id) { $('#clue-input').value = ''; $('#clue-form').dataset.round = round.id; }
   setHidden('#clue-display', !round.clue); setText('#clue-text', round.clue || '');
   setHidden('#guess-controls', !canGuess); setDisabled('#lock-button', !online || busy.has('lock'));
@@ -508,7 +518,7 @@ function updateGame() {
   setHidden('#next-waiting', !scorePhase || canNext);
   setHidden('#game-over-controls', !ended); setHidden('#rematch-button', !isHost()); setDisabled('#rematch-button', !online || busy.has('rematch'));
   setHidden('#rematch-waiting', isHost());
-  dial.update({ position: round.guess, target: state.phase === 'PSYCHIC_VIEW' || revealed ? round.target : undefined, editable: canGuess && online && !busy.has('lock'), canPeek: canClue && online && !busy.has('clue'), psychic, revealed, result: round.result, showNeedle: state.phase !== 'PSYCHIC_VIEW', roundId: round.id });
+  dial.update({ position: round.guess, target: state.phase === 'PSYCHIC_VIEW' || revealed ? round.target : undefined, editable: canGuess && online && !busy.has('lock'), canPeek: canClue && online && !busy.has('clue') && !busy.has('replace-spectrum'), psychic, revealed, result: round.result, showNeedle: state.phase !== 'PSYCHIC_VIEW', roundId: round.id });
   updateClueControl();
   app.classList.toggle('is-revealed', revealed); app.classList.toggle('is-game-over', ended);
   const previousScores = $('#scoreboard').dataset.scores?.split(',').map(Number);

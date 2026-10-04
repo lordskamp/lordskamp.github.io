@@ -108,29 +108,36 @@ function psychicTurnOrder(state, team) {
   return order;
 }
 
+function drawSpectrum(state, random, spectra, replaceCurrent = false) {
+  if (!spectra.length) fail('CONTENT', 'Набір спектрів тимчасово недоступний.');
+  const eligible = replaceCurrent ? spectra.filter(spectrum => spectrum.id !== state.round?.spectrum.id) : spectra;
+  if (!eligible.length) fail('CONTENT', 'У цьому наборі немає іншої картки для заміни.');
+  let available = eligible.filter(spectrum => !state._usedSpectra.includes(spectrum.id));
+  if (!available.length) {
+    state._usedSpectra = [];
+    available = eligible.filter(spectrum => spectrum.id !== state.round?.spectrum.id);
+    if (!available.length) available = eligible;
+  }
+  const spectrum = available[Math.floor(draw(random) * available.length)];
+  state._usedSpectra.push(spectrum.id);
+  return { id: spectrum.id, left: spectrum.left, right: spectrum.right };
+}
+
 function dealRound(state, team, random, { number, excludePsychic = null, readyOnly = false } = {}, spectra = SPECTRA) {
   const psychicId = choosePsychic(state, team, excludePsychic, readyOnly);
   if (!psychicId) return false;
-  if (!spectra.length) fail('CONTENT', 'Набір спектрів тимчасово недоступний.');
-  let available = spectra.filter(spectrum => !state._usedSpectra.includes(spectrum.id));
-  if (!available.length) {
-    state._usedSpectra = [];
-    available = spectra.filter(spectrum => spectrum.id !== state.round?.spectrum.id);
-    if (!available.length) available = spectra;
-  }
-  const spectrum = available[Math.floor(draw(random) * available.length)];
+  const spectrum = drawSpectrum(state, random, spectra);
   // The original rules allow a partly visible four-point wedge at either extreme.
   // Keep its center on the digital spectrum; the outer wedges can be clipped.
   const target = Math.round(draw(random) * 1000) / 10;
   state._roundSerial += 1;
-  state._usedSpectra.push(spectrum.id);
   state._rotation[team] = psychicId;
   state.round = {
     id: `${state.code}-${state._roundSerial}`,
     number: number ?? (state.round?.number || 0) + 1,
     activeTeam: team,
     psychicId,
-    spectrum: { id: spectrum.id, left: spectrum.left, right: spectrum.right },
+    spectrum,
     target,
     guess: 50,
     clue: '',
@@ -286,7 +293,7 @@ export function applyAction(state, playerId, action, random = Math.random, spect
   const player = next.players.find(existing => existing.id === playerId);
   if (!player) fail('PLAYER_NOT_FOUND', 'Ви більше не є учасником цієї кімнати.');
   if (!player.connected) fail('DISCONNECTED', 'Підключення втрачено. Зачекайте на відновлення.');
-  if (['clue', 'move', 'lock', 'bet', 'next'].includes(action.type)) {
+  if (['replace-spectrum', 'clue', 'move', 'lock', 'bet', 'next'].includes(action.type)) {
     roundIs(next, action);
     if (next.paused) fail('PAUSED', next.pauseReason);
   }
@@ -364,6 +371,13 @@ export function applyAction(state, playerId, action, random = Math.random, spect
       dealRound(next, firstTeam, random, { readyOnly: true }, spectra);
       break;
     }
+    case 'replace-spectrum':
+      phaseIs(next, 'PSYCHIC_VIEW');
+      if (player.id !== next.round.psychicId) fail('ROLE', 'Картку може замінити лише Телепат.');
+      next.round.spectrum = drawSpectrum(next, random, spectra, true);
+      next._roundSerial += 1;
+      next.round.id = `${next.code}-${next._roundSerial}`;
+      break;
     case 'clue':
       phaseIs(next, 'PSYCHIC_VIEW');
       if (player.id !== next.round.psychicId) fail('ROLE', 'Підказку дає лише Телепат.');

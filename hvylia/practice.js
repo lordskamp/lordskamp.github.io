@@ -74,7 +74,7 @@ export class PracticeSession {
   async action(action) {
     if (this.closed) return;
     if (action.type === 'rematch') { this.start(); return; }
-    const allowed = ['clue', 'move', 'lock', 'bet', 'next'];
+    const allowed = ['replace-spectrum', 'clue', 'move', 'lock', 'bet', 'next'];
     if (!allowed.includes(action.type)) throw new Error('У тренуванні ця дія недоступна.');
     const random = action.type === 'next' ? this.roundRandom(this.room.round.number) : Math.random;
     this.room = applyAction(this.room, this.actor(), action, random);

@@ -85,6 +85,8 @@ export const uk = {
   returnLabel: 'Повернутися', spectatorNote: 'Спостерігаєте за грою. Обрати команду можна перед наступним матчем.',
   spectatorRole: 'ВИ — СПОСТЕРІГАЧ', teamRole: name => `ВИ — ${name}`,
   clue: 'Підказка', clueNote: 'Одна ідея, без позицій і відсотків. Не повторюйте слова з полюсів.',
+  replaceCard: 'Інша картка', changingCard: 'Шукаємо іншу картку…',
+  replaceCardHint: 'Та сама ціль — нові полюси для підказки.',
   suspenseDescription: 'Ще мить — і все стане зрозуміло.', winningTeam: 'Переможці',
   turnLabel: name => `Хід: ${name}`, activeLabel: 'ХОДЯТЬ',
   bonusDescription: (name, points) => `${name}: +${points} за правильний бік`,

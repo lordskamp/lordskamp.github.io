@@ -256,6 +256,45 @@ test('four real WebSocket clients play an entire match with private targets, rac
     privateTargets(players);
   });
 
+  await t.test('only the psychic replaces a card; concurrent replacements synchronize one new private-target round', async () => {
+    const psychic = players.find(client => client.state.you.role === 'psychic');
+    const before = structuredClone(psychic.state);
+    const oldId = before.round.id;
+    for (const client of players.filter(item => item !== psychic)) {
+      const denied = await client.action({ type: 'replace-spectrum', roundId: oldId });
+      assert.equal(denied.type, 'error');
+      assert.equal(denied.code, 'ROLE');
+    }
+    const firstId = randomUUID();
+    const secondId = randomUUID();
+    const results = await Promise.all([
+      psychic.action({ type: 'replace-spectrum', roundId: oldId }, firstId),
+      psychic.action({ type: 'replace-spectrum', roundId: oldId }, secondId)
+    ]);
+    assert.equal(results.filter(packet => packet.type === 'ack').length, 1);
+    assert.equal(results.find(packet => packet.type === 'error').code, 'STALE');
+    await sync(players, state => state.phase === 'PSYCHIC_VIEW' && state.round.id !== oldId);
+    const after = psychic.state;
+    assert.notEqual(after.round.spectrum.id, before.round.spectrum.id);
+    assert.equal(after.round.target, before.round.target);
+    assert.equal(after.round.psychicId, before.round.psychicId);
+    assert.equal(after.round.activeTeam, before.round.activeTeam);
+    assert.equal(after.round.number, before.round.number);
+    assert.deepEqual(after.teams, before.teams);
+    assert.deepEqual(after.turnOrder, before.turnOrder);
+    for (const client of players) {
+      assert.deepEqual(client.state.round.spectrum, after.round.spectrum);
+      assert.equal(client.state.round.id, after.round.id);
+    }
+    privateTargets(players);
+    const staleClue = await psychic.action({ type: 'clue', roundId: oldId, text: 'Підказка до старої картки' });
+    assert.equal(staleClue.code, 'STALE');
+    const successfulId = results.find(packet => packet.type === 'ack').id;
+    await psychic.accept({ type: 'replace-spectrum', roundId: oldId }, successfulId);
+    assert.equal(psychic.state.round.id, after.round.id, 'a repeated receipt must not replace another card');
+    assert.equal(psychic.state.round.spectrum.id, after.round.spectrum.id);
+  });
+
   await t.test('a disconnected psychic resumes the same hidden target and role within the grace period', async () => {
     const index = players.findIndex(client => client.state.you.role === 'psychic');
     const psychic = players[index];
@@ -298,6 +337,9 @@ test('four real WebSocket clients play an entire match with private targets, rac
       await sync(players, state => state.phase === 'TEAM_GUESS');
       privateTargets(players);
       if (rounds === 1) {
+        const lateReplacement = await psychic.action({ type: 'replace-spectrum', roundId });
+        assert.equal(lateReplacement.type, 'error');
+        assert.equal(lateReplacement.code, 'PHASE');
         for (const actor of [psychic, opponent]) {
           const wrongMove = await actor.action({ type: 'move', roundId, position: 35 });
           assert.equal(wrongMove.code, 'ROLE');
