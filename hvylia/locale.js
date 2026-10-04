@@ -50,7 +50,7 @@ export const uk = {
   },
   emptyTeam: 'Тут поки тихо. Додайте свою хвилю.', allReady: 'Команди готові. Можна починати!',
   scoreboardLabel: 'Рахунок', returnLobby: 'Повернутися до кімнати',
-  teamNumber: number => `Команда ${String(number).padStart(2, '0')}`, waitingTurn: 'Чекають ходу', teamWinner: 'Переможці',
+  teamNumber: number => `Команда ${String(number).padStart(2, '0')}`, waitingTurn: 'Чекають ходу', teamWinner: 'Переможці', matchFinished: 'Матч завершено',
   remainingPoints: points => {
     const last = points % 10, two = points % 100;
     const word = last === 1 && two !== 11 ? 'очко' : last >= 2 && last <= 4 && (two < 12 || two > 14) ? 'очки' : 'очок';
