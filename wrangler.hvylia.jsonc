@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dovzhyna-hvyli",
+  "main": "api/hvylia-worker.js",
+  "compatibility_date": "2026-10-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./outputs/hvylia-site",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/"],
+    "html_handling": "force-trailing-slash"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "WaveRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WaveRoom"] }],
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "vars": {
+    "SITE_ORIGIN": "https://lordskamp.github.io",
+    "ROOM_TTL_MS": "86400000"
+  }
+}

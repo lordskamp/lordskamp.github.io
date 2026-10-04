@@ -47,6 +47,27 @@ export default [
     }
   },
   {
+    files: ['api/hvylia-worker.js'],
+    languageOptions: { globals: { WebSocketPair: 'readonly' } }
+  },
+  {
+    files: ['hvylia/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...sharedGlobals,
+        window: 'readonly', document: 'readonly', navigator: 'readonly',
+        localStorage: 'readonly', sessionStorage: 'readonly', history: 'readonly',
+        location: 'readonly', WebSocket: 'readonly',
+        setInterval: 'readonly', clearInterval: 'readonly',
+        requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
+        performance: 'readonly', matchMedia: 'readonly',
+        AudioContext: 'readonly', FormData: 'readonly', CustomEvent: 'readonly'
+      }
+    }
+  },
+  {
     files: ['shyfr/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',

@@ -3,10 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/shyfr-content.mjs validate",
-    "lint": "eslint api/shyfr-*.js api/zavod-worker.js shyfr/*.js Zavod/*.js scripts/*.mjs tests/*.mjs eslint.config.js",
+    "build": "node scripts/shyfr-content.mjs validate && node scripts/hvylia-build.mjs",
+    "build:hvylia": "node scripts/hvylia-build.mjs",
+    "dev:hvylia": "node scripts/hvylia-build.mjs && wrangler dev --config wrangler.hvylia.jsonc --port 8787",
+    "deploy:hvylia": "node scripts/hvylia-build.mjs && wrangler deploy --config wrangler.hvylia.jsonc",
+    "test:hvylia": "node --test tests/hvylia-*.test.mjs",
+    "lint": "eslint api/shyfr-*.js api/zavod-worker.js api/hvylia-*.js hvylia/*.js content/hvylia/*.js shyfr/*.js Zavod/*.js scripts/*.mjs tests/*.mjs eslint.config.js",
     "test:zavod": "node --test tests/zavod-*.test.mjs",
-    "typecheck": "node --check api/shyfr-api.js && node --check api/shyfr-content.js && node --check api/shyfr-core.js && node --check api/kobza-leaderboard-worker.js && node --check shyfr/shyfr.js && node --check telegram-mini-app.js && node --check Zavod/app.js && node --check Zavod/plan-ui.js && node --check Zavod/planner.js && node --check Zavod/core.js && node --check Zavod/data.js && node --check Zavod/telegram.js",
+    "typecheck": "node scripts/hvylia-check.mjs && node --check api/shyfr-api.js && node --check api/shyfr-content.js && node --check api/shyfr-core.js && node --check api/kobza-leaderboard-worker.js && node --check shyfr/shyfr.js && node --check telegram-mini-app.js && node --check Zavod/app.js && node --check Zavod/plan-ui.js && node --check Zavod/planner.js && node --check Zavod/core.js && node --check Zavod/data.js && node --check Zavod/telegram.js",
     "test": "node --test tests/*.test.mjs",
     "validate:shyfr-content": "node scripts/shyfr-content.mjs validate",
     "build:shyfr-private-kv": "node scripts/shyfr-content.mjs private-kv",
@@ -15,6 +19,6 @@
   "devDependencies": {
     "@eslint/js": "^9.31.0",
     "eslint": "^9.31.0",
-    "wrangler": "^4.110.0"
+    "wrangler": "^4.147.0"
   }
 }

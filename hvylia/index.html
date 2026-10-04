@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f0eee6">
+  <meta name="hvylia-api-endpoint" content="https://dovzhyna-hvyli.lordskamp.workers.dev/api">
+  <meta name="description" content="Довжина хвилі — українська командна гра про спільне відчуття. Створіть кімнату, покличте друзів і налаштуйтеся на одну хвилю.">
+  <meta property="og:title" content="Довжина хвилі · Lordskamp">
+  <meta property="og:description" content="Одна підказка. Два полюси. Наскільки добре ви відчуваєте одне одного? Українська гра для компанії.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="uk_UA">
+  <title>Довжина хвилі · Lordskamp</title>
+  <link rel="canonical" href="https://lordskamp.github.io/hvylia/">
+  <link rel="icon" href="../fav/favicon-32x32.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="site-bar">
+    <a class="brand" href="https://lordskamp.github.io/" aria-label="Lordskamp — на головну">lordskamp<span aria-hidden="true">↗</span></a>
+    <a class="game-wordmark" href="./">Довжина хвилі</a>
+    <nav aria-label="Гра">
+      <button id="sound-button" class="quiet-button" type="button" aria-pressed="false">Звук: вимк.</button>
+      <button id="rules-button" class="quiet-button" type="button">Як грати <span aria-hidden="true">↗</span></button>
+    </nav>
+  </header>
+  <div id="connection" class="connection" role="status" hidden></div>
+  <main id="app" tabindex="-1"></main>
+  <footer class="site-footer"><span>Гра про спільне відчуття.</span><span>Українська · 4+ гравці</span></footer>
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+  <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="rules" class="rules-dialog" aria-labelledby="rules-title">
+    <div class="dialog-top"><p class="eyebrow">30 секунд — і ви в грі</p><button type="button" data-close-rules class="quiet-button">Закрити ×</button></div>
+    <h2 id="rules-title">Зловіть одну хвилю.</h2>
+    <div class="rule-steps">
+      <article><span class="step-number">01</span><div class="rule-picture" aria-hidden="true"><div class="mini-arc"><i class="mini-target"></i></div><span class="mini-eye">ЦІЛЬ</span></div><h3>Телепат бачить ціль</h3><p>У кожної команди свій Телепат. Лише він знає місце прихованої цілі між двома полюсами.</p></article>
+      <article><span class="step-number">02</span><div class="rule-picture clue-picture" aria-hidden="true">«Похід у гори»</div><h3>Дає одну підказку</h3><p>Наприклад, між «Відпочинок» і «Випробування». Без чисел, відсотків та прямої вказівки на позицію.</p></article>
+      <article><span class="step-number">03</span><div class="rule-picture" aria-hidden="true"><div class="mini-arc"><i class="mini-pointer"></i></div></div><h3>Команда ставить стрілку</h3><p>Обговоріть підказку вголос або на дзвінку. Рухайте стрілку разом і зафіксуйте відповідь.</p></article>
+      <article><span class="step-number">04</span><div class="rule-picture points-picture" aria-hidden="true"><span>2</span><span>3</span><strong>4</strong><span>3</span><span>2</span></div><h3>Суперники обирають бік</h3><p>Ліворуч чи праворуч від стрілки? Ціль відкривається: 2, 3 або 4 очки за влучання, +1 суперникам за правильний бік.</p></article>
+    </div>
+    <p class="rules-footnote">Влучили на 4? Суперники без бонуса. Якщо ви ще позаду — ходите знову з іншим Телепатом. Перша команда з 10 очками перемагає; за рівного рахунку гра триває до переваги.</p>
+    <button type="button" data-close-rules class="button">Зрозуміло, граємо <span aria-hidden="true">→</span></button>
+  </dialog>
+</body>
+</html>

@@ -7,5 +7,11 @@ wrangler.toml
 .wrangler-test.toml
 coverage/
 outputs/shyfr-private-kv.json
+outputs/hvylia-site/
+outputs/hvylia-worker/
+outputs/hvylia-worker-configuration.d.ts
+outputs/hvylia-check/
+test-results/
+playwright-report/
 chat copy.html
 pre-chat.html
