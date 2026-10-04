@@ -323,7 +323,7 @@ test('four real WebSocket clients play an entire match with private targets, rac
         assert.equal(client.state.round.target, target);
         assert.equal(client.state.round.result.activePoints, 4);
         assert.equal(client.state.round.result.opponentPoints, 0);
-        assert.equal(client.state.teams.reduce((sum, team) => sum + team.score, 0), rounds * 4);
+        assert.equal(client.state.teams.reduce((sum, team) => sum + team.score, 0), rounds * 4 + 1);
       }
       const scores = leader.state.teams.map(team => team.score);
       const revision = leader.state.revision;
@@ -338,7 +338,7 @@ test('four real WebSocket clients play an entire match with private targets, rac
     }
     assert.equal(rounds, 5);
     assert.equal(leader.state.teams[leader.state.winner].score, 12);
-    assert.deepEqual(leader.state.teams.map(team => team.score).sort((a, b) => a - b), [8, 12]);
+    assert.deepEqual(leader.state.teams.map(team => team.score).sort((a, b) => a - b), [9, 12]);
   });
 
   await t.test('refresh resumes the same player and completed match without changing scores', async () => {

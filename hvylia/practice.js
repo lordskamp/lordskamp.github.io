@@ -47,8 +47,7 @@ export class PracticeSession {
 
   roundRandom(index, starting = false) {
     const scenario = SCENARIOS[index % SCENARIOS.length];
-    const edge = GAME_CONFIG.sectorHalfWidths[2];
-    const draws = [scenario.spectrum, (scenario.target - edge) / (100 - 2 * edge)];
+    const draws = [scenario.spectrum, scenario.target / 100];
     if (starting) draws.unshift(0);
     return () => draws.shift() ?? 0.5;
   }

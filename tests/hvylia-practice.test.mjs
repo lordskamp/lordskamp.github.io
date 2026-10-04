@@ -69,14 +69,14 @@ test('local practice rotates through actual roles and hides the target after the
   run.tick(GAME_CONFIG.scoreDelayMs);
   assert.equal(run.state.phase, 'SCORE');
   assert.deepEqual(run.state.round.result, { ...scoreGuess(38, 43, 'left'), catchUp: false });
-  assert.deepEqual(run.state.teams.map(team => team.score), [3, 1]);
+  assert.deepEqual(run.state.teams.map(team => team.score), [3, 2]);
   run.session.close();
 });
 
-test('practice completes a three-round match and rematches using normal victory rules', async t => {
+test('practice completes a short match with the second-team starting point and rematches using normal rules', async t => {
   const run = practice(t);
   const originalId = run.state.round.id;
-  for (let round = 1; round <= 3; round += 1) {
+  for (let round = 1; round <= 2; round += 1) {
     const target = run.state.round.target;
     assert.equal(run.state.round.number, round);
     await run.action('clue', { text: `Підказка раунду ${round}` });
@@ -85,19 +85,19 @@ test('practice completes a three-round match and rematches using normal victory 
     run.tick(GAME_CONFIG.revealDelayMs + GAME_CONFIG.scoreDelayMs);
     assert.equal(run.state.round.result.activePoints, 4);
     assert.equal(run.state.round.result.opponentPoints, 0);
-    if (round < 3) {
+    if (round < 2) {
       assert.equal(run.state.phase, 'SCORE');
       await run.action('next');
     }
   }
   assert.equal(run.state.phase, 'GAME_OVER');
-  assert.equal(run.state.winner, 0);
-  assert.deepEqual(run.state.teams.map(team => team.score), [8, 4]);
+  assert.equal(run.state.winner, 1);
+  assert.deepEqual(run.state.teams.map(team => team.score), [4, 5]);
   await run.session.action({ type: 'rematch' });
   assert.equal(run.state.phase, 'PSYCHIC_VIEW');
   assert.equal(run.state.round.number, 1);
   assert.notEqual(run.state.round.id, originalId);
-  assert.deepEqual(run.state.teams.map(team => team.score), [0, 0]);
+  assert.deepEqual(run.state.teams.map(team => team.score), [0, 1]);
   run.session.close();
 });
 
@@ -112,11 +112,11 @@ test('practice rejects duplicate and stale actions without awarding points twice
   await run.action('bet', { side: 'right' });
   await assert.rejects(run.action('bet', { side: 'right' }), { code: 'PHASE' });
   run.tick(GAME_CONFIG.revealDelayMs + GAME_CONFIG.scoreDelayMs);
-  assert.deepEqual(run.state.teams.map(team => team.score), [0, 1]);
+  assert.deepEqual(run.state.teams.map(team => team.score), [0, 2]);
   await run.action('next');
   await assert.rejects(run.session.action({ type: 'clue', text: 'Стара підказка', roundId: originalId }), { code: 'STALE' });
   assert.equal(run.state.phase, 'PSYCHIC_VIEW');
-  assert.deepEqual(run.state.teams.map(team => team.score), [0, 1]);
+  assert.deepEqual(run.state.teams.map(team => team.score), [0, 2]);
   run.session.close();
 });
 

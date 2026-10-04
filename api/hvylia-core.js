@@ -94,6 +94,17 @@ function choosePsychic(state, team, excludedId = null, readyOnly = false) {
   return null;
 }
 
+function psychicTurnOrder(state, team) {
+  const all = state.players.filter(player => player.team === team);
+  const start = all.findIndex(player => player.id === state._rotation[team]);
+  const order = [];
+  for (let offset = 1; offset <= all.length; offset += 1) {
+    const player = all[(start + offset + all.length) % all.length];
+    if (player.connected) order.push(player.id);
+  }
+  return order;
+}
+
 function dealRound(state, team, random, { number, excludePsychic = null, readyOnly = false } = {}) {
   const psychicId = choosePsychic(state, team, excludePsychic, readyOnly);
   if (!psychicId) return false;
@@ -105,8 +116,9 @@ function dealRound(state, team, random, { number, excludePsychic = null, readyOn
     if (!available.length) available = SPECTRA;
   }
   const spectrum = available[Math.floor(draw(random) * available.length)];
-  const outerHalfWidth = GAME_CONFIG.sectorHalfWidths[2];
-  const target = Math.round((outerHalfWidth + draw(random) * (100 - outerHalfWidth * 2)) * 10) / 10;
+  // The original rules allow a partly visible four-point wedge at either extreme.
+  // Keep its center on the digital spectrum; the outer wedges can be clipped.
+  const target = Math.round(draw(random) * 1000) / 10;
   state._roundSerial += 1;
   state._usedSpectra.push(spectrum.id);
   state._rotation[team] = psychicId;
@@ -165,6 +177,7 @@ export function createRoom(code, hostPlayer, now = Date.now()) {
     createdAt: now,
     updatedAt: now,
     _rotation: [null, null],
+    _overtimeTurns: null,
     _usedSpectra: [],
     _roundSerial: 0,
     _kickedIds: []
@@ -200,11 +213,31 @@ function scoreRound(state) {
   state.teams[round.activeTeam].score += result.activePoints;
   state.teams[1 - round.activeTeam].score += result.opponentPoints;
   const scores = state.teams.map(team => team.score);
-  round.result = { ...result, catchUp: result.activePoints === 4 && scores[round.activeTeam] < scores[1 - round.activeTeam] };
+  round.result = {
+    ...result,
+    catchUp: !state.overtime && result.activePoints === 4 && scores[round.activeTeam] < scores[1 - round.activeTeam]
+  };
   round.revealed = true;
+  if (state.overtime) {
+    // Every tie-break consists of one turn for BOTH teams before comparing scores.
+    // Missing bookkeeping in a previously stored room begins a fresh fair pair.
+    state._overtimeTurns ??= [false, false];
+    state._overtimeTurns[round.activeTeam] = true;
+    if (state._overtimeTurns.every(Boolean)) {
+      if (scores[0] !== scores[1]) {
+        state.winner = scores[0] > scores[1] ? 0 : 1;
+        state.phase = 'GAME_OVER';
+        return;
+      }
+      state._overtimeTurns = [false, false];
+    }
+    state.phase = 'SCORE';
+    return;
+  }
   if (Math.max(...scores) >= state.config.winScore) {
     if (scores[0] === scores[1]) {
       state.overtime = true;
+      state._overtimeTurns = [false, false];
     } else {
       state.winner = scores[0] > scores[1] ? 0 : 1;
       state.phase = 'GAME_OVER';
@@ -312,14 +345,17 @@ export function applyAction(state, playerId, action, random = Math.random) {
       recoverPresence(next, Date.now(), random);
       break;
     }
-    case 'start':
+    case 'start': {
       isHost(next, player);
       phaseIs(next, 'LOBBY');
       if ([0, 1].some(team => connectedTeam(next, team).filter(existing => existing.ready).length < 2)) {
         fail('NOT_READY', 'Для старту потрібні щонайменше два готові гравці в кожній команді.');
       }
-      dealRound(next, Math.floor(draw(random) * 2), random, { readyOnly: true });
+      const firstTeam = Math.floor(draw(random) * 2);
+      next.teams.forEach((team, index) => { team.score = index === firstTeam ? 0 : 1; });
+      dealRound(next, firstTeam, random, { readyOnly: true });
       break;
+    }
     case 'clue':
       phaseIs(next, 'PSYCHIC_VIEW');
       if (player.id !== next.round.psychicId) fail('ROLE', 'Підказку дає лише Телепат.');
@@ -360,6 +396,7 @@ export function applyAction(state, playerId, action, random = Math.random) {
       next.round = null;
       next.winner = null;
       next.overtime = false;
+      next._overtimeTurns = null;
       next.teams.forEach(team => { team.score = 0; });
       next.players.forEach(existing => { existing.ready = false; });
       next._rotation = [null, null];
@@ -431,8 +468,11 @@ export function viewFor(state, playerId) {
     })),
     teams: state.teams.map(team => ({ name: team.name, score: team.score })),
     config: { winScore: state.config.winScore, selfSelect: state.config.selfSelect },
+    turnOrder: [psychicTurnOrder(state, 0), psychicTurnOrder(state, 1)],
     round,
     overtime: state.overtime,
+    overtimeTurnsRemaining: state.overtime
+      ? (state._overtimeTurns ?? [false, false]).filter(played => !played).length : 0,
     winner: state.winner,
     paused: state.paused,
     pauseReason: state.pauseReason,

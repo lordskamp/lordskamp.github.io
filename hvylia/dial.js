@@ -28,20 +28,17 @@ export function dialMarkup(id = 'dial') {
       <circle class="dial-shell" cx="360" cy="330" r="310"/>
       <path class="dial-body" d="M112 380 Q360 405 608 380 L592 553 Q570 586 551 605 L169 605 Q150 586 128 553 Z"/>
       <path class="dial-face" d="M80 330 A280 280 0 0 1 640 330 Z"/>
-      <g class="dial-target" visibility="hidden">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
+      <g class="dial-target" clip-path="url(#${id}-window)" visibility="hidden">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
       <g clip-path="url(#${id}-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
         <path class="shutter-plate" d="M80 330 A280 280 0 0 1 640 330 Z"/>
-        <path class="shutter-seam" d="M101 312 A259 259 0 0 1 619 312"/>
       </g></g>
-      <g class="dial-shutter-control" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
-        <line class="shutter-shaft" x1="621" y1="330" x2="653" y2="330"/>
-        <rect class="shutter-handle" x="622" y="318" width="82" height="24" rx="12"/>
-      </g>
       <path class="dial-rim" d="M80 330 A280 280 0 0 1 640 330"/>
       <g>${ticks}</g>
       <line x1="80" y1="330" x2="640" y2="330" class="dial-baseline"/>
+      <g class="dial-shutter-control" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
+        <rect class="shutter-handle" x="622" y="318" width="82" height="24" rx="12"/>
+      </g>
       <g class="dial-needle" style="transform-origin:360px 330px;transform-box:view-box"><path class="needle-shaft" d="M356 330 L356 89 Q360 81 364 89 L364 330 Z"/><circle class="needle-hub" cx="360" cy="330" r="42"/><circle class="needle-pin" cx="360" cy="330" r="30"/></g>
-      <text class="dial-readout" x="360" y="392" text-anchor="middle">50</text>
     </svg>
     <span class="dial-caption">${t.targetHidden}</span>
   </div>`;
@@ -63,7 +60,6 @@ export class Dial {
     this.reconcileTimer = null;
     this.serverPosition = 50;
     this.needle = element.querySelector('.dial-needle');
-    this.readout = element.querySelector('.dial-readout');
     this.caption = element.querySelector('.dial-caption');
     this.targetElement = element.querySelector('.dial-target');
     this.shutter = element.querySelector('.dial-shutter');
@@ -152,7 +148,6 @@ export class Dial {
   paint(position) {
     this.position = position;
     this.needle.style.transform = `rotate(${(position - 50) * 1.8}deg)`;
-    this.readout.textContent = Math.round(position);
     if (this.showNeedle) {
       this.element.setAttribute('aria-valuenow', String(Math.round(position)));
       this.element.setAttribute('aria-valuetext', t.positionValue(Math.round(position)));
@@ -199,8 +194,8 @@ export class Dial {
       if (transform !== 'none') {
         const matrix = new window.DOMMatrixReadOnly(transform);
         from = Math.atan2(matrix.b, matrix.a) * 180 / Math.PI;
-        if (from < -179.9) from += 360;
-        from = Math.max(0, Math.min(180, from));
+        if (from > 179.9) from -= 360;
+        from = Math.max(-180, Math.min(0, from));
       }
       this.shutterAnimations.forEach(animation => animation.cancel());
       this.shutterAnimations = [];
@@ -208,7 +203,7 @@ export class Dial {
     }
     this.shutterAngle = from;
     this.shutterElements.forEach(element => { element.style.transform = `rotate(${from}deg)`; });
-    this.element.dataset.shutter = angle === 180 ? 'opening' : 'closing';
+    this.element.dataset.shutter = angle === -180 ? 'opening' : 'closing';
     const finish = () => {
       if (serial !== this.shutterSerial || this.destroyed) return;
       this.shutterAngle = angle;
@@ -216,7 +211,7 @@ export class Dial {
       this.shutterAnimations.forEach(animation => animation.cancel());
       this.shutterAnimations = [];
       this.shutterAnimation = null;
-      this.element.dataset.shutter = angle === 180 ? 'open' : 'closed';
+      this.element.dataset.shutter = angle === -180 ? 'open' : 'closed';
       complete?.();
       this.element.dispatchEvent(new window.CustomEvent('shutterchange'));
     };
@@ -244,7 +239,7 @@ export class Dial {
       this.clearTarget();
       if (this.desiredTarget) {
         this.paintTarget(this.desiredTarget);
-        this.rotateShutter(180);
+        this.rotateShutter(-180);
       }
     });
   }
@@ -261,7 +256,7 @@ export class Dial {
       return;
     }
     this.paintTarget(snapshot);
-    if (this.element.dataset.shutter !== 'open' && this.element.dataset.shutter !== 'opening') this.rotateShutter(180);
+    if (this.element.dataset.shutter !== 'open' && this.element.dataset.shutter !== 'opening') this.rotateShutter(-180);
   }
   update({ position = 50, target, editable = false, revealed = false, psychic = false, result = null, showNeedle = true, roundId = null }) {
     if (this.destroyed) return;
@@ -269,7 +264,6 @@ export class Dial {
     this.roundId = roundId;
     this.showNeedle = showNeedle;
     this.needle.setAttribute('visibility', showNeedle ? 'visible' : 'hidden');
-    this.readout.setAttribute('visibility', showNeedle ? 'visible' : 'hidden');
     // A new round is a reset, not a movement from the previous answer.
     this.needle.style.transition = newRound || !showNeedle ? 'none' : '';
     if (newRound) {

@@ -94,12 +94,23 @@ test('decimal dial positions score exactly at all sector boundaries without floa
   }
 });
 
-test('generated targets keep the entire symmetric sector visible', () => {
+test('generated targets keep the four-point wedge visible and allow clipped outer wedges', () => {
   for (const value of [0, 0.001, 0.25, 0.5, 0.9, 0.999999999]) {
     const state = applyAction(lobby(), 'host', { type: 'start' }, randomSequence(0, 0, value));
-    const outer = GAME_CONFIG.sectorHalfWidths[2];
-    assert.ok(state.round.target - outer >= 0);
-    assert.ok(state.round.target + outer <= 100);
+    assert.ok(state.round.target >= 0);
+    assert.ok(state.round.target <= 100);
+    assert.equal(scoreGuess(state.round.target, state.round.target, null).activePoints, 4);
+  }
+  assert.equal(applyAction(lobby(), 'host', { type: 'start' }, randomSequence(0, 0, 0)).round.target, 0);
+  assert.equal(applyAction(lobby(), 'host', { type: 'start' }, randomSequence(0, 0, 0.999999999)).round.target, 100);
+});
+
+test('the second team starts with one point whichever team wins the first-turn draw', () => {
+  for (const [draw, firstTeam] of [[0, 0], [0.999999, 1]]) {
+    const state = applyAction(lobby(), 'host', { type: 'start' }, randomSequence(draw, 0, 0.5));
+    assert.equal(state.round.activeTeam, firstTeam);
+    assert.equal(state.teams[firstTeam].score, 0);
+    assert.equal(state.teams[1 - firstTeam].score, 1);
   }
 });
 
@@ -256,6 +267,24 @@ test('rounds alternate teams and rotate psychic after a team returns', () => {
   assert.equal(state.round.number, 3);
 });
 
+test('public turn order follows the server rotation, skips offline players and returns after reconnect', () => {
+  let state = started(true);
+  assert.deepEqual(viewFor(state, 'other').turnOrder, [['ally', 'ally2', 'host'], ['other', 'other2']]);
+  state = setConnection(state, 'ally', false, 1_000);
+  assert.deepEqual(viewFor(state, 'other').turnOrder[0], ['ally2', 'host']);
+  state = scored(state, 100, 'right');
+  state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
+  assert.deepEqual(viewFor(state, 'host').turnOrder[1], ['other2', 'other']);
+  state = scored(state, 100, 'right');
+  state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
+  assert.equal(state.round.psychicId, 'ally2');
+  state = setConnection(state, 'ally', true, 2_000);
+  assert.deepEqual(viewFor(state, 'other').turnOrder[0], ['host', 'ally', 'ally2']);
+  const view = viewFor(state, 'other');
+  view.turnOrder[0].push('changed');
+  assert.equal(viewFor(state, 'other').turnOrder[0].includes('changed'), false);
+});
+
 test('catch-up grants same team a turn and a different psychic only while still losing', () => {
   let state = started();
   state.teams[1].score = 7;
@@ -272,7 +301,7 @@ test('catch-up grants same team a turn and a different psychic only while still 
   assert.equal(state.round.activeTeam, 1);
 });
 
-test('tie at winning score starts overtime; next unequal result wins', () => {
+test('tie at winning score gives BOTH teams a turn before choosing the overtime winner', () => {
   let state = started();
   state.teams[0].score = 8;
   state.teams[1].score = 9;
@@ -281,12 +310,63 @@ test('tie at winning score starts overtime; next unequal result wins', () => {
   assert.equal(state.overtime, true);
   assert.equal(state.winner, null);
   assert.equal(state.phase, 'SCORE');
+  assert.equal(viewFor(state, 'host').overtimeTurnsRemaining, 2);
   state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
   state = scored(state, 100, 'left');
   assert.deepEqual(state.teams.map(team => team.score), [11, 10]);
+  assert.equal(state.phase, 'SCORE');
+  assert.equal(state.winner, null);
+  assert.equal(viewFor(state, 'host').overtimeTurnsRemaining, 1);
+  state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
+  assert.equal(state.round.activeTeam, 0);
+  state = scored(state, 50, 'right');
+  assert.deepEqual(state.teams.map(team => team.score), [15, 10]);
   assert.equal(state.phase, 'GAME_OVER');
   assert.equal(state.winner, 0);
+  assert.equal(viewFor(state, 'host').overtimeTurnsRemaining, 0);
   throwsCode('PHASE', () => applyAction(state, 'host', { type: 'next', roundId: state.round.id }));
+});
+
+test('tied overtime pairs repeat, and a trailing team can still win its response turn', () => {
+  let state = started();
+  state.teams[0].score = 8;
+  state.teams[1].score = 9;
+  state = scored(state, 60, 'left');
+  for (let turn = 0; turn < 2; turn += 1) {
+    state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
+    state = scored(state, 50, 'right');
+    assert.equal(state.phase, 'SCORE');
+    assert.equal(state.winner, null);
+  }
+  assert.deepEqual(state.teams.map(team => team.score), [14, 14]);
+  assert.equal(viewFor(state, 'host').overtimeTurnsRemaining, 2);
+  state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
+  state = scored(state, 55, 'left');
+  assert.deepEqual(state.teams.map(team => team.score), [15, 17]);
+  assert.equal(state.phase, 'SCORE');
+  state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
+  state = scored(state, 50, 'right');
+  assert.deepEqual(state.teams.map(team => team.score), [19, 17]);
+  assert.equal(state.phase, 'GAME_OVER');
+  assert.equal(state.winner, 0);
+});
+
+test('previously stored overtime rooms without turn bookkeeping receive a complete fair pair', () => {
+  let state = started();
+  state.overtime = true;
+  delete state._overtimeTurns;
+  state.teams[0].score = 10;
+  state.teams[1].score = 20;
+  assert.equal(viewFor(state, 'host').overtimeTurnsRemaining, 2);
+  state = scored(state, 50, 'right');
+  assert.equal(state.round.result.catchUp, false);
+  assert.equal(state.phase, 'SCORE');
+  assert.equal(viewFor(state, 'host').overtimeTurnsRemaining, 1);
+  state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, () => 0.5);
+  assert.equal(state.round.activeTeam, 1);
+  state = scored(state, 100, 'right');
+  assert.equal(state.phase, 'GAME_OVER');
+  assert.equal(state.winner, 1);
 });
 
 test('full default-score match reaches game over, and host rematch restores lobby', () => {
@@ -300,7 +380,7 @@ test('full default-score match reaches game over, and host rematch restores lobb
   }
   assert.equal(rounds, 5);
   assert.equal(state.winner, 0);
-  assert.deepEqual(state.teams.map(team => team.score), [12, 0]);
+  assert.deepEqual(state.teams.map(team => team.score), [12, 1]);
   throwsCode('ROLE', () => applyAction(state, 'other', { type: 'rematch' }));
   state = applyAction(state, 'host', { type: 'rematch' });
   assert.equal(state.phase, 'LOBBY');
@@ -334,11 +414,11 @@ test('expired disconnected host transfers role and psychic is redealt without sc
   assert.equal(state.round.psychicId, 'ally');
   assert.notEqual(state.round.id, oldRound);
   assert.equal(state.round.number, 1);
-  assert.equal(state.round.target, 26);
+  assert.equal(state.round.target, 20);
   assert.equal(state.round.clue, '');
   assert.equal(state.phase, 'PSYCHIC_VIEW');
   assert.equal(state.paused, false);
-  assert.deepEqual(state.teams.map(team => team.score), [0, 0]);
+  assert.deepEqual(state.teams.map(team => team.score), [0, 1]);
   assert.deepEqual(recoverDisconnected(state, 60_000, () => 0.4), state, 'expired presence must not repeatedly redeal');
   state = setConnection(state, 'host', true, 60_001);
   assert.equal(state.hostId, 'ally', 'returning old host must not displace current host');
