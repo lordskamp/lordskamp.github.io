@@ -36,6 +36,7 @@ export function dialMarkup(id = 'dial') {
       <g>${ticks}</g>
       <line x1="80" y1="330" x2="640" y2="330" class="dial-baseline"/>
       <g class="dial-shutter-control" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
+        <rect class="shutter-hitarea" x="606" y="294" width="110" height="72" rx="20"/>
         <rect class="shutter-handle" x="622" y="318" width="82" height="24" rx="12"/>
       </g>
       <g class="dial-needle" style="transform-origin:360px 330px;transform-box:view-box"><path class="needle-shaft" d="M356 330 L356 89 Q360 81 364 89 L364 330 Z"/><circle class="needle-hub" cx="360" cy="330" r="42"/><circle class="needle-pin" cx="360" cy="330" r="30"/></g>
@@ -45,7 +46,7 @@ export function dialMarkup(id = 'dial') {
 }
 
 export class Dial {
-  constructor(element, onMove) {
+  constructor(element, onMove, { shutterButton = null, nudgeControls = [] } = {}) {
     this.element = element;
     this.svg = element.querySelector('svg');
     this.onMove = onMove;
@@ -53,6 +54,14 @@ export class Dial {
     this.roundId = null;
     this.showNeedle = true;
     this.editable = false;
+    this.canPeek = false;
+    this.peekClosed = false;
+    this.hasViewedTarget = false;
+    this.availableTarget = null;
+    this.shutterButton = shutterButton;
+    this.nudgeControls = nudgeControls.filter(Boolean);
+    this.nudgeTimer = null;
+    this.heldNudge = null;
     this.dragging = false;
     this.lastSend = 0;
     this.lastLocalMove = 0;
@@ -108,10 +117,97 @@ export class Dial {
       event.preventDefault();
       this.setLocal(positions[event.key]);
     });
+    this.on('click', event => {
+      if (event.target.closest('.dial-shutter-control')) this.togglePeek();
+    });
+    if (this.shutterButton) this.listen(this.shutterButton, 'click', () => this.togglePeek());
+    this.nudgeControls.forEach(button => {
+      this.listen(button, 'pointerdown', event => {
+        if (!this.editable || event.button !== 0) return;
+        event.preventDefault();
+        button.focus({ preventScroll: true });
+        this.stopNudge();
+        button.setPointerCapture(event.pointerId);
+        this.heldNudge = { button, pointerId: event.pointerId, direction: Number(button.dataset.direction) < 0 ? -1 : 1 };
+        button.classList.add('is-held');
+        this.nudge(this.heldNudge.direction);
+        const repeat = () => {
+          if (!this.editable || !this.heldNudge || this.destroyed) { this.stopNudge(); return; }
+          this.nudge(this.heldNudge.direction);
+          this.nudgeTimer = window.setTimeout(repeat, 70);
+        };
+        this.nudgeTimer = window.setTimeout(repeat, 280);
+      });
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(type => this.listen(button, type, event => {
+        if (this.heldNudge?.button === button && this.heldNudge.pointerId === event.pointerId) {
+          this.stopNudge();
+          this.flush();
+        }
+      }));
+      this.listen(button, 'click', event => {
+        // Pointer input already takes its first step on press; native keyboard/AT clicks take one here.
+        if (this.editable && event.detail === 0) this.nudge(Number(button.dataset.direction) < 0 ? -1 : 1);
+      });
+    });
+    this.listen(document, 'keydown', event => {
+      if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || document.querySelector('dialog[open]')) return;
+      if (event.target instanceof window.Element && event.target.closest('input,textarea,select,button,a,[contenteditable]')) return;
+      if (event.code === 'Space' || event.key === ' ') {
+        if (this.canPeek && this.availableTarget) {
+          event.preventDefault();
+          if (!event.repeat) this.togglePeek();
+        }
+        return;
+      }
+      if (!this.editable) return;
+      const key = event.key.toLowerCase();
+      const direction = event.code === 'KeyA' || key === 'a' ? -1 : event.code === 'KeyD' || key === 'd' ? 1 : 0;
+      if (!direction) return;
+      event.preventDefault();
+      this.setLocal(clamp(this.position + direction * (event.shiftKey ? 5 : 1)));
+    });
+    this.listen(window, 'blur', () => this.stopNudge());
+    this.listen(document, 'visibilitychange', () => { if (document.hidden) this.stopNudge(); });
   }
   on(type, listener) {
-    this.element.addEventListener(type, listener);
-    this.listeners.push([type, listener]);
+    this.listen(this.element, type, listener);
+  }
+  listen(target, type, listener) {
+    target.addEventListener(type, listener);
+    this.listeners.push([target, type, listener]);
+  }
+  stopNudge() {
+    window.clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = null;
+    const held = this.heldNudge;
+    this.heldNudge = null;
+    if (!held) return;
+    held.button.classList.remove('is-held');
+    if (held.button.hasPointerCapture(held.pointerId)) held.button.releasePointerCapture(held.pointerId);
+  }
+  nudge(direction) {
+    const position = clamp(this.position + direction);
+    if (position !== this.position) this.setLocal(position);
+  }
+  syncPeekControl() {
+    this.element.classList.toggle('can-peek', this.canPeek);
+    this.shutterElements[1].style.pointerEvents = this.canPeek ? 'auto' : 'none';
+    if (!this.shutterButton) return;
+    this.shutterButton.hidden = !this.canPeek;
+    this.shutterButton.disabled = !this.canPeek || !this.availableTarget;
+    this.shutterButton.textContent = this.peekClosed ? t.shutterOpen : t.shutterClose;
+    this.shutterButton.setAttribute('aria-expanded', String(this.element.dataset.shutter === 'open'));
+    this.shutterButton.title = t.shutterHint;
+  }
+  get clueReady() {
+    return this.canPeek && this.hasViewedTarget && ['open', 'closed'].includes(this.element.dataset.shutter);
+  }
+  togglePeek() {
+    if (!this.canPeek || !this.availableTarget || this.destroyed) return;
+    this.peekClosed = !this.peekClosed;
+    this.caption.textContent = this.peekClosed ? t.targetHidden : t.targetSecret;
+    this.updateTarget(this.peekClosed ? null : this.availableTarget);
+    this.syncPeekControl();
   }
   pointerPoint(event) {
     const matrix = this.svg.getScreenCTM();
@@ -204,6 +300,8 @@ export class Dial {
     this.shutterAngle = from;
     this.shutterElements.forEach(element => { element.style.transform = `rotate(${from}deg)`; });
     this.element.dataset.shutter = angle === -180 ? 'opening' : 'closing';
+    this.syncPeekControl();
+    this.element.dispatchEvent(new window.CustomEvent('shutterchange'));
     const finish = () => {
       if (serial !== this.shutterSerial || this.destroyed) return;
       this.shutterAngle = angle;
@@ -212,7 +310,9 @@ export class Dial {
       this.shutterAnimations = [];
       this.shutterAnimation = null;
       this.element.dataset.shutter = angle === -180 ? 'open' : 'closed';
+      if (angle === -180 && this.availableTarget) this.hasViewedTarget = true;
       complete?.();
+      this.syncPeekControl();
       this.element.dispatchEvent(new window.CustomEvent('shutterchange'));
     };
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -258,15 +358,20 @@ export class Dial {
     this.paintTarget(snapshot);
     if (this.element.dataset.shutter !== 'open' && this.element.dataset.shutter !== 'opening') this.rotateShutter(-180);
   }
-  update({ position = 50, target, editable = false, revealed = false, psychic = false, result = null, showNeedle = true, roundId = null }) {
+  update({ position = 50, target, editable = false, revealed = false, psychic = false, canPeek = false, result = null, showNeedle = true, roundId = null }) {
     if (this.destroyed) return;
     const newRound = roundId !== null && roundId !== this.roundId;
+    const privateTarget = psychic && !revealed && Number.isFinite(target);
+    this.canPeek = canPeek && privateTarget;
+    if (newRound || !privateTarget) this.peekClosed = false;
     this.roundId = roundId;
     this.showNeedle = showNeedle;
     this.needle.setAttribute('visibility', showNeedle ? 'visible' : 'hidden');
     // A new round is a reset, not a movement from the previous answer.
     this.needle.style.transition = newRound || !showNeedle ? 'none' : '';
     if (newRound) {
+      this.hasViewedTarget = false;
+      this.stopNudge();
       window.clearTimeout(this.timer);
       this.timer = null;
       this.dragging = false;
@@ -283,6 +388,7 @@ export class Dial {
       ['aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'].forEach(name => this.element.removeAttribute(name));
     }
     this.editable = editable;
+    this.nudgeControls.forEach(button => { button.hidden = !editable; button.disabled = !editable; });
     this.element.setAttribute('aria-disabled', String(!editable));
     this.element.tabIndex = editable ? 0 : -1;
     this.element.classList.toggle('editable', editable);
@@ -294,20 +400,27 @@ export class Dial {
     else if (!this.dragging) this.reconcileTimer = window.setTimeout(() => {
       if (!this.dragging && !this.destroyed) this.paint(this.serverPosition);
     }, Math.max(1, 125 - sinceMove));
-    if (!editable) { window.clearTimeout(this.timer); this.dragging = false; this.element.classList.remove('dragging'); }
+    if (!editable) { this.stopNudge(); window.clearTimeout(this.timer); this.dragging = false; this.element.classList.remove('dragging'); }
     const visible = Number.isFinite(target);
-    this.caption.textContent = visible ? (psychic && !revealed ? t.targetSecret : t.revealInstruction) : t.targetHidden;
-    this.updateTarget(visible ? { target, position, revealed, result, roundId } : null);
+    this.availableTarget = visible ? { target, position, revealed, result, roundId } : null;
+    this.caption.textContent = visible && !this.peekClosed ? (psychic && !revealed ? t.targetSecret : t.revealInstruction) : t.targetHidden;
+    this.updateTarget(visible && !this.peekClosed ? this.availableTarget : null);
+    this.syncPeekControl();
   }
   destroy() {
     this.destroyed = true;
+    this.stopNudge();
+    this.canPeek = false;
+    this.availableTarget = null;
+    this.desiredTarget = null;
+    this.syncPeekControl();
     ++this.shutterSerial;
     window.clearTimeout(this.timer);
     window.clearTimeout(this.reconcileTimer);
     this.shutterAnimations.forEach(animation => animation.cancel());
     this.shutterAnimations = [];
     this.shutterAnimation = null;
-    this.listeners.forEach(([type, listener]) => this.element.removeEventListener(type, listener));
+    this.listeners.forEach(([target, type, listener]) => target.removeEventListener(type, listener));
     this.listeners = [];
     if (this.pointerId !== undefined && this.element.hasPointerCapture(this.pointerId)) this.element.releasePointerCapture(this.pointerId);
     this.clearTarget();
