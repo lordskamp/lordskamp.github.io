@@ -2,6 +2,7 @@ import { t, errorText } from './locale.js';
 import { RoomTransport, savedSession, lastRoom, forgetSession } from './transport.js';
 import { Dial, dialMarkup } from './dial.js';
 import { Sound } from './sound.js';
+import { PracticeSession } from './practice.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
@@ -11,6 +12,7 @@ let state = null;
 let screen = '';
 let dial = null;
 let online = false;
+let practice = null;
 let entryMode = 'create';
 let inviteCode = new URL(window.location.href).searchParams.get('r')?.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || '';
 let noticeTimer;
@@ -25,31 +27,41 @@ function notice(text) {
   window.clearTimeout(noticeTimer);
   noticeTimer = window.setTimeout(() => { element.hidden = true; }, 6500);
 }
-function me() { return state?.players.find(player => player.id === transport.session?.playerId); }
-function isHost() { return state?.hostId === transport.session?.playerId; }
+function activeSession() { return practice || transport; }
+function me() { return state?.players.find(player => player.id === activeSession().session?.playerId); }
+function isHost() { return state?.hostId === activeSession().session?.playerId; }
 function roomURL() { const url = new URL(window.location.href); url.searchParams.set('r', state.code); return url.href; }
 function setText(selector, value) { const element = $(selector); if (element && element.textContent !== String(value)) element.textContent = value; }
 function setHidden(selector, hidden) { const element = $(selector); if (element) element.hidden = hidden; }
 function setDisabled(selector, disabled) { const element = $(selector); if (element) element.disabled = disabled; }
 
-const transport = new RoomTransport({
-  state(nextState) {
-    if (!nextState) return;
-    if (state && nextState.code === state.code && nextState.revision < state.revision) return;
-    const before = state;
-    state = nextState;
+function receiveState(nextState, training = false) {
+  if (!nextState) return;
+  if (!training && state && nextState.code === state.code && nextState.revision < state.revision) return;
+  const before = state;
+  state = nextState;
+  if (!training) {
     const url = new URL(window.location.href);
     url.searchParams.set('r', state.code);
     window.history.replaceState(null, '', url);
-    if (before?.phase !== state.phase) {
-      if (state.phase === 'OPPONENT_BET') sound.play('lock');
-      if (state.phase === 'SCORE') sound.play('score');
-      if (state.phase === 'GAME_OVER') sound.play('win');
-    }
-    if (!before?.round?.revealed && state.round?.revealed) sound.play('reveal');
-    render();
+  }
+  if (before?.phase !== state.phase) {
+    if (state.phase === 'OPPONENT_BET') sound.play('lock');
+    if (state.phase === 'REVEAL') sound.play('suspense');
+    if (state.phase === 'SCORE') sound.play('score', { points: state.round?.result?.activePoints || 0 });
+    if (state.phase === 'GAME_OVER') sound.play('win');
+  }
+  if (!before?.round?.revealed && state.round?.revealed) sound.play('reveal');
+  render();
+}
+
+const transport = new RoomTransport({
+  state(nextState) {
+    if (practice) { transport.close(); return; }
+    receiveState(nextState);
   },
   status(status) {
+    if (practice) return;
     online = status === 'connected';
     const banner = $('#connection');
     if (status === 'connected') { banner.hidden = true; render(); return; }
@@ -67,13 +79,13 @@ const transport = new RoomTransport({
     });
     render();
   },
-  error(error) { notice(errorText(error)); }
+  error(error) { if (!practice) notice(errorText(error)); }
 });
 
 async function act(action, key = action.type) {
   if (busy.has(key)) return false;
   busy.add(key); render();
-  try { await transport.action(action); return true; }
+  try { await activeSession().action(action); return true; }
   catch (error) { notice(errorText(error)); return false; }
   finally { busy.delete(key); render(); }
 }
@@ -91,6 +103,7 @@ function render() {
   if (screen === 'lobby') updateLobby();
   if (screen === 'game') updateGame();
   app.dataset.phase = state?.phase || 'ENTRY';
+  app.dataset.practice = String(Boolean(practice));
 }
 
 function mountEntry() {
@@ -138,12 +151,49 @@ function mountEntry() {
       button.disabled = false; button.textContent = `${code ? t.join : t.create} →`;
     }
   });
+  const practiceStart = document.createElement('div');
+  practiceStart.className = 'practice-start';
+  practiceStart.innerHTML = `<button id="practice-button" class="button button-outline" type="button">${t.practiceStart} →</button><p class="field-note">${t.practiceEntryHint}</p>`;
+  $('.entry-note').before(practiceStart);
+  $('#practice-button').addEventListener('click', startPractice);
+  const previousRoom = lastRoom();
+  if (previousRoom && savedSession(previousRoom)) {
+    const resume = document.createElement('button');
+    resume.type = 'button'; resume.className = 'text-link'; resume.id = 'saved-room-button';
+    resume.textContent = `${t.reconnect} ${previousRoom} →`;
+    practiceStart.append(resume);
+    resume.addEventListener('click', () => resumeRoom(previousRoom));
+  }
   $('[data-open-rules]').addEventListener('click', openRules);
   choose(entryMode);
 }
 
 function roomHeading() {
+  if (practice) return `<div class="practice-tools"><span class="practice-badge">${t.practiceTitle}</span><button class="quiet-button leave-button" id="practice-leave" type="button">${t.practiceLeave} ↗</button></div><p class="practice-help">${t.practiceHelp}</p><p class="field-note" id="practice-step"></p>`;
   return `<div class="room-tools"><span class="room-label">${t.room} <strong id="room-code-display">${esc(state.code)}</strong></span><button class="text-link" id="invite-button" type="button">${t.invite} ↗</button><button class="quiet-button leave-button" id="leave-button" type="button">${t.leave} ↗</button></div><div id="invite-fallback" hidden><label for="invite-url">${t.inviteLabel}</label><input id="invite-url" readonly value="${esc(roomURL())}"></div>`;
+}
+function startPractice() {
+  practice = new PracticeSession(nextState => receiveState(nextState, true));
+  transport.close();
+  state = null; online = true; busy.clear();
+  $('#connection').hidden = true;
+  const url = new URL(window.location.href);
+  url.searchParams.delete('r'); url.searchParams.set('practice', '1');
+  window.history.replaceState(null, '', url);
+  practice.start();
+  $('#phase-title')?.setAttribute('tabindex', '-1');
+  $('#phase-title')?.focus();
+}
+function leavePractice() {
+  practice?.close(); practice = null;
+  state = null; online = false; busy.clear();
+  const url = new URL(window.location.href);
+  url.searchParams.delete('practice');
+  if (inviteCode) url.searchParams.set('r', inviteCode);
+  window.history.replaceState(null, '', url);
+  $('#connection').hidden = true;
+  render();
+  $('#practice-button')?.focus();
 }
 function mountLobby() {
   settingsDirty = false;
@@ -211,6 +261,10 @@ function teamChange(event) {
   if (event.target.matches('[data-player-team]')) act({ type: 'team', playerId: event.target.dataset.playerTeam, team: event.target.value === '' ? null : Number(event.target.value) });
 }
 function bindRoomTools() {
+  if (practice) {
+    $('#practice-leave').addEventListener('click', leavePractice);
+    return;
+  }
   $('#invite-button').addEventListener('click', async () => {
     try { await window.navigator.clipboard.writeText(roomURL()); notice(t.copied); }
     catch { setHidden('#invite-fallback', false); $('#invite-url').select(); notice(t.copyFailed); }
@@ -229,7 +283,8 @@ function mountGame() {
   bindRoomTools();
   dial = new Dial($('#dial'), position => {
     if (state?.phase !== 'TEAM_GUESS' || !online) return;
-    transport.action({ type: 'move', position, roundId: state.round.id }).catch(error => { if (online) notice(errorText(error)); });
+    sound.play('move');
+    activeSession().action({ type: 'move', position, roundId: state.round.id }).catch(error => { if (online) notice(errorText(error)); });
   });
   $('#clue-form').addEventListener('submit', event => { event.preventDefault(); roundAction('clue', { text: $('#clue-input').value.trim() }); });
   $('#lock-button').addEventListener('click', () => roundAction('lock', { position: dial.position }));
@@ -273,12 +328,25 @@ function updateGame() {
     const winner = typeof state.winner === 'number' ? state.teams[state.winner] : state.teams.find(team => team.score === Math.max(...state.teams.map(item => item.score)));
     description = t.winner(winner?.name || t.winningTeam);
   }
-  setText('#role-label', role); setText('#phase-title', title); setText('#phase-description', description);
+  if (practice) {
+    if (state.phase === 'PSYCHIC_VIEW') description = t.practicePsychicHint;
+    if (state.phase === 'TEAM_GUESS') { title = t.practiceGuessTitle; description = t.practiceGuessHint; }
+    if (state.phase === 'OPPONENT_BET') description = t.practiceBetHint;
+    setText('#practice-step', t.practiceSteps[state.phase] || '');
+    setText('#role-label', t.practiceRoles[state.phase] || t.practiceResultRole);
+    setText('#send-clue', `${t.practiceSendClue} →`);
+    setText('#lock-button', `${t.practiceLock} →`);
+    setText('#rematch-button', `${t.practiceAgain} →`);
+    setHidden('.game-players', true);
+  }
+  if (!practice) setText('#role-label', role);
+  setText('#phase-title', title); setText('#phase-description', description);
   const announcement = `${title}. ${description}`;
   if (app.dataset.announcement !== announcement) { announce(announcement); app.dataset.announcement = announcement; }
   setText('#round-number', `${t.round} ${round.number}`);
   setText('#active-team', t.turnLabel(state.teams[round.activeTeam].name));
   setText('#psychic-name', `${t.psychic}: ${psychicName}`);
+  setHidden('#psychic-name', Boolean(practice));
   setText('#spectrum-left', round.spectrum.left); setText('#spectrum-right', round.spectrum.right);
   setHidden('#spectator-note', !spectator);
   setHidden('#pause-banner', !state.paused); setText('#pause-reason', state.pauseReason || t.defaultPauseReason);
@@ -324,13 +392,22 @@ $('#rules-button').addEventListener('click', openRules);
 document.querySelectorAll('[data-close-rules]').forEach(button => button.addEventListener('click', () => $('#rules').close()));
 $('#rules').addEventListener('click', event => { if (event.target === $('#rules') && (event.clientX < $('#rules').getBoundingClientRect().left || event.clientX > $('#rules').getBoundingClientRect().right || event.clientY < $('#rules').getBoundingClientRect().top || event.clientY > $('#rules').getBoundingClientRect().bottom)) $('#rules').close(); });
 
-render();
-const resumeCode = inviteCode || lastRoom();
-if (resumeCode && savedSession(resumeCode)) {
+async function resumeRoom(resumeCode) {
   const button = $('#enter-button'); button.disabled = true; button.textContent = t.restoring;
-  transport.resume(resumeCode).catch(error => {
+  setDisabled('#saved-room-button', true);
+  try { await transport.resume(resumeCode); }
+  catch (error) {
+    if (practice) return;
     if (['INVALID_TOKEN', 'SESSION', 'PLAYER_NOT_FOUND', 'UNAUTHORIZED', 'KICKED', 'ROOM_NOT_FOUND', 'NOT_FOUND'].includes(error.code)) forgetSession(resumeCode);
     notice(errorText(error));
     if ($('#enter-button')) { $('#enter-button').disabled = false; $('#enter-button').textContent = `${entryMode === 'join' ? t.join : t.create} →`; }
-  });
+    setDisabled('#saved-room-button', false);
+  }
+}
+
+render();
+if (new URL(window.location.href).searchParams.get('practice') === '1') startPractice();
+else {
+  const resumeCode = inviteCode || lastRoom();
+  if (resumeCode && savedSession(resumeCode)) resumeRoom(resumeCode);
 }

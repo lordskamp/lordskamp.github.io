@@ -12,7 +12,11 @@ const output = resolve('outputs/hvylia-site');
 await mkdir(output, { recursive: true });
 await cp(resolve('hvylia'), resolve(output, 'hvylia'), { recursive: true });
 await cp(resolve('fav'), resolve(output, 'fav'), { recursive: true });
-// Publish only the game and favicon assets; repository files and credentials never enter this directory.
+await mkdir(resolve(output, 'api'), { recursive: true });
+await mkdir(resolve(output, 'content/hvylia'), { recursive: true });
+await cp(resolve('api/hvylia-core.js'), resolve(output, 'api/hvylia-core.js'));
+await cp(resolve('content/hvylia/spectra.js'), resolve(output, 'content/hvylia/spectra.js'));
+// Publish only the game, its public pure rules/spectra, and favicon assets; credentials and room data stay on the server.
 const html = await readFile(resolve(output, 'hvylia/index.html'), 'utf8');
 for (const match of html.matchAll(/(?:src|href)="\.\/([^"?#]+)(?:[?#][^"]*)?"/gu)) {
   await readFile(resolve(output, 'hvylia', match[1]));

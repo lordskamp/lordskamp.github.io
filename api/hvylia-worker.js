@@ -323,6 +323,7 @@ export class WaveRoom extends DurableObject {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/api/hvylia-core.js') return env.ASSETS.fetch(request);
     if (!url.pathname.startsWith('/api/')) {
       if (url.pathname === '/') return Response.redirect(`${url.origin}/hvylia/`, 302);
       return env.ASSETS.fetch(request);
