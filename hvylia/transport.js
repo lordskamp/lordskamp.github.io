@@ -1,4 +1,5 @@
 import { t } from './locale.js';
+import { telegramHeaders, telegramReady } from './telegram.js';
 
 const STORAGE_PREFIX = 'hvylia.session.';
 const read = key => { try { return window.localStorage.getItem(key); } catch { return null; } };
@@ -37,10 +38,12 @@ export class RoomTransport {
   }
 
   async request(path, body, token) {
+    await telegramReady;
+    const signedHeaders = telegramHeaders();
     let response;
     try {
       response = await window.fetch(this.base + path, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...signedHeaders, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(body || {}), signal: window.AbortSignal.timeout(12000)
       });
     } catch { throw { message: t.networkError }; }
@@ -49,8 +52,22 @@ export class RoomTransport {
     return data;
   }
 
-  async enter(name, code) {
-    const result = await this.request(code ? `/rooms/${encodeURIComponent(code)}/join` : '/rooms', { name });
+  async get(path) {
+    await telegramReady;
+    const signedHeaders = telegramHeaders();
+    let response;
+    try {
+      response = await window.fetch(this.base + path, {
+        headers: signedHeaders, signal: window.AbortSignal.timeout(12000), cache: 'no-store'
+      });
+    } catch { throw { message: t.networkError }; }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw { code: data.code || data.error?.code, message: data.message || data.error?.message || t.requestFailed };
+    return data;
+  }
+
+  async enter(name, code, packId = 'standard') {
+    const result = await this.request(code ? `/rooms/${encodeURIComponent(code)}/join` : '/rooms', { name, ...(!code ? { packId } : {}) });
     this.attach(result);
     return result;
   }

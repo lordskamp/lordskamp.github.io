@@ -1,9 +1,11 @@
 import { SPECTRA } from '../content/hvylia/spectra.js';
+import { PACKS } from '../content/hvylia/packs.js';
 
 export { SPECTRA };
 
 export const GAME_CONFIG = Object.freeze({
   defaultWinScore: 10,
+  winScores: Object.freeze([5, 10, 15, 20, 25, 30]),
   sectorHalfWidths: Object.freeze([2, 6, 10]),
   presenceGraceMs: 30_000,
   revealDelayMs: 700,
@@ -40,6 +42,7 @@ function playerRecord(player, now = Date.now()) {
     team: null,
     connected: player.connected !== false,
     ready: false,
+    ...(player._accountId ? { _accountId: player._accountId } : {}),
     ...(player.connected === false ? { disconnectedAt: now } : {})
   };
 }
@@ -105,15 +108,15 @@ function psychicTurnOrder(state, team) {
   return order;
 }
 
-function dealRound(state, team, random, { number, excludePsychic = null, readyOnly = false } = {}) {
+function dealRound(state, team, random, { number, excludePsychic = null, readyOnly = false } = {}, spectra = SPECTRA) {
   const psychicId = choosePsychic(state, team, excludePsychic, readyOnly);
   if (!psychicId) return false;
-  if (!SPECTRA.length) fail('CONTENT', 'Набір спектрів тимчасово недоступний.');
-  let available = SPECTRA.filter(spectrum => !state._usedSpectra.includes(spectrum.id));
+  if (!spectra.length) fail('CONTENT', 'Набір спектрів тимчасово недоступний.');
+  let available = spectra.filter(spectrum => !state._usedSpectra.includes(spectrum.id));
   if (!available.length) {
     state._usedSpectra = [];
-    available = SPECTRA.filter(spectrum => spectrum.id !== state.round?.spectrum.id);
-    if (!available.length) available = SPECTRA;
+    available = spectra.filter(spectrum => spectrum.id !== state.round?.spectrum.id);
+    if (!available.length) available = spectra;
   }
   const spectrum = available[Math.floor(draw(random) * available.length)];
   // The original rules allow a partly visible four-point wedge at either extreme.
@@ -139,7 +142,7 @@ function dealRound(state, team, random, { number, excludePsychic = null, readyOn
   return true;
 }
 
-function recoverPresence(state, now, random) {
+function recoverPresence(state, now, random, spectra = SPECTRA) {
   const departed = state.players.filter(player => !player.connected && !player._recovered
     && now - player.disconnectedAt >= GAME_CONFIG.presenceGraceMs);
   for (const player of departed) {
@@ -152,7 +155,7 @@ function recoverPresence(state, now, random) {
   }
   const psychic = state.players.find(player => player.id === state.round?.psychicId);
   if (state.round && PRE_REVEAL_PHASES.has(state.phase) && (!psychic || psychic._recovered)) {
-    dealRound(state, state.round.activeTeam, random, { number: state.round.number, excludePsychic: state.round.psychicId });
+    dealRound(state, state.round.activeTeam, random, { number: state.round.number, excludePsychic: state.round.psychicId }, spectra);
   }
   refreshPause(state);
 }
@@ -168,7 +171,7 @@ export function createRoom(code, hostPlayer, now = Date.now()) {
     hostId: host.id,
     players: [host],
     teams: [{ name: 'Команда 1', score: 0 }, { name: 'Команда 2', score: 0 }],
-    config: { winScore: GAME_CONFIG.defaultWinScore, selfSelect: true },
+    config: { winScore: GAME_CONFIG.defaultWinScore, selfSelect: true, packId: 'standard', ranked: false },
     round: null,
     overtime: false,
     winner: null,
@@ -268,7 +271,7 @@ function positionIs(value) {
   return Math.round(value * 10) / 10;
 }
 
-export function applyAction(state, playerId, action, random = Math.random) {
+export function applyAction(state, playerId, action, random = Math.random, spectra = SPECTRA) {
   if (!action || typeof action.type !== 'string') fail('INVALID', 'Не вдалося розпізнати дію.');
   const next = structuredClone(state);
   if (action.type === 'advance') {
@@ -315,8 +318,13 @@ export function applyAction(state, playerId, action, random = Math.random) {
         next.teams.forEach((team, index) => { team.name = cleanText(action.teamNames[index], 28, 'назву команди'); });
       }
       if (action.winScore !== undefined) {
-        if (!Number.isInteger(action.winScore) || action.winScore < 5 || action.winScore > 30) fail('INVALID', 'Для перемоги можна встановити від 5 до 30 очок.');
+        if (!GAME_CONFIG.winScores.includes(action.winScore)) fail('INVALID', 'Оберіть 5, 10, 15, 20, 25 або 30 очок для перемоги.');
         next.config.winScore = action.winScore;
+      }
+      if (action.packId !== undefined) {
+        if (!PACKS.some(pack => pack.id === action.packId)) fail('INVALID', 'Оберіть доступний пак карток.');
+        if (next.config.packId !== action.packId) next._usedSpectra = [];
+        next.config.packId = action.packId;
       }
       if (action.selfSelect !== undefined) {
         if (typeof action.selfSelect !== 'boolean') fail('INVALID', 'Не вдалося змінити вибір команд.');
@@ -342,7 +350,7 @@ export function applyAction(state, playerId, action, random = Math.random) {
       if (index < 0) fail('PLAYER_NOT_FOUND', 'Цього гравця вже немає в кімнаті.');
       next._kickedIds.push(action.playerId);
       next.players.splice(index, 1);
-      recoverPresence(next, Date.now(), random);
+      recoverPresence(next, Date.now(), random, spectra);
       break;
     }
     case 'start': {
@@ -353,7 +361,7 @@ export function applyAction(state, playerId, action, random = Math.random) {
       }
       const firstTeam = Math.floor(draw(random) * 2);
       next.teams.forEach((team, index) => { team.score = index === firstTeam ? 0 : 1; });
-      dealRound(next, firstTeam, random, { readyOnly: true });
+      dealRound(next, firstTeam, random, { readyOnly: true }, spectra);
       break;
     }
     case 'clue':
@@ -385,7 +393,7 @@ export function applyAction(state, playerId, action, random = Math.random) {
       if (connectedTeam(next, team).length < 2 || !connectedTeam(next, 1 - team).length) {
         fail('NOT_READY', 'Для наступного раунду потрібні двоє гравців у команді, що ходить, і хоча б один суперник.');
       }
-      dealRound(next, team, random, { excludePsychic: next.round.result.catchUp ? next.round.psychicId : null });
+      dealRound(next, team, random, { excludePsychic: next.round.result.catchUp ? next.round.psychicId : null }, spectra);
       break;
     }
     case 'lobby':
@@ -393,6 +401,8 @@ export function applyAction(state, playerId, action, random = Math.random) {
       isHost(next, player);
       if (action.type === 'rematch') phaseIs(next, 'GAME_OVER');
       next.phase = 'LOBBY';
+      next.config.ranked = false;
+      next._ratedRoster = null;
       next.round = null;
       next.winner = null;
       next.overtime = false;
@@ -404,7 +414,7 @@ export function applyAction(state, playerId, action, random = Math.random) {
       break;
     case 'leave':
       next.players = next.players.filter(existing => existing.id !== playerId);
-      recoverPresence(next, Date.now(), random);
+      recoverPresence(next, Date.now(), random, spectra);
       break;
     default:
       fail('INVALID', 'Такої дії немає.');
@@ -430,9 +440,9 @@ export function setConnection(state, playerId, connected, now = Date.now()) {
   return finishMutation(next, now);
 }
 
-export function recoverDisconnected(state, now = Date.now(), random = Math.random) {
+export function recoverDisconnected(state, now = Date.now(), random = Math.random, spectra = SPECTRA) {
   const next = structuredClone(state);
-  recoverPresence(next, now, random);
+  recoverPresence(next, now, random, spectra);
   if (JSON.stringify(next) === JSON.stringify(state)) return next;
   return finishMutation(next, now);
 }
@@ -467,7 +477,7 @@ export function viewFor(state, playerId) {
       ...(existing.disconnectedAt === undefined ? {} : { disconnectedAt: existing.disconnectedAt })
     })),
     teams: state.teams.map(team => ({ name: team.name, score: team.score })),
-    config: { winScore: state.config.winScore, selfSelect: state.config.selfSelect },
+    config: { winScore: state.config.winScore, selfSelect: state.config.selfSelect, packId: state.config.packId || 'standard', ranked: Boolean(state.config.ranked) },
     turnOrder: [psychicTurnOrder(state, 0), psychicTurnOrder(state, 1)],
     round,
     overtime: state.overtime,

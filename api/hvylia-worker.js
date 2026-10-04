@@ -1,5 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
 import { createRoom, addPlayer, applyAction, viewFor, setConnection, recoverDisconnected, GAME_CONFIG } from './hvylia-core.js';
+import { SPECTRA } from '../content/hvylia/spectra.js';
+import { PACKS } from '../content/hvylia/packs.js';
+import { getPremiumSpectra } from './hvylia-premium-cards.js';
+import { verifyTelegramInitData, telegramCall, constantTimeEqual } from './hvylia-telegram.js';
+export { WaveAccountDO, WaveLeaderboardDO } from './hvylia-accounts.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/u;
@@ -33,7 +38,7 @@ function nickname(raw) {
   return name;
 }
 
-async function readJson(request) {
+async function readJson(request, limit = BODY_LIMIT) {
   if (!request.body) throw fault('INVALID', 'Запит порожній.');
   const reader = request.body.getReader();
   const chunks = [];
@@ -42,7 +47,7 @@ async function readJson(request) {
     const { done, value } = await reader.read();
     if (done) break;
     length += value.byteLength;
-    if (length > BODY_LIMIT) {
+    if (length > limit) {
       await reader.cancel();
       throw fault('INVALID', 'Запит завеликий.', 413);
     }
@@ -74,7 +79,7 @@ function json(data, status = 200, origin = '') {
       'X-Content-Type-Options': 'nosniff',
       'Access-Control-Allow-Origin': origin || '*',
       'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Telegram-Init-Data',
       'Vary': 'Origin'
     }
   });
@@ -87,6 +92,76 @@ function bearer(request) {
   return token;
 }
 
+function deck(state) {
+  const id = state.config.packId || 'standard';
+  if (id === 'standard') return SPECTRA;
+  const cards = getPremiumSpectra(id);
+  if (!cards?.length) throw fault('CONTENT', 'Цей пак тимчасово недоступний.', 503);
+  return cards;
+}
+
+function account(env, id) { return env.HVYLIA_ACCOUNTS.getByName(String(id), { locationHint: 'eeur' }); }
+function ranking(env) { return env.HVYLIA_LEADERBOARD.getByName('network-wins', { locationHint: 'eeur' }); }
+
+async function identity(request, env, required = false) {
+  const raw = request.headers.get('X-Telegram-Init-Data');
+  if (!raw && !required) return null;
+  const user = await verifyTelegramInitData(raw, env.HVYLIA_BOT_TOKEN);
+  if (!user) throw fault('TELEGRAM_AUTH', 'Відкрийте гру заново через Telegram.', 401);
+  await account(env, user.id).profile(user);
+  return user;
+}
+
+async function ownPack(env, accountId, packId) {
+  if (!PACKS.some(pack => pack.id === packId)) throw fault('INVALID', 'Оберіть доступний пак карток.');
+  if (packId === 'standard') return;
+  if (!accountId || !(await account(env, accountId).profile()).ownedPacks.includes(packId)) {
+    throw fault('PACK_LOCKED', 'Спершу придбайте цей пак за 150 ⭐ у Telegram.', 403);
+  }
+}
+
+function paymentReady(env) {
+  return Boolean(env.HVYLIA_BOT_TOKEN && env.HVYLIA_WEBHOOK_SECRET && env.HVYLIA_BOT_USERNAME && env.HVYLIA_PAYMENT_SUPPORT);
+}
+
+async function webhook(request, env) {
+  const supplied = request.headers.get('X-Telegram-Bot-Api-Secret-Token') || '';
+  if (!env.HVYLIA_WEBHOOK_SECRET || !constantTimeEqual(supplied, env.HVYLIA_WEBHOOK_SECRET)) {
+    throw fault('WEBHOOK_AUTH', 'Доступ заборонено.', 403);
+  }
+  const update = await readJson(request, 32768);
+  if (update.pre_checkout_query) {
+    const query = update.pre_checkout_query;
+    const allowed = await account(env, query.from?.id || 'invalid').preCheckout(query);
+    await telegramCall(env, 'answerPreCheckoutQuery', {
+      pre_checkout_query_id: query.id, ok: allowed,
+      ...(!allowed ? { error_message: 'Цей рахунок недійсний або пак уже придбано. Відкрийте гру та спробуйте знову.' } : {})
+    });
+  } else if (update.message?.successful_payment) {
+    const message = update.message;
+    const receipt = await account(env, message.from?.id || 'invalid').successfulPayment(message);
+    if (receipt.ok && receipt.profile) await ranking(env).update(receipt.profile);
+  } else if (update.message?.refunded_payment) {
+    const message = update.message;
+    await account(env, message.chat?.id || 'invalid').handleRefundedPayment(message);
+  } else if (update.message?.chat?.type === 'private' && typeof update.message.text === 'string') {
+    const message = update.message;
+    const command = message.text.split(/\s/u)[0].split('@')[0];
+    if (command === '/paysupport') {
+      await telegramCall(env, 'sendMessage', { chat_id: message.chat.id, text: `Підтримка оплат гри «Довжина хвилі»: ${env.HVYLIA_PAYMENT_SUPPORT || 'Зверніться до власника бота.'}` });
+    } else if (command === '/start' || command === '/help') {
+      const code = message.text.split(/\s/u)[1]?.match(/^room_([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4})$/u)?.[1];
+      const appUrl = `${env.SITE_ORIGIN}/hvylia/${code ? `?r=${code}` : ''}`;
+      await telegramCall(env, 'sendMessage', {
+        chat_id: message.chat.id,
+        text: 'Довжина хвилі — командна гра про спільні асоціації. Створіть кімнату, запросіть друзів і ловіть одну хвилю! Тематичний пак купує лише ведучий, грати можуть усі в кімнаті.',
+        reply_markup: { inline_keyboard: [[{ text: 'Грати', web_app: { url: appUrl } }]] }
+      });
+    }
+  }
+  return { ok: true };
+}
+
 export class WaveRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -94,6 +169,7 @@ export class WaveRoom extends DurableObject {
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, player_id TEXT NOT NULL)');
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS tickets (ticket_hash TEXT PRIMARY KEY, player_id TEXT NOT NULL, expires_at INTEGER NOT NULL)');
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS receipts (player_id TEXT NOT NULL, action_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(player_id, action_id))');
+    this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS ranking_outbox (match_id TEXT NOT NULL, account_id TEXT NOT NULL, receipt TEXT NOT NULL, PRIMARY KEY(match_id, account_id))');
   }
 
   read() {
@@ -114,14 +190,16 @@ export class WaveRoom extends DurableObject {
     }
   }
 
-  async initialize(code, rawName) {
+  async initialize(code, rawName, user = null, packId = 'standard') {
     if (this.ctx.storage.sql.exec('SELECT id FROM room WHERE id = 1').toArray().length) return { collision: true };
-    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false };
+    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: String(user.id) } : {}) };
     const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
     const tokenHash = await hash(token);
     // Another creation may have finished while digesting the token.
     if (this.ctx.storage.sql.exec('SELECT id FROM room WHERE id = 1').toArray().length) return { collision: true };
     const state = createRoom(code, player);
+    state.config.packId = packId;
+    state._packSponsor = user ? String(user.id) : null;
     this.ctx.storage.transactionSync(() => {
       this.write(state);
       this.ctx.storage.sql.exec('INSERT INTO sessions VALUES (?, ?)', tokenHash, player.id);
@@ -130,11 +208,16 @@ export class WaveRoom extends DurableObject {
     return { code, playerId: player.id, token, state: viewFor(state, player.id) };
   }
 
-  async join(rawName) {
-    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false };
+  async join(rawName, user = null) {
+    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: String(user.id) } : {}) };
     const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
     const tokenHash = await hash(token);
     const { state } = this.read();
+    const existing = user && state.players.find(item => item._accountId === String(user.id));
+    if (existing) {
+      this.ctx.storage.sql.exec('INSERT INTO sessions VALUES (?, ?)', tokenHash, existing.id);
+      return { code: state.code, playerId: existing.id, token, state: viewFor(state, existing.id) };
+    }
     if (state.players.length >= GAME_CONFIG.maxPlayers) throw fault('FULL', 'У кімнаті вже 24 гравці.');
     const next = addPlayer(state, player);
     this.ctx.storage.transactionSync(() => {
@@ -154,9 +237,72 @@ export class WaveRoom extends DurableObject {
     return { playerId: session.player_id, state };
   }
 
-  async resume(token) {
-    const { playerId, state } = await this.authenticate(token);
+  async resume(token, user = null) {
+    const { playerId } = await this.authenticate(token);
+    const { state } = this.read();
+    const player = state.players.find(item => item.id === playerId);
+    if (user) {
+      const id = String(user.id);
+      if (player._accountId && player._accountId !== id) throw fault('SESSION', 'Ця кімната збережена для іншого Telegram-акаунта.', 403);
+      if (!player._accountId && state.phase === 'LOBBY') {
+        if (state.players.some(item => item.id !== playerId && item._accountId === id)) throw fault('PLAYER_EXISTS', 'Ви вже є в цій кімнаті.');
+        player._accountId = id;
+        state.revision += 1;
+        this.write(state);
+        this.broadcast(state);
+      }
+    }
     return { code: state.code, playerId, token, state: viewFor(state, playerId) };
+  }
+
+  async authorizePack(playerId, action) {
+    const { state } = this.read();
+    if (action.type === 'settings' && action.packId !== undefined) {
+      if (state.hostId !== playerId || state.phase !== 'LOBBY') return;
+      await ownPack(this.env, state.players.find(player => player.id === playerId)?._accountId, action.packId);
+    } else if (action.type === 'start' && state.hostId === playerId && state.phase === 'LOBBY') {
+      await ownPack(this.env, state._packSponsor, state.config.packId || 'standard');
+      return { packId: state.config.packId || 'standard', sponsor: state._packSponsor };
+    }
+  }
+
+  prepareMatch(next) {
+    next._matchId = crypto.randomUUID();
+    next._rankingQueued = false;
+    const players = next.players.filter(player => player.connected && player.team !== null);
+    const accounts = players.map(player => player._accountId).filter(Boolean);
+    next.config.ranked = players.length >= 4 && accounts.length === players.length && new Set(accounts).size === players.length;
+    next._ratedRoster = next.config.ranked ? players.map(player => ({ playerId: player.id, accountId: player._accountId, team: player.team, name: player.name })) : null;
+  }
+
+  preserveRoster(next) {
+    if (next.config.ranked && next._ratedRoster?.some(member => !next.players.some(player => player.id === member.playerId && player.team === member.team))) {
+      next.config.ranked = false;
+      next._ratedRoster = null;
+    }
+  }
+
+  queueRanking(state) {
+    if (state.phase !== 'GAME_OVER' || !state.config.ranked || !state._matchId || !state._ratedRoster || state._rankingQueued) return;
+    for (const member of state._ratedRoster) {
+      const receipt = { matchId: state._matchId, won: member.team === state.winner, points: state.teams[member.team].score, packId: state.config.packId || 'standard', finishedAt: state.updatedAt, name: member.name };
+      this.ctx.storage.sql.exec('INSERT OR IGNORE INTO ranking_outbox VALUES (?, ?, ?)', state._matchId, member.accountId, JSON.stringify(receipt));
+    }
+    state._rankingQueued = true;
+  }
+
+  async flushRanking() {
+    const records = this.ctx.storage.sql.exec('SELECT * FROM ranking_outbox LIMIT 24').toArray();
+    for (const row of records) {
+      try {
+        const profile = await account(this.env, row.account_id).recordMatch(JSON.parse(row.receipt));
+        await ranking(this.env).update(profile);
+        this.ctx.storage.sql.exec('DELETE FROM ranking_outbox WHERE match_id = ? AND account_id = ?', row.match_id, row.account_id);
+      } catch {
+        console.error(JSON.stringify({ event: 'hvylia_ranking_retry', code: 'RANKING' }));
+        break;
+      }
+    }
   }
 
   async socketTicket(token) {
@@ -190,7 +336,7 @@ export class WaveRoom extends DurableObject {
       }
       this.ctx.acceptWebSocket(server);
       server.serializeAttachment({ playerId: entry.player_id, connectionId: crypto.randomUUID(), lastSeen: Date.now(), bucket: Date.now(), count: 0 });
-      const next = recoverDisconnected(setConnection(state, entry.player_id, true), Date.now(), random);
+      const next = recoverDisconnected(setConnection(state, entry.player_id, true), Date.now(), random, deck(state));
       this.write(next);
       this.broadcast(next);
       await this.schedule();
@@ -228,7 +374,7 @@ export class WaveRoom extends DurableObject {
       info.lastSeen = now;
       socket.serializeAttachment(info);
       if (info.count > 35) throw fault('RATE', 'Забагато дій. Зачекайте мить.', 429);
-      const { state, lastActivity } = this.read();
+      let { state, lastActivity } = this.read();
       if (!state.players.some(player => player.id === info.playerId)) throw fault('SESSION', 'Ви вже вийшли з кімнати.', 401);
       if (packet.type === 'ping') {
         if (now - lastActivity > 60000) this.ctx.storage.sql.exec('UPDATE room SET last_activity = ? WHERE id = 1', now);
@@ -241,7 +387,20 @@ export class WaveRoom extends DurableObject {
         this.send(socket, { type: 'ack', id: packet.id });
         return;
       }
-      const next = applyAction(state, info.playerId, packet.action, random);
+      const authorization = await this.authorizePack(info.playerId, packet.action);
+      // Entitlement RPC may yield; apply the action to the latest committed room state.
+      ({ state } = this.read());
+      if (authorization && (authorization.packId !== (state.config.packId || 'standard') || authorization.sponsor !== state._packSponsor)) {
+        throw fault('STALE', 'Пак кімнати змінився. Спробуйте почати матч ще раз.');
+      }
+      if (this.ctx.storage.sql.exec('SELECT action_id FROM receipts WHERE player_id = ? AND action_id = ?', info.playerId, packet.id).toArray().length) {
+        this.send(socket, { type: 'ack', id: packet.id });
+        return;
+      }
+      const next = applyAction(state, info.playerId, packet.action, random, deck(state));
+      if (packet.action.type === 'settings' && packet.action.packId !== undefined) next._packSponsor = next.players.find(player => player.id === info.playerId)?._accountId || null;
+      if (packet.action.type === 'start') this.prepareMatch(next);
+      this.preserveRoster(next);
       this.ctx.storage.transactionSync(() => {
         this.write(next);
         this.ctx.storage.sql.exec('INSERT INTO receipts VALUES (?, ?, ?)', info.playerId, packet.id, now);
@@ -254,6 +413,7 @@ export class WaveRoom extends DurableObject {
       });
       this.send(socket, { type: 'ack', id: packet.id });
       this.broadcast(next);
+      await this.flushRanking();
       await this.schedule();
     } catch (error) {
       this.send(socket, { type: 'error', id: packet?.id, code: error.code || 'INVALID', message: error.code ? error.message : 'Не вдалося виконати дію. Спробуйте ще раз.' });
@@ -279,10 +439,15 @@ export class WaveRoom extends DurableObject {
 
   async schedule() {
     let record;
-    try { record = this.read(); } catch (error) { if (error.code === 'NOT_FOUND') return; throw error; }
+    try { record = this.read(); } catch (error) {
+      if (error.code !== 'NOT_FOUND') throw error;
+      if (this.ctx.storage.sql.exec('SELECT match_id FROM ranking_outbox LIMIT 1').toArray().length) await this.ctx.storage.setAlarm(Date.now() + 10000);
+      return;
+    }
     const { state, lastActivity } = record;
     const now = Date.now();
     const deadlines = [lastActivity + this.ttl()];
+    if (this.ctx.storage.sql.exec('SELECT match_id FROM ranking_outbox LIMIT 1').toArray().length) deadlines.push(now + 10000);
     if (state.phase === 'REVEAL') deadlines.push(state.round.revealAt + (state.round.revealed ? GAME_CONFIG.scoreDelayMs : 0));
     for (const player of state.players) {
       if (!player.connected && !player._recovered && typeof player.disconnectedAt === 'number') deadlines.push(player.disconnectedAt + GAME_CONFIG.presenceGraceMs);
@@ -293,14 +458,20 @@ export class WaveRoom extends DurableObject {
 
   async alarm() {
     const row = this.ctx.storage.sql.exec('SELECT last_activity FROM room WHERE id = 1').toArray()[0];
-    if (!row) return;
+    if (!row) {
+      await this.flushRanking();
+      await this.schedule();
+      return;
+    }
     const now = Date.now();
     if (now - row.last_activity >= this.ttl()) {
+      await this.flushRanking();
       for (const socket of this.ctx.getWebSockets()) socket.close(4004, 'Час кімнати минув');
       // Delete room rows but retain schema; a later creation may safely reuse this short code.
       this.ctx.storage.transactionSync(() => {
         for (const table of ['room', 'sessions', 'tickets', 'receipts']) this.ctx.storage.sql.exec(`DELETE FROM ${table}`);
       });
+      await this.schedule();
       return;
     }
     let { state } = this.read();
@@ -311,11 +482,16 @@ export class WaveRoom extends DurableObject {
         if (state.players.some(player => player.id === info.playerId)) state = setConnection(state, info.playerId, false, now);
       }
     }
-    state = recoverDisconnected(state, now, random);
-    if (state.phase === 'REVEAL' && now >= state.round.revealAt) state = applyAction(state, null, { type: 'advance', now }, random);
-    this.write(state, false);
+    state = recoverDisconnected(state, now, random, deck(state));
+    if (state.phase === 'REVEAL' && now >= state.round.revealAt) state = applyAction(state, null, { type: 'advance', now }, random, deck(state));
+    this.preserveRoster(state);
+    this.ctx.storage.transactionSync(() => {
+      this.queueRanking(state);
+      this.write(state, false);
+    });
     this.broadcast(state);
     this.ctx.storage.sql.exec('DELETE FROM tickets WHERE expires_at < ?', now);
+    await this.flushRanking();
     await this.schedule();
   }
 }
@@ -333,12 +509,38 @@ export default {
       if (!originAllowed(origin, request, env)) throw fault('ORIGIN', 'Цей сайт не може підключитися до гри.', 403);
       if (request.method === 'OPTIONS') return json(null, 204, origin);
       if (url.pathname === '/api/health' && request.method === 'GET') return json({ ok: true, game: 'Довжина хвилі' }, 200, origin);
+      if (url.pathname === '/api/hvylia/telegram-webhook' && request.method === 'POST') return json(await webhook(request, env));
+      if (url.pathname === '/api/hvylia/leaderboard' && request.method === 'GET') return json(await ranking(env).list(50), 200, origin);
+      if (url.pathname === '/api/hvylia/account' && request.method === 'GET') {
+        const user = await identity(request, env);
+        const profile = user ? await account(env, user.id).profile() : null;
+        return json({
+          telegramAvailable: Boolean(env.HVYLIA_BOT_TOKEN && env.HVYLIA_BOT_USERNAME),
+          botUsername: env.HVYLIA_BOT_USERNAME || '', paymentReady: paymentReady(env), profile,
+          packs: PACKS.map(pack => ({ ...pack, owned: pack.free || Boolean(profile?.ownedPacks.includes(pack.id)), available: true }))
+        }, 200, origin);
+      }
+      if (url.pathname === '/api/hvylia/invoice' && request.method === 'POST') {
+        if (!paymentReady(env)) throw fault('PAYMENT_SETUP', 'Оплата стане доступною після підключення Telegram-бота.', 503);
+        const user = await identity(request, env, true);
+        const { packId } = await readJson(request);
+        return json(await account(env, user.id).createInvoice(packId), 200, origin);
+      }
+      if (url.pathname === '/api/hvylia/admin/refund' && request.method === 'POST') {
+        const token = (request.headers.get('Authorization') || '').replace(/^Bearer /u, '');
+        if (!env.HVYLIA_ADMIN_TOKEN || !constantTimeEqual(token, env.HVYLIA_ADMIN_TOKEN)) throw fault('ADMIN', 'Доступ заборонено.', 403);
+        const { telegramId, purchaseId } = await readJson(request);
+        if (!/^[1-9]\d{0,15}$/u.test(String(telegramId))) throw fault('INVALID', 'Некоректний акаунт.');
+        return json(await account(env, telegramId).refund(purchaseId), 200, origin);
+      }
       if (url.pathname === '/api/rooms' && request.method === 'POST') {
-        const { name } = await readJson(request);
+        const { name, packId = 'standard' } = await readJson(request);
+        const user = await identity(request, env);
+        await ownPack(env, user?.id, packId);
         nickname(name);
         for (let attempt = 0; attempt < 8; attempt += 1) {
           const code = roomCode();
-          const created = await env.ROOMS.getByName(code, { locationHint: 'eeur' }).initialize(code, name);
+          const created = await env.ROOMS.getByName(code, { locationHint: 'eeur' }).initialize(code, name, user, packId);
           if (!created.collision) return json(created, 201, origin);
         }
         throw fault('BUSY', 'Не вдалося створити кімнату. Спробуйте ще раз.', 503);
@@ -350,9 +552,9 @@ export default {
       if (request.method !== 'POST') throw fault('INVALID', 'Некоректний запит.', 405);
       if (match[2] === 'join') {
         const { name } = await readJson(request);
-        return json(await room.join(name), 200, origin);
+        return json(await room.join(name, await identity(request, env)), 200, origin);
       }
-      if (match[2] === 'resume') return json(await room.resume(bearer(request)), 200, origin);
+      if (match[2] === 'resume') return json(await room.resume(bearer(request), await identity(request, env)), 200, origin);
       if (match[2] === 'socket-ticket') return json(await room.socketTicket(bearer(request)), 200, origin);
       throw fault('INVALID', 'Некоректний запит.');
     } catch (error) {

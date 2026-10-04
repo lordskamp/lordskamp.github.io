@@ -1,6 +1,9 @@
 import { readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-const files = ['api/hvylia-core.js', 'api/hvylia-worker.js', 'content/hvylia/spectra.js'];
+const files = [];
+for (const dir of ['api', 'content/hvylia']) for (const name of await readdir(dir)) {
+  if (name.endsWith('.js') && (dir !== 'api' || name.startsWith('hvylia-'))) files.push(`${dir}/${name}`);
+}
 for (const name of await readdir('hvylia')) if (name.endsWith('.js')) files.push(`hvylia/${name}`);
 for (const file of files) {
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' });

@@ -1,4 +1,7 @@
-// Original Ukrainian spectra. Keep content separate from game rules and transport.
+import { COMMUNITY_SPECTRA } from './community-spectra.js';
+
+// Original Ukrainian spectra plus a separately attributed community localization.
+// Keep content separate from game rules and transport.
 // IDs remain stable when appending to a category; do not reorder existing rows.
 const packs = {
   everyday: [
@@ -174,11 +177,11 @@ const packs = {
 };
 
 /** @type {ReadonlyArray<Readonly<{ id: string, left: string, right: string, category: string }>>} */
-export const SPECTRA = Object.freeze(Object.entries(packs).flatMap(([category, rows]) =>
+export const SPECTRA = Object.freeze([...Object.entries(packs).flatMap(([category, rows]) =>
   rows.map(([left, right], index) => Object.freeze({
     id: `${category}-${String(index + 1).padStart(2, '0')}`,
     left,
     right,
     category
   }))
-));
+), ...COMMUNITY_SPECTRA]);

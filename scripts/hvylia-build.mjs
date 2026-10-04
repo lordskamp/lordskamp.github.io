@@ -15,7 +15,9 @@ await cp(resolve('fav'), resolve(output, 'fav'), { recursive: true });
 await mkdir(resolve(output, 'api'), { recursive: true });
 await mkdir(resolve(output, 'content/hvylia'), { recursive: true });
 await cp(resolve('api/hvylia-core.js'), resolve(output, 'api/hvylia-core.js'));
-await cp(resolve('content/hvylia/spectra.js'), resolve(output, 'content/hvylia/spectra.js'));
+for (const name of ['spectra.js', 'community-spectra.js', 'packs.js', 'SEJOSLAW-LICENSE.txt']) {
+  await cp(resolve('content/hvylia', name), resolve(output, 'content/hvylia', name));
+}
 // Publish only the game, its public pure rules/spectra, and favicon assets; credentials and room data stay on the server.
 const html = await readFile(resolve(output, 'hvylia/index.html'), 'utf8');
 for (const match of html.matchAll(/(?:src|href)="\.\/([^"?#]+)(?:[?#][^"]*)?"/gu)) {

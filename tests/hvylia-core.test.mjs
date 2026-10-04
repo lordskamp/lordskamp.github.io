@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ANIME_SPECTRA, GAMES_SPECTRA } from '../api/hvylia-premium-cards.js';
 
 import {
   GAME_CONFIG,
@@ -151,7 +152,7 @@ test('lobby host permissions and self-selection are enforced by the server', () 
   state = applyAction(state, 'host', { type: 'team', playerId: 'ally', team: 1 });
   assert.equal(state.players.find(player => player.id === 'ally').ready, false);
   throwsCode('INVALID', () => applyAction(state, 'host', { type: 'kick', playerId: 'host' }));
-  for (const winScore of [4, 31, '10', 10.5]) throwsCode('INVALID', () => applyAction(state, 'host', { type: 'settings', winScore }));
+  for (const winScore of [4, 6, 11, 29, 31, '10', 10.5]) throwsCode('INVALID', () => applyAction(state, 'host', { type: 'settings', winScore }));
 });
 
 test('start requires two connected ready participants per team; unready extras do not block it', () => {
@@ -476,4 +477,45 @@ test('public functions never mutate their input states, including failure paths'
   viewFor(initial, 'host');
   throwsCode('INVALID', () => applyAction(initial, 'host', { type: 'settings', teamNames: ['Нова', ''], winScore: 15 }));
   assert.deepEqual(initial, snapshot);
+});
+
+
+test('host goals use multiples of five and invalid pack settings are atomic', () => {
+  const initial = lobby();
+  for (const winScore of GAME_CONFIG.winScores) {
+    assert.equal(applyAction(initial, 'host', { type: 'settings', winScore }).config.winScore, winScore);
+  }
+  throwsCode('INVALID', () => applyAction(initial, 'host', { type: 'settings', winScore: 15, packId: 'invented' }));
+  assert.equal(initial.config.winScore, 10);
+  assert.equal(initial.config.packId, 'standard');
+  throwsCode('ROLE', () => applyAction(initial, 'ally', { type: 'settings', packId: 'anime' }));
+});
+
+test('server supplies the selected deck for first, next and recovered rounds', () => {
+  for (const [packId, cards] of [['anime', ANIME_SPECTRA], ['games', GAMES_SPECTRA]]) {
+    let state = applyAction(lobby(), 'host', { type: 'settings', packId });
+    state = applyAction(state, 'host', { type: 'start' }, randomSequence(0, 0, .5), cards);
+    assert.ok(cards.some(card => card.id === state.round.spectrum.id));
+    const first = state.round.spectrum.id;
+    state = scored(state);
+    state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, randomSequence(0, .5), cards);
+    assert.ok(cards.some(card => card.id === state.round.spectrum.id));
+    assert.notEqual(state.round.spectrum.id, first);
+    state = setConnection(state, state.round.psychicId, false, 1000);
+    state = recoverDisconnected(state, 31001, randomSequence(0, .5), cards);
+    assert.ok(cards.some(card => card.id === state.round.spectrum.id));
+    assert.equal(viewFor(state, 'host').config.packId, packId);
+  }
+});
+
+test('verified account identity remains private in all room views', () => {
+  let state = createRoom('PRIV', { id: 'owner', name: 'Оля', _accountId: '123456789' });
+  state = addPlayer(state, { id: 'friend', name: 'Друг', _accountId: '987654321' });
+  assert.equal(state.players[0]._accountId, '123456789');
+  for (const id of ['owner', 'friend', null]) {
+    const encoded = JSON.stringify(viewFor(state, id));
+    assert.equal(encoded.includes('123456789'), false);
+    assert.equal(encoded.includes('987654321'), false);
+    assert.equal(encoded.includes('_accountId'), false);
+  }
 });

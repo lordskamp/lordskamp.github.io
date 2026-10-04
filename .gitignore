@@ -3,6 +3,8 @@ archive/
 node_modules/
 .wrangler/
 .dev.vars
+.dev.vars.*
+.hvylia-bot.local.json
 wrangler.toml
 .wrangler-test.toml
 coverage/

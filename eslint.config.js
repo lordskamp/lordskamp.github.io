@@ -32,7 +32,7 @@ export default [
     }
   },
   {
-    files: ['api/*.js', 'scripts/*.mjs', 'tests/*.mjs', 'eslint.config.js'],
+    files: ['api/*.js', 'scripts/*.mjs', 'tests/**/*.mjs', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

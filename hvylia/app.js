@@ -4,6 +4,8 @@ import { Dial, dialMarkup } from './dial.js';
 import { Sound } from './sound.js';
 import { PracticeSession } from './practice.js';
 import { scoreTrackMarkup, animateScoreTracks } from './score-track.js';
+import { PACKS } from '../content/hvylia/packs.js';
+import { telegramReady, inTelegram, setTelegramBack, telegramRoomCode, openTelegram, openStarInvoice } from './telegram.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
@@ -18,6 +20,13 @@ let entryMode = 'create';
 let inviteCode = new URL(window.location.href).searchParams.get('r')?.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || '';
 let noticeTimer;
 let settingsDirty = false;
+let account = null;
+let accountLoading = false;
+let entryPackId = 'standard';
+let purchasePackId = null;
+let rankingDialog = null;
+let lastPurchaseId = '';
+try { lastPurchaseId = window.localStorage.getItem('hvylia.lastPurchase') || ''; } catch { /* Live receipts still work without storage. */ }
 const busy = new Set();
 
 function announce(text) { $('#live').textContent = text; }
@@ -31,7 +40,10 @@ function notice(text) {
 function activeSession() { return practice || transport; }
 function me() { return state?.players.find(player => player.id === activeSession().session?.playerId); }
 function isHost() { return state?.hostId === activeSession().session?.playerId; }
-function roomURL() { const url = new URL(window.location.href); url.searchParams.set('r', state.code); return url.href; }
+function roomURL() {
+  if (inTelegram() && account?.botUsername) return `https://t.me/${account.botUsername.replace(/^@/u, '')}?startapp=room_${state.code}`;
+  const url = new URL(window.location.href); url.hash = ''; url.searchParams.delete('practice'); url.searchParams.set('r', state.code); return url.href;
+}
 function setText(selector, value) { const element = $(selector); if (element && element.textContent !== String(value)) element.textContent = value; }
 function setHidden(selector, hidden) { const element = $(selector); if (element) element.hidden = hidden; }
 function setDisabled(selector, disabled) { const element = $(selector); if (element) element.disabled = disabled; }
@@ -103,8 +115,117 @@ function render() {
   }
   if (screen === 'lobby') updateLobby();
   if (screen === 'game') updateGame();
+  if (screen === 'entry') updatePackCards($('#entry-packs'), 'entry');
   app.dataset.phase = state?.phase || 'ENTRY';
   app.dataset.practice = String(Boolean(practice));
+  updateTelegramBack();
+}
+
+function updateTelegramBack() {
+  setTelegramBack(rankingDialog || state || $('#rules').open ? () => {
+    const dialog = $('dialog[open]');
+    if (dialog) { dialog.close(); return; }
+    if (practice) leavePractice();
+    else $('#leave-button')?.click();
+  } : null);
+}
+
+async function refreshAccount({ quiet = true } = {}) {
+  if (accountLoading) return account;
+  accountLoading = true;
+  updatePackCards($('#entry-packs'), 'entry'); updatePackCards($('#lobby-packs'), 'lobby');
+  try {
+    account = await transport.get('/hvylia/account');
+    const nickname = $('#nickname');
+    if (nickname && !nickname.value && account.profile?.name) nickname.value = Array.from(account.profile.name).slice(0, 24).join('');
+  } catch (error) { if (!quiet) notice(errorText(error)); }
+  finally {
+    accountLoading = false;
+    updatePackCards($('#entry-packs'), 'entry'); updatePackCards($('#lobby-packs'), 'lobby');
+  }
+  return account;
+}
+
+function ownedPack(pack) { return Boolean(pack.free || pack.priceStars === 0 || account?.packs?.find(item => item.id === pack.id)?.owned); }
+
+function purchaseReceiptMarkup() {
+  return lastPurchaseId ? `<p class="purchase-receipt"><span>${t.purchaseReceipt}</span><code>${esc(lastPurchaseId)}</code><button type="button" class="quiet-button" data-copy-purchase>${t.purchaseCopy} ↗</button></p>` : '';
+}
+
+document.addEventListener('click', async event => {
+  if (!event.target.closest('[data-copy-purchase]')) return;
+  try { await window.navigator.clipboard.writeText(lastPurchaseId); notice(t.purchaseCopied); }
+  catch { notice(lastPurchaseId); }
+});
+
+function packCatalogMarkup(context) {
+  const host = context === 'entry' || isHost();
+  return `<section class="pack-catalog ${context === 'entry' ? 'entry-catalog' : 'lobby-catalog'}" aria-labelledby="${context}-packs-title"><header class="pack-catalog-heading"><div><p class="eyebrow">${t.packsEyebrow}</p><h2 id="${context}-packs-title">${t.packsTitle}</h2></div><p>${host ? t.packsHint : t.packHostSelect}</p></header><div id="${context}-packs" class="pack-grid"></div><p class="pack-sharing-note">${t.packShared}</p><button class="text-link pack-refresh" type="button" data-pack-refresh>${t.packRefresh} ↻</button><div class="purchase-receipt-slot">${purchaseReceiptMarkup()}</div></section>`;
+}
+
+function updatePackCards(element, context) {
+  if (!element) return;
+  const selectedId = context === 'entry' ? entryPackId : state?.config.packId || 'standard';
+  const host = context === 'entry' || isHost();
+  const packs = context === 'lobby' && !host ? PACKS.filter(pack => pack.id === selectedId) : PACKS;
+  const markup = packs.map(pack => {
+    const owned = ownedPack(pack), selected = selectedId === pack.id;
+    const purchasing = purchasePackId === pack.id;
+    let action = '';
+    if (selected || owned) {
+      const disabled = selected || !host || (context === 'lobby' && (!online || busy.has('settings')));
+      action = `<button class="pack-action" type="button" data-pack-select="${esc(pack.id)}" data-focus-key="pack-select-${esc(pack.id)}" aria-pressed="${selected}" ${disabled ? 'disabled' : ''}>${selected ? `✓ ${context === 'lobby' ? t.packSelected : t.packAvailable}` : `${t.packChoose} →`}</button>`;
+    } else if (!account?.paymentReady) {
+      action = `<button class="pack-action" type="button" disabled>${accountLoading ? t.packPreparing : t.packUnavailable}</button>`;
+    } else {
+      const label = purchasing ? t.packConfirming : inTelegram() && account?.profile ? t.packPurchase : t.packTelegram;
+      action = `<button class="pack-action pack-buy" type="button" data-pack-buy="${esc(pack.id)}" data-focus-key="pack-buy-${esc(pack.id)}" ${purchasePackId ? 'disabled' : ''}>${label} ${!purchasing ? '↗' : ''}</button>`;
+    }
+    return `<article class="pack-card pack-${esc(pack.id)}${selected ? ' is-selected' : ''}" data-pack-id="${esc(pack.id)}"><div class="pack-art" aria-hidden="true"><span class="pack-symbol">${pack.id === 'anime' ? '✦' : pack.id === 'games' ? '✚' : '∿'}</span><span class="pack-art-line"></span><span class="pack-art-dot"></span></div><div class="pack-copy"><div class="pack-topline"><span>${esc(t.packCount(pack.count))}</span><span class="pack-price">${pack.priceStars ? `${pack.priceStars} ⭐` : t.packFree}</span></div><h3>${esc(pack.title)}</h3><p>${esc(pack.description)}</p><small>${owned && pack.priceStars ? t.packOwned : pack.priceStars ? t.packPermanent : t.packFree}</small></div>${action}</article>`;
+  }).join('');
+  replacePreservingFocus(element, markup);
+  const refresh = element.closest('.pack-catalog')?.querySelector('[data-pack-refresh]');
+  if (refresh) refresh.disabled = accountLoading || Boolean(purchasePackId);
+  const receipt = element.closest('.pack-catalog')?.querySelector('.purchase-receipt-slot');
+  if (receipt) replacePreservingFocus(receipt, purchaseReceiptMarkup());
+}
+
+function bindPackCards(element, context) {
+  element.closest('.pack-catalog').querySelector('[data-pack-refresh]').addEventListener('click', () => refreshAccount({ quiet: false }));
+  element.addEventListener('click', async event => {
+    const select = event.target.closest('[data-pack-select]');
+    if (select) {
+      if (context === 'entry') { entryPackId = select.dataset.packSelect; updatePackCards(element, context); $('#nickname').focus(); }
+      else await act({ type: 'settings', packId: select.dataset.packSelect });
+    }
+    const buy = event.target.closest('[data-pack-buy]');
+    if (buy) await purchasePack(buy.dataset.packBuy);
+  });
+}
+
+async function purchasePack(packId) {
+  if (purchasePackId) return;
+  if (!inTelegram() || !account?.profile) {
+    if (!openTelegram(account?.botUsername)) notice(t.packUnavailable);
+    return;
+  }
+  purchasePackId = packId; render();
+  try {
+    const invoice = await transport.request('/hvylia/invoice', { packId });
+    lastPurchaseId = String(invoice.purchaseId || '');
+    try { if (lastPurchaseId) window.localStorage.setItem('hvylia.lastPurchase', lastPurchaseId); } catch { /* Keep this receipt in memory. */ }
+    render();
+    const status = await openStarInvoice(invoice.invoiceLink);
+    if (status === 'cancelled' || status === 'failed') { notice(t.packCancelled); return; }
+    // A client-side "paid" callback never grants access. Wait for server entitlement.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await refreshAccount({ quiet: false });
+      if (account?.packs?.find(pack => pack.id === packId)?.owned) { notice(t.packUnlocked); return; }
+      await new Promise(resolve => window.setTimeout(resolve, 750 + attempt * 200));
+    }
+    notice(t.packPending);
+  } catch (error) { notice(errorText(error)); if (error.code === 'OWNED') await refreshAccount(); }
+  finally { purchasePackId = null; render(); }
 }
 
 function mountEntry() {
@@ -145,7 +266,7 @@ function mountEntry() {
     const button = $('#enter-button');
     button.disabled = true; button.textContent = code ? t.joinBusy : t.createBusy;
     setHidden('#entry-error', true);
-    try { await transport.enter(name, code); }
+    try { await transport.enter(name, code, entryPackId); }
     catch (error) {
       if (!$('#entry-error')) return;
       setText('#entry-error', errorText(error)); setHidden('#entry-error', false);
@@ -166,6 +287,8 @@ function mountEntry() {
     resume.addEventListener('click', () => resumeRoom(previousRoom));
   }
   $('[data-open-rules]').addEventListener('click', openRules);
+  app.insertAdjacentHTML('beforeend', packCatalogMarkup('entry'));
+  bindPackCards($('#entry-packs'), 'entry');
   choose(entryMode);
 }
 
@@ -200,6 +323,9 @@ function mountLobby() {
   settingsDirty = false;
   app.innerHTML = `${roomHeading()}<header class="lobby-heading"><p class="eyebrow">${t.beforeRound}</p><h1>${t.lobbyTitle}</h1><p>${t.lobbyIntro}</p></header><div id="teams" class="lobby-teams"></div><div id="unassigned" class="unassigned"></div><div class="lobby-bottom"><div class="readiness"><button id="ready-button" type="button" class="button"></button><p id="lobby-status" class="field-note"></p></div><div class="host-start" id="host-start"><button id="randomize-button" class="quiet-button" type="button">${t.randomize} ↔</button><button id="start-button" class="button button-dark" type="button">${t.start} →</button></div></div><details id="host-settings" class="settings"><summary>${t.settings} <span aria-hidden="true">+</span></summary><form id="settings-form"><div class="settings-grid"><div><label for="team-name-0">${t.teamName} 1</label><input id="team-name-0" maxlength="28" required></div><div><label for="team-name-1">${t.teamName} 2</label><input id="team-name-1" maxlength="28" required></div><div><label for="win-score">${t.winScore}</label><input id="win-score" type="number" min="5" max="30" step="1" required></div></div><div class="settings-bottom"><label class="checkbox-label"><input id="self-select" type="checkbox">${t.selfSelect}</label><button class="button button-small" id="save-settings" type="submit">${t.save} →</button></div></form></details>`;
   bindRoomTools();
+  $('.lobby-heading').insertAdjacentHTML('afterend', `<details id="lobby-pack-picker" class="lobby-pack-picker" ${window.matchMedia('(min-width: 761px)').matches ? 'open' : ''}><summary><span>${t.packRoom}</span><strong id="lobby-pack-name"></strong><i aria-hidden="true">+</i></summary>${packCatalogMarkup('lobby')}</details><p class="rating-lobby-note">${t.ratingLobby}</p>`);
+  bindPackCards($('#lobby-packs'), 'lobby');
+  $('#win-score').step = '5';
   $('#teams').addEventListener('click', teamEvent);
   $('#unassigned').addEventListener('click', teamEvent);
   $('#teams').addEventListener('change', teamChange);
@@ -225,6 +351,8 @@ function replacePreservingFocus(element, markup) {
   if (focused) Array.from(element.querySelectorAll('[data-focus-key]')).find(item => item.dataset.focusKey === focused)?.focus({ preventScroll: true });
 }
 function updateLobby() {
+  updatePackCards($('#lobby-packs'), 'lobby');
+  setText('#lobby-pack-name', PACKS.find(pack => pack.id === state.config.packId)?.title || PACKS[0].title);
   const player = me();
   const allowChoice = state.config.selfSelect || isHost();
   replacePreservingFocus($('#teams'), state.teams.map((team, i) => {
@@ -282,6 +410,7 @@ function bindRoomTools() {
 function mountGame() {
   app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><p class="phase-description" id="phase-description"></p><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2><button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button></div></div><button id="shutter-toggle" class="shutter-toggle" type="button" aria-keyshortcuts="Space" title="${t.shutterHint}" hidden>${t.shutterClose}</button><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessHint}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
   bindRoomTools();
+  if (!practice && state.config.ranked) $('.room-tools').insertAdjacentHTML('beforeend', `<span class="ranked-match">${t.ratingRanked}</span>`);
   dial = new Dial($('#dial'), position => {
     if (state?.phase !== 'TEAM_GUESS' || !online) return;
     sound.play('move');
@@ -412,8 +541,45 @@ function confirmAction(title, description, buttonLabel, action) {
   dialog.addEventListener('close', () => dialog.remove());
   dialog.showModal();
 }
-function openRules() { $('#rules').showModal(); }
+function openRules() { $('#rules').showModal(); updateTelegramBack(); }
 $('#rules-button').addEventListener('click', openRules);
+$('#rules').addEventListener('close', updateTelegramBack);
+
+function profileMarkup() {
+  const profile = account?.profile;
+  if (!profile) return `<div class="rating-guest"><p>${t.ratingGuest}</p>${account?.botUsername ? `<button class="button button-small button-outline" type="button" data-rating-telegram>${t.packTelegram} ↗</button>` : ''}</div>`;
+  return `<section class="rating-profile" aria-label="${t.ratingYou}"><div class="rating-identity"><span class="rating-avatar" aria-hidden="true">${esc(Array.from(profile.name || '?')[0])}</span><div><p class="eyebrow">${t.ratingYou}</p><h3>${esc(profile.name)}</h3></div></div><dl class="rating-stats">${[['wins', t.ratingWins], ['losses', t.ratingLosses], ['played', t.ratingPlayed], ['points', t.ratingPoints]].map(([key, title]) => `<div><dt>${title}</dt><dd>${Number(profile.stats?.[key]) || 0}</dd></div>`).join('')}</dl></section>`;
+}
+
+async function loadRanking(dialog) {
+  const result = $('#rating-results', dialog);
+  const refresh = $('[data-rating-refresh]', dialog);
+  refresh.disabled = true; result.innerHTML = `<p class="rating-empty" role="status">${t.ratingLoading}</p>`;
+  try {
+    const [ranking] = await Promise.all([transport.get('/hvylia/leaderboard'), refreshAccount()]);
+    if (!dialog.isConnected) return;
+    $('#rating-profile', dialog).innerHTML = profileMarkup();
+    $('[data-rating-telegram]', dialog)?.addEventListener('click', () => openTelegram(account?.botUsername));
+    const entries = ranking.entries || [];
+    if (!entries.length) result.innerHTML = `<p class="rating-empty">${t.ratingEmpty}</p>`;
+    else result.innerHTML = `<div class="rating-table-wrap"><table class="rating-table"><thead><tr><th scope="col"><span class="sr-only">${t.ratingRanked}</span>#</th><th scope="col">${t.ratingPlayer}</th><th scope="col">${t.ratingWins}</th><th scope="col">${t.ratingPlayed}</th></tr></thead><tbody>${entries.map((entry, index) => `<tr${entry.publicId === account?.profile?.publicId ? ' class="rating-mine"' : ''}><td>${Number(entry.rank) || index + 1}</td><th scope="row">${esc(entry.name)}${entry.publicId === account?.profile?.publicId ? `<small>${t.you}</small>` : ''}</th><td class="rating-win-count">${Number(entry.wins) || 0}</td><td>${Number(entry.played) || 0}</td></tr>`).join('')}</tbody></table></div>`;
+  } catch { if (dialog.isConnected) result.innerHTML = `<p class="rating-empty" role="status">${t.ratingUnavailable}</p>`; }
+  finally { if (dialog.isConnected) refresh.disabled = false; }
+}
+
+function openRanking() {
+  if (rankingDialog?.isConnected) return;
+  const dialog = rankingDialog = document.createElement('dialog');
+  dialog.className = 'rating-dialog'; dialog.setAttribute('aria-labelledby', 'rating-title');
+  dialog.innerHTML = `<div class="dialog-top"><p class="eyebrow">${t.ratingEyebrow}</p><button type="button" class="quiet-button" data-rating-close>${t.close} ×</button></div><h2 id="rating-title">${t.ratingTitle}</h2><p class="rating-intro">${t.ratingIntro}</p><div id="rating-profile">${profileMarkup()}</div><div class="rating-list-heading"><h3>${t.ratingEyebrow}</h3><button class="text-link" type="button" data-rating-refresh>${t.ratingRefresh} ↻</button></div><div id="rating-results"></div><p class="rating-eligibility">${t.ratingEligible}</p>`;
+  document.body.append(dialog);
+  $('[data-rating-close]', dialog).addEventListener('click', () => dialog.close());
+  $('[data-rating-refresh]', dialog).addEventListener('click', () => loadRanking(dialog));
+  $('[data-rating-telegram]', dialog)?.addEventListener('click', () => openTelegram(account?.botUsername));
+  dialog.addEventListener('close', () => { rankingDialog = null; dialog.remove(); updateTelegramBack(); });
+  dialog.showModal(); updateTelegramBack(); loadRanking(dialog);
+}
+$('#ranking-button').addEventListener('click', openRanking);
 document.querySelectorAll('[data-close-rules]').forEach(button => button.addEventListener('click', () => $('#rules').close()));
 $('#rules').addEventListener('click', event => { if (event.target === $('#rules') && (event.clientX < $('#rules').getBoundingClientRect().left || event.clientX > $('#rules').getBoundingClientRect().right || event.clientY < $('#rules').getBoundingClientRect().top || event.clientY > $('#rules').getBoundingClientRect().bottom)) $('#rules').close(); });
 
@@ -431,6 +597,14 @@ async function resumeRoom(resumeCode) {
 }
 
 render();
+telegramReady.then(() => {
+  const startRoom = telegramRoomCode();
+  if (startRoom && !state && !practice && !inviteCode) {
+    inviteCode = startRoom; entryMode = 'join'; screen = ''; render();
+    if (savedSession(startRoom)) resumeRoom(startRoom);
+  }
+  updateTelegramBack(); refreshAccount();
+});
 if (new URL(window.location.href).searchParams.get('practice') === '1') startPractice();
 else {
   const resumeCode = inviteCode || lastRoom();

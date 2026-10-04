@@ -84,9 +84,10 @@ export class Dial {
     this.on('pointerdown', event => {
       if (!this.editable || (event.button !== undefined && event.button !== 0)) return;
       const p = this.pointerPoint(event);
-      // The lower half holds the spectrum card, rather than another input area.
+      // The lower half holds the card. Include the thin baseline rim because
+      // touch coordinates can round a point on the edge a few SVG units down.
       const distance = Math.hypot(p.x - 360, p.y - 330);
-      if (distance > 302 || (p.y > 330 && distance > 44)) return;
+      if (distance > 302 || (p.y > 336 && distance > 44)) return;
       event.preventDefault();
       element.focus({ preventScroll: true });
       this.dragging = true;
