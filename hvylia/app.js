@@ -279,20 +279,29 @@ function bindRoomTools() {
 }
 
 function mountGame() {
-  app.innerHTML = `${roomHeading()}<div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span><span id="psychic-name"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><p class="phase-description" id="phase-description"></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2></div><div class="game-dial">${dialMarkup()}</div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessHint}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section><details class="game-players"><summary>${t.showPlayers} <span aria-hidden="true">+</span></summary><div id="game-roster"></div></details>`;
+  app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span><span id="psychic-name"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><p class="phase-description" id="phase-description"></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2></div></div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessHint}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
   bindRoomTools();
   dial = new Dial($('#dial'), position => {
     if (state?.phase !== 'TEAM_GUESS' || !online) return;
     sound.play('move');
     activeSession().action({ type: 'move', position, roundId: state.round.id }).catch(error => { if (online) notice(errorText(error)); });
   });
-  $('#clue-form').addEventListener('submit', event => { event.preventDefault(); roundAction('clue', { text: $('#clue-input').value.trim() }); });
+  $('#dial').addEventListener('shutterchange', updateClueControl);
+  $('#clue-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if ($('#dial').dataset.shutter !== 'open') return;
+    roundAction('clue', { text: $('#clue-input').value.trim() });
+  });
   $('#lock-button').addEventListener('click', () => roundAction('lock', { position: dial.position }));
   $('#bet-left').addEventListener('click', () => roundAction('bet', { side: 'left' }));
   $('#bet-right').addEventListener('click', () => roundAction('bet', { side: 'right' }));
   $('#next-button').addEventListener('click', () => roundAction('next'));
   $('#rematch-button').addEventListener('click', () => act({ type: 'rematch' }));
   $('#return-lobby').addEventListener('click', () => confirmAction(t.returnLobbyTitle, t.returnLobbyDescription, t.returnLabel, () => act({ type: 'lobby' })));
+}
+
+function updateClueControl() {
+  setDisabled('#send-clue', !online || busy.has('clue') || $('#dial')?.dataset.shutter !== 'open');
 }
 
 function updateGame() {
@@ -337,7 +346,6 @@ function updateGame() {
     setText('#send-clue', `${t.practiceSendClue} →`);
     setText('#lock-button', `${t.practiceLock} →`);
     setText('#rematch-button', `${t.practiceAgain} →`);
-    setHidden('.game-players', true);
   }
   if (!practice) setText('#role-label', role);
   setText('#phase-title', title); setText('#phase-description', description);
@@ -348,6 +356,7 @@ function updateGame() {
   setText('#psychic-name', `${t.psychic}: ${psychicName}`);
   setHidden('#psychic-name', Boolean(practice));
   setText('#spectrum-left', round.spectrum.left); setText('#spectrum-right', round.spectrum.right);
+  $('.spectrum-poles').classList.toggle('is-long', Math.max(round.spectrum.left.length, round.spectrum.right.length) > 25);
   setHidden('#spectator-note', !spectator);
   setHidden('#pause-banner', !state.paused); setText('#pause-reason', state.pauseReason || t.defaultPauseReason);
   setHidden('#return-lobby', !isHost()); setDisabled('#return-lobby', !online || busy.has('lobby'));
@@ -368,13 +377,24 @@ function updateGame() {
   setHidden('#next-waiting', !scorePhase || canNext);
   setHidden('#game-over-controls', !ended); setHidden('#rematch-button', !isHost()); setDisabled('#rematch-button', !online || busy.has('rematch'));
   setHidden('#rematch-waiting', isHost());
-  dial.update({ position: round.guess, target: round.target, editable: canGuess && online && !busy.has('lock'), psychic, revealed, result: round.result, showNeedle: state.phase !== 'PSYCHIC_VIEW', roundId: round.id });
+  dial.update({ position: round.guess, target: state.phase === 'PSYCHIC_VIEW' || revealed ? round.target : undefined, editable: canGuess && online && !busy.has('lock'), psychic, revealed, result: round.result, showNeedle: state.phase !== 'PSYCHIC_VIEW', roundId: round.id });
+  updateClueControl();
   app.classList.toggle('is-revealed', revealed); app.classList.toggle('is-game-over', ended);
   const previousScores = $('#scoreboard').dataset.scores?.split(',').map(Number);
-  replacePreservingFocus($('#scoreboard'), state.teams.map((team, i) => `<div class="score-team team-${i}${round.activeTeam === i ? ' active' : ''}"><span>${esc(team.name)}${round.activeTeam === i ? `<small>${t.activeLabel}</small>` : ''}</span><strong>${team.score}</strong></div>`).join('') + `<span class="score-limit">${t.to} ${state.config.winScore}</span>`);
-  if (previousScores) state.teams.forEach((team, i) => { if (team.score > previousScores[i]) $(`.score-team.team-${i} strong`).classList.add('score-added'); });
+  replacePreservingFocus($('#scoreboard'), state.teams.map((team, i) => {
+    const members = state.players.filter(item => item.team === i);
+    const remaining = Math.max(0, state.config.winScore - team.score);
+    const winner = ended && state.winner === i;
+    const remainingText = winner ? t.teamWinner : state.overtime && !ended ? t.overtimeRemaining : t.remainingPoints(remaining);
+    const roster = practice ? `<li class="practice-member"><span class="member-name">${t.practicePlayer}</span><span class="member-role">${t.practiceTitle}</span></li>` : members.map(item => {
+      const roles = [item.id === player?.id ? t.you : '', item.id === round.psychicId ? t.psychic : '', item.id === state.hostId ? t.host : '', !item.connected ? t.disconnected : ''].filter(Boolean);
+      return `<li class="${item.connected ? '' : 'member-offline'}"><span class="member-name">${esc(item.name)}</span>${roles.length ? `<span class="member-role">${esc(roles.join(' · '))}</span>` : ''}</li>`;
+    }).join('');
+    const progress = Math.min(100, team.score / state.config.winScore * 100);
+    return `<section class="score-team team-${i}${round.activeTeam === i ? ' active' : ''}${winner ? ' team-winner' : ''}" aria-label="${esc(team.name)}"><header class="team-heading"><p class="team-kicker">${t.teamNumber(i + 1)}</p><h2>${esc(team.name)}</h2><span class="team-turn">${winner ? t.teamWinner : round.activeTeam === i && !ended ? t.activeLabel : t.waitingTurn}</span></header><div class="team-score"><strong>${team.score}</strong><span>/ ${state.config.winScore}</span></div><p class="team-remaining">${esc(remainingText)}</p><div class="team-progress" role="progressbar" aria-label="${esc(t.teamProgress(team.name))}" aria-valuemin="0" aria-valuemax="${state.config.winScore}" aria-valuenow="${Math.min(team.score, state.config.winScore)}" aria-valuetext="${esc(t.teamProgressValue(team.score, state.config.winScore))}"><i style="width:${progress}%"></i></div><ul class="team-members" aria-label="${t.players}">${roster}</ul></section>`;
+  }).join(''));
+  if (previousScores) state.teams.forEach((team, i) => { if (team.score > previousScores[i]) $(`.score-team.team-${i} .team-score strong`).classList.add('score-added'); });
   $('#scoreboard').dataset.scores = state.teams.map(team => team.score).join(',');
-  replacePreservingFocus($('#game-roster'), state.teams.map((team, i) => `<section class="roster-team team-${i}"><h3>${esc(team.name)}</h3><p>${state.players.filter(item => item.team === i).map(item => `${esc(item.name)}${item.id === round.psychicId ? ` · ${t.psychic}` : ''}${!item.connected ? ` · ${t.disconnected.toLowerCase()}` : ''}`).join(', ')}</p></section>`).join(''));
 }
 
 function confirmAction(title, description, buttonLabel, action) {

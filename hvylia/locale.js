@@ -50,6 +50,15 @@ export const uk = {
   },
   emptyTeam: 'Тут поки тихо. Додайте свою хвилю.', allReady: 'Команди готові. Можна починати!',
   scoreboardLabel: 'Рахунок', returnLobby: 'Повернутися до кімнати',
+  teamNumber: number => `Команда ${String(number).padStart(2, '0')}`, waitingTurn: 'Чекають ходу', teamWinner: 'Переможці',
+  remainingPoints: points => {
+    const last = points % 10, two = points % 100;
+    const word = last === 1 && two !== 11 ? 'очко' : last >= 2 && last <= 4 && (two < 12 || two > 14) ? 'очки' : 'очок';
+    return `До перемоги: ${points} ${word}`;
+  },
+  overtimeRemaining: 'До перемоги: перевага в 1 очко',
+  teamProgress: name => `Рахунок команди ${name}`, teamProgressValue: (score, goal) => `${score} очок, переможна межа ${goal}`,
+  practicePlayer: 'Ви — усі ролі',
   returnLobbyTitle: 'Повернутися до кімнати?', returnLobbyDescription: 'Поточний матч і рахунок буде скинуто. Ви зможете запросити нових учасників і розподілити команди.',
   returnLabel: 'Повернутися', spectatorNote: 'Спостерігаєте за грою. Обрати команду можна перед наступним матчем.',
   spectatorRole: 'ВИ — СПОСТЕРІГАЧ', teamRole: name => `ВИ — ${name}`,
