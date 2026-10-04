@@ -34,6 +34,8 @@ export class Dial {
     this.svg = element.querySelector('svg');
     this.onMove = onMove;
     this.position = 50;
+    this.roundId = null;
+    this.showNeedle = true;
     this.editable = false;
     this.dragging = false;
     this.lastSend = 0;
@@ -100,12 +102,37 @@ export class Dial {
   }
   paint(position) {
     this.position = position;
-    this.needle.setAttribute('transform', `rotate(${(position - 50) * 1.8} 360 330)`);
+    this.needle.style.transform = `rotate(${(position - 50) * 1.8}deg)`;
     this.readout.textContent = Math.round(position);
-    this.element.setAttribute('aria-valuenow', String(Math.round(position)));
-    this.element.setAttribute('aria-valuetext', t.positionValue(Math.round(position)));
+    if (this.showNeedle) {
+      this.element.setAttribute('aria-valuenow', String(Math.round(position)));
+      this.element.setAttribute('aria-valuetext', t.positionValue(Math.round(position)));
+    }
   }
-  update({ position = 50, target, editable = false, revealed = false, psychic = false, result = null }) {
+  update({ position = 50, target, editable = false, revealed = false, psychic = false, result = null, showNeedle = true, roundId = null }) {
+    const newRound = roundId !== null && roundId !== this.roundId;
+    this.roundId = roundId;
+    this.showNeedle = showNeedle;
+    this.needle.setAttribute('visibility', showNeedle ? 'visible' : 'hidden');
+    this.readout.setAttribute('visibility', showNeedle ? 'visible' : 'hidden');
+    // A new round is a reset, not a movement from the previous answer.
+    this.needle.style.transition = newRound || !showNeedle ? 'none' : '';
+    if (newRound) {
+      window.clearTimeout(this.timer);
+      this.timer = null;
+      this.dragging = false;
+      this.lastLocalMove = 0;
+      this.element.classList.remove('dragging');
+      if (this.pointerId !== undefined && this.element.hasPointerCapture(this.pointerId)) this.element.releasePointerCapture(this.pointerId);
+    }
+    this.element.setAttribute('role', showNeedle ? 'slider' : 'img');
+    this.element.setAttribute('aria-label', showNeedle ? t.position : psychic ? t.targetSecret : t.targetHidden);
+    if (showNeedle) {
+      this.element.setAttribute('aria-valuemin', '0');
+      this.element.setAttribute('aria-valuemax', '100');
+    } else {
+      ['aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'].forEach(name => this.element.removeAttribute(name));
+    }
     this.editable = editable;
     this.element.setAttribute('aria-disabled', String(!editable));
     this.element.tabIndex = editable ? 0 : -1;

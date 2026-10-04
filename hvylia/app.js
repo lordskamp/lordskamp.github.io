@@ -368,7 +368,7 @@ function updateGame() {
   setHidden('#next-waiting', !scorePhase || canNext);
   setHidden('#game-over-controls', !ended); setHidden('#rematch-button', !isHost()); setDisabled('#rematch-button', !online || busy.has('rematch'));
   setHidden('#rematch-waiting', isHost());
-  dial.update({ position: round.guess, target: round.target, editable: canGuess && online && !busy.has('lock'), psychic, revealed, result: round.result });
+  dial.update({ position: round.guess, target: round.target, editable: canGuess && online && !busy.has('lock'), psychic, revealed, result: round.result, showNeedle: state.phase !== 'PSYCHIC_VIEW', roundId: round.id });
   app.classList.toggle('is-revealed', revealed); app.classList.toggle('is-game-over', ended);
   const previousScores = $('#scoreboard').dataset.scores?.split(',').map(Number);
   replacePreservingFocus($('#scoreboard'), state.teams.map((team, i) => `<div class="score-team team-${i}${round.activeTeam === i ? ' active' : ''}"><span>${esc(team.name)}${round.activeTeam === i ? `<small>${t.activeLabel}</small>` : ''}</span><strong>${team.score}</strong></div>`).join('') + `<span class="score-limit">${t.to} ${state.config.winScore}</span>`);
