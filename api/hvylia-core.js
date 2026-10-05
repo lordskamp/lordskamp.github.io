@@ -84,6 +84,15 @@ function draw(random) {
   return number;
 }
 
+function drawTarget(random, previousTarget = null) {
+  // Give every digital position the same chance, including the two extremes.
+  // On a card swap, skip the previous position so the target always changes.
+  const previous = previousTarget === null ? null : Math.round(previousTarget * 10);
+  let position = Math.floor(draw(random) * (previous === null ? 1001 : 1000));
+  if (previous !== null && position >= previous) position += 1;
+  return position / 10;
+}
+
 function choosePsychic(state, team, excludedId = null, readyOnly = false) {
   const players = connectedTeam(state, team);
   if (!players.length) return null;
@@ -129,7 +138,7 @@ function dealRound(state, team, random, { number, excludePsychic = null, readyOn
   const spectrum = drawSpectrum(state, random, spectra);
   // The original rules allow a partly visible four-point wedge at either extreme.
   // Keep its center on the digital spectrum; the outer wedges can be clipped.
-  const target = Math.round(draw(random) * 1000) / 10;
+  const target = drawTarget(random);
   state._roundSerial += 1;
   state._rotation[team] = psychicId;
   state.round = {
@@ -299,15 +308,25 @@ export function applyAction(state, playerId, action, random = Math.random, spect
   }
   switch (action.type) {
     case 'team': {
-      phaseIs(next, 'LOBBY');
+      phaseIs(next, 'LOBBY', 'PSYCHIC_VIEW', 'TEAM_GUESS', 'OPPONENT_BET', 'REVEAL', 'SCORE');
       const id = action.playerId ?? playerId;
       if (id !== playerId || !next.config.selfSelect) isHost(next, player);
       const target = next.players.find(existing => existing.id === id);
       if (!target) fail('PLAYER_NOT_FOUND', 'Цього гравця вже немає в кімнаті.');
       if (action.team !== null && action.team !== 0 && action.team !== 1) fail('INVALID', 'Оберіть одну з двох команд.');
       if (target.team === action.team) return next;
+      if (next.phase !== 'LOBBY') {
+        if (target.team !== null || action.team === null) fail('TEAM_LOCKED', 'Під час гри учасники залишаються у своїх командах.');
+        if (!target.connected) fail('DISCONNECTED', 'Спершу дочекайтеся підключення цього гравця.');
+        if (connectedTeam(next, action.team).length > connectedTeam(next, 1 - action.team).length) {
+          fail('TEAM_BALANCE', 'Приєднайтеся до меншої команди, щоб кількість гравців була рівною.');
+        }
+      }
       target.team = action.team;
-      target.ready = false;
+      target.ready = next.phase !== 'LOBBY';
+      // Joining normally leaves the current turn untouched. It can also unblock
+      // recovery when the departed psychic had no teammate available before.
+      if (next.phase !== 'LOBBY') recoverPresence(next, Date.now(), random, spectra);
       break;
     }
     case 'ready':
@@ -342,12 +361,26 @@ export function applyAction(state, playerId, action, random = Math.random, spect
       isHost(next, player);
       phaseIs(next, 'LOBBY');
       const players = next.players.filter(existing => existing.connected);
-      for (let index = players.length - 1; index > 0; index -= 1) {
-        const other = Math.floor(draw(random) * (index + 1));
-        [players[index], players[other]] = [players[other], players[index]];
+      const previousTeams = new Map(players.map(existing => [existing.id, existing.team]));
+      const split = Math.ceil(players.length / 2);
+      const sameGrouping = () => {
+        if (players.length < 4 || players.some(existing => previousTeams.get(existing.id) === null)) return false;
+        const unchanged = players.every((existing, index) => previousTeams.get(existing.id) === (index < split ? 0 : 1));
+        const reversed = players.every((existing, index) => previousTeams.get(existing.id) === (index < split ? 1 : 0));
+        return unchanged || reversed;
+      };
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        for (let index = players.length - 1; index > 0; index -= 1) {
+          const other = Math.floor(draw(random) * (index + 1));
+          [players[index], players[other]] = [players[other], players[index]];
+        }
+        if (!sameGrouping()) break;
       }
+      // A bounded fallback also handles a deterministic random source: swap
+      // one member from each half rather than just renaming the same teams.
+      if (sameGrouping()) [players[0], players[split]] = [players[split], players[0]];
       next.players.forEach(existing => { existing.team = null; existing.ready = false; });
-      players.forEach((existing, index) => { existing.team = index % 2; });
+      players.forEach((existing, index) => { existing.team = index < split ? 0 : 1; });
       break;
     }
     case 'kick': {
@@ -375,6 +408,7 @@ export function applyAction(state, playerId, action, random = Math.random, spect
       phaseIs(next, 'PSYCHIC_VIEW');
       if (player.id !== next.round.psychicId) fail('ROLE', 'Картку може замінити лише Телепат.');
       next.round.spectrum = drawSpectrum(next, random, spectra, true);
+      next.round.target = drawTarget(random, next.round.target);
       next._roundSerial += 1;
       next.round.id = `${next.code}-${next._roundSerial}`;
       break;

@@ -55,6 +55,17 @@ export function telegramHeaders() {
   return signedLaunchData ? { 'X-Telegram-Init-Data': signedLaunchData } : {};
 }
 export function inTelegram() { return Boolean(webApp && signedLaunchData); }
+export function telegramHaptic(kind, value) {
+  if (!inTelegram() || !supported('6.1') || !webApp.HapticFeedback) return false;
+  try {
+    const feedback = webApp.HapticFeedback;
+    if (kind === 'selection' && feedback.selectionChanged) feedback.selectionChanged();
+    else if (kind === 'impact' && feedback.impactOccurred) feedback.impactOccurred(value);
+    else if (kind === 'notification' && feedback.notificationOccurred) feedback.notificationOccurred(value);
+    else return false;
+    return true;
+  } catch { return false; }
+}
 export function setTelegramBack(handler) {
   backHandler = handler;
   if (!inTelegram() || !supported('6.1')) return;
@@ -66,10 +77,10 @@ export function telegramRoomCode() {
   const start = new URLSearchParams(signedLaunchData).get('start_param') || '';
   return /^room_[A-Z0-9]{4}$/u.test(start) ? start.slice(5) : '';
 }
-export function openTelegram(botUsername, start = 'hvylia') {
+export function openTelegram(botUsername, start = 'play') {
   const username = String(botUsername || '').replace(/^@/u, '');
   if (!/^[A-Za-z0-9_]{5,32}$/u.test(username)) return false;
-  const url = `https://t.me/${username}?startapp=${encodeURIComponent(start)}`;
+  const url = `https://t.me/${username}?start=${encodeURIComponent(start)}`;
   if (inTelegram() && supported('6.1')) webApp.openTelegramLink(url);
   else window.open(url, '_blank', 'noopener,noreferrer');
   return true;

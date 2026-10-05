@@ -2,11 +2,44 @@
 // Seed invoices in isolated SQLite storage without contacting the Bot API.
 import worker, { WaveRoom, WaveLeaderboardDO } from '../../api/hvylia-worker.js';
 import { WaveAccountDO } from '../../api/hvylia-accounts.js';
+import { WaveLoginDO } from '../../api/hvylia-login.js';
+import { setConnection } from '../../api/hvylia-core.js';
 import { getPack } from '../../content/hvylia/packs.js';
 
-export { WaveRoom, WaveLeaderboardDO };
+export { WaveRoom, WaveLeaderboardDO, WaveLoginDO };
 
 export class FeatureRoomDO extends WaveRoom {
+  connectionStatus(playerId) {
+    const { state } = this.read();
+    const player = state.players.find(item => item.id === playerId);
+    return { connected: player.connected, connectionId: player._connectionId, paused: state.paused,
+      sockets: this.ctx.getWebSockets().map(socket => ({ ...socket.deserializeAttachment(), readyState: socket.readyState })) };
+  }
+
+  falsePresence(playerId) {
+    const next = setConnection(this.read().state, playerId, false);
+    this.write(next, false);
+    this.broadcast(next);
+    return this.connectionStatus(playerId);
+  }
+
+  async staleClose(playerId, connectionId) {
+    await this.webSocketClose({ close() {}, deserializeAttachment() { return { playerId, connectionId }; }, readyState: 3 }, 1000);
+    return this.connectionStatus(playerId);
+  }
+
+  async expiredOldSocket(playerId) {
+    const [client, server] = Object.values(new globalThis.WebSocketPair());
+    this.ctx.acceptWebSocket(server);
+    client.accept();
+    server.serializeAttachment({ playerId, connectionId: crypto.randomUUID(), lastSeen: Date.now() - 600000, bucket: Date.now(), count: 0 });
+    const expiredSocketBefore = server.readyState;
+    await this.alarm();
+    const expiredSocketAfter = server.readyState;
+    client.close();
+    return { ...this.connectionStatus(playerId), expiredSocketBefore, expiredSocketAfter };
+  }
+
   enqueueAndExpire(accountId, receipt) {
     this.ctx.storage.sql.exec('INSERT OR IGNORE INTO ranking_outbox VALUES (?, ?, ?)', receipt.matchId, String(accountId), JSON.stringify(receipt));
     this.ctx.storage.sql.exec('UPDATE room SET last_activity = 0 WHERE id = 1');
@@ -94,6 +127,20 @@ export default {
     if (url.pathname === '/__test/pending' && request.method === 'POST') {
       const { code } = await request.json();
       return Response.json(await env.ROOMS.getByName(code).testStatus());
+    }
+    if (url.pathname === '/__test/login/attach' && request.method === 'POST') {
+      const { loginId, user } = await request.json();
+      try { return Response.json(await env.HVYLIA_LOGINS.getByName(loginId).attachTelegram(user)); }
+      catch (error) { return Response.json({ code: error.code }, { status: error.status || 400 }); }
+    }
+    if (url.pathname.startsWith('/__test/connection/') && request.method === 'POST') {
+      const { code, playerId, connectionId } = await request.json();
+      const room = env.ROOMS.getByName(code);
+      const operation = url.pathname.split('/').at(-1);
+      if (operation === 'status') return Response.json(await room.connectionStatus(playerId));
+      if (operation === 'false') return Response.json(await room.falsePresence(playerId));
+      if (operation === 'stale-close') return Response.json(await room.staleClose(playerId, connectionId));
+      if (operation === 'expired') return Response.json(await room.expiredOldSocket(playerId));
     }
     return worker.fetch(request, env, ctx);
   }

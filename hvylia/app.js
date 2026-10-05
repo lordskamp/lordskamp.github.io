@@ -2,6 +2,7 @@ import { t, errorText } from './locale.js';
 import { RoomTransport, savedSession, lastRoom, forgetSession } from './transport.js';
 import { Dial, dialMarkup } from './dial.js';
 import { Sound } from './sound.js';
+import { Haptics } from './haptics.js';
 import { PracticeSession } from './practice.js';
 import { scoreTrackMarkup, animateScoreTracks } from './score-track.js';
 import { PACKS } from '../content/hvylia/packs.js';
@@ -26,6 +27,10 @@ let entryPackId = 'standard';
 let purchasePackId = null;
 let rankingDialog = null;
 let lastPurchaseId = '';
+let appMenu = null;
+let loginDialog = null;
+let collectionDialog = null;
+let haptics = null;
 try { lastPurchaseId = window.localStorage.getItem('hvylia.lastPurchase') || ''; } catch { /* Live receipts still work without storage. */ }
 const busy = new Set();
 
@@ -41,7 +46,7 @@ function activeSession() { return practice || transport; }
 function me() { return state?.players.find(player => player.id === activeSession().session?.playerId); }
 function isHost() { return state?.hostId === activeSession().session?.playerId; }
 function roomURL() {
-  if (inTelegram() && account?.botUsername) return `https://t.me/${account.botUsername.replace(/^@/u, '')}?startapp=room_${state.code}`;
+  if (inTelegram() && account?.botUsername) return `https://t.me/${account.botUsername.replace(/^@/u, '')}?start=room_${state.code}`;
   const url = new URL(window.location.href); url.hash = ''; url.searchParams.delete('practice'); url.searchParams.set('r', state.code); return url.href;
 }
 function setText(selector, value) { const element = $(selector); if (element && element.textContent !== String(value)) element.textContent = value; }
@@ -99,8 +104,8 @@ async function act(action, key = action.type) {
   if (busy.has(key)) return false;
   if (['clue', 'replace-spectrum'].includes(action.type) && (busy.has('clue') || busy.has('replace-spectrum'))) return false;
   busy.add(key); render();
-  try { await activeSession().action(action); return true; }
-  catch (error) { notice(errorText(error)); return false; }
+  try { await activeSession().action(action); if (action.type !== 'move') haptics?.impact(['clue', 'lock', 'bet'].includes(action.type) ? 'medium' : 'light'); return true; }
+  catch (error) { haptics?.error(); notice(errorText(error)); return false; }
   finally { busy.delete(key); render(); }
 }
 function roundAction(type, extra = {}) { return act({ type, roundId: state.round.id, ...extra }); }
@@ -116,14 +121,15 @@ function render() {
   }
   if (screen === 'lobby') updateLobby();
   if (screen === 'game') updateGame();
-  if (screen === 'entry') updatePackCards($('#entry-packs'), 'entry');
+  if (screen === 'entry') { updatePackCards($('#entry-packs'), 'entry'); setText('#entry-pack-name', PACKS.find(pack => pack.id === entryPackId)?.title || PACKS[0].title); }
+  updateIdentity();
   app.dataset.phase = state?.phase || 'ENTRY';
   app.dataset.practice = String(Boolean(practice));
   updateTelegramBack();
 }
 
 function updateTelegramBack() {
-  setTelegramBack(rankingDialog || state || $('#rules').open ? () => {
+  setTelegramBack(document.querySelector('dialog[open]') || state ? () => {
     const dialog = $('dialog[open]');
     if (dialog) { dialog.close(); return; }
     if (practice) leavePractice();
@@ -143,6 +149,7 @@ async function refreshAccount({ quiet = true } = {}) {
   finally {
     accountLoading = false;
     updatePackCards($('#entry-packs'), 'entry'); updatePackCards($('#lobby-packs'), 'lobby');
+    updateIdentity();
   }
   return account;
 }
@@ -166,8 +173,8 @@ function packCatalogMarkup(context) {
 
 function updatePackCards(element, context) {
   if (!element) return;
-  const selectedId = context === 'entry' ? entryPackId : state?.config.packId || 'standard';
-  const host = context === 'entry' || isHost();
+  const selectedId = context === 'entry' ? entryPackId : context === 'collection' ? null : state?.config.packId || 'standard';
+  const host = context === 'entry' || (context === 'lobby' && isHost());
   const packs = context === 'lobby' && !host ? PACKS.filter(pack => pack.id === selectedId) : PACKS;
   const markup = packs.map(pack => {
     const owned = ownedPack(pack), selected = selectedId === pack.id;
@@ -175,7 +182,7 @@ function updatePackCards(element, context) {
     let action = '';
     if (selected || owned) {
       const disabled = selected || !host || (context === 'lobby' && (!online || busy.has('settings')));
-      action = `<button class="pack-action" type="button" data-pack-select="${esc(pack.id)}" data-focus-key="pack-select-${esc(pack.id)}" aria-pressed="${selected}" ${disabled ? 'disabled' : ''}>${selected ? `✓ ${context === 'lobby' ? t.packSelected : t.packAvailable}` : `${t.packChoose} →`}</button>`;
+      action = `<button class="pack-action" type="button" data-pack-select="${esc(pack.id)}" data-focus-key="pack-select-${esc(pack.id)}" aria-pressed="${selected}" ${disabled ? 'disabled' : ''}>${selected ? `✓ ${context === 'lobby' ? t.packSelected : t.packAvailable}` : context === 'collection' ? t.packOwned : `${t.packChoose} →`}</button>`;
     } else if (!account?.paymentReady) {
       action = `<button class="pack-action" type="button" disabled>${accountLoading ? t.packPreparing : t.packUnavailable}</button>`;
     } else {
@@ -196,7 +203,7 @@ function bindPackCards(element, context) {
   element.addEventListener('click', async event => {
     const select = event.target.closest('[data-pack-select]');
     if (select) {
-      if (context === 'entry') { entryPackId = select.dataset.packSelect; updatePackCards(element, context); $('#nickname').focus(); }
+      if (context === 'entry') { entryPackId = select.dataset.packSelect; updatePackCards(element, context); setText('#entry-pack-name', PACKS.find(pack => pack.id === entryPackId)?.title || PACKS[0].title); $('#entry-pack-picker').open = false; $('#nickname').focus(); }
       else await act({ type: 'settings', packId: select.dataset.packSelect });
     }
     const buy = event.target.closest('[data-pack-buy]');
@@ -232,12 +239,13 @@ async function purchasePack(packId) {
 function mountEntry() {
   if (inviteCode) entryMode = 'join';
   app.innerHTML = `<section class="entry-intro" aria-labelledby="entry-title"><p class="eyebrow">${t.entryEyebrow}</p><h1 id="entry-title">${t.entryTitle}</h1><p class="entry-description">${t.entryIntro}</p><div class="entry-dial">${dialMarkup('preview-dial')}<div class="preview-poles"><span>${t.previewLeft}</span><span>${t.previewRight}</span></div></div><p class="entry-meta">${t.entryMeta}</p></section>
-    <section class="entry-panel" aria-label="${t.joiningLabel}"><div class="entry-tabs" role="tablist" aria-label="${t.actionLabel}"><button type="button" id="create-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.create}</button><button type="button" id="join-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.join}</button></div>
-    <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><p class="eyebrow" id="entry-form-context">${t.entryStart}</p><h2 id="entry-form-title"></h2><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="24" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"><p class="field-note">${t.enterCode}</p></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><p class="entry-note">${t.entryNote}</p><button class="text-link" type="button" data-open-rules>${t.firstTime}</button></section>`;
+    <section class="entry-panel" aria-label="${t.joiningLabel}"><div class="entry-tabs" role="tablist" aria-label="${t.actionLabel}"><button type="button" id="create-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.createShort}</button><button type="button" id="join-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.join}</button></div>
+    <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><h2 id="entry-form-title" class="sr-only"></h2><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="24" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><div class="entry-secondary"><button id="practice-button" class="quiet-button" type="button">${t.practiceStart} →</button><button class="quiet-button" type="button" data-open-rules>${t.helpShort} ?</button></div><div class="entry-identity" data-identity></div><details id="entry-pack-picker" class="entry-pack-picker"><summary><span>${t.packsShort}</span><strong id="entry-pack-name"></strong><span class="disclosure-icon" aria-hidden="true">⌄</span></summary>${packCatalogMarkup('entry')}</details></section>`;
   const previewTarget = Math.round(18 + Math.random() * 64);
   const previewPosition = Math.round(previewTarget + (previewTarget < 50 ? 1 : -1) * (16 + Math.random() * 18));
   dial = new Dial($('#preview-dial'), () => {}, { preview: true });
   dial.update({ position: previewPosition, target: previewTarget, revealed: true, canPeek: true, editable: false, showNeedle: true });
+  $('#preview-dial').addEventListener('click', event => { if (event.target.closest('.dial-shutter-control')) haptics?.impact(); });
   const choose = mode => {
     entryMode = mode;
     const joining = mode === 'join';
@@ -248,6 +256,7 @@ function mountEntry() {
     setText('#entry-form-title', joining ? t.entryJoin : t.entryCreate);
     setText('#enter-button', `${joining ? t.join : t.create} →`);
     setHidden('#room-code-field', !joining);
+    setHidden('#entry-pack-picker', joining);
     $('#room-code').required = joining;
     setHidden('#entry-error', true);
   };
@@ -266,29 +275,26 @@ function mountEntry() {
     const button = $('#enter-button');
     button.disabled = true; button.textContent = code ? t.joinBusy : t.createBusy;
     setHidden('#entry-error', true);
-    try { await transport.enter(name, code, entryPackId); }
+    try { await transport.enter(name, code, entryPackId); try { window.localStorage.setItem('hvylia.nickname', name); } catch { /* The room itself remembers the nickname. */ } refreshAccount(); haptics?.impact('medium'); }
     catch (error) {
       if (!$('#entry-error')) return;
       setText('#entry-error', errorText(error)); setHidden('#entry-error', false);
       button.disabled = false; button.textContent = `${code ? t.join : t.create} →`;
     }
   });
-  const practiceStart = document.createElement('div');
-  practiceStart.className = 'practice-start';
-  practiceStart.innerHTML = `<button id="practice-button" class="button button-outline" type="button">${t.practiceStart} →</button><p class="field-note">${t.practiceEntryHint}</p>`;
-  $('.entry-note').before(practiceStart);
   $('#practice-button').addEventListener('click', startPractice);
   const previousRoom = lastRoom();
   if (previousRoom && savedSession(previousRoom)) {
     const resume = document.createElement('button');
-    resume.type = 'button'; resume.className = 'text-link'; resume.id = 'saved-room-button';
+    resume.type = 'button'; resume.className = 'quiet-button'; resume.id = 'saved-room-button';
     resume.textContent = `${t.reconnect} ${previousRoom} →`;
-    practiceStart.append(resume);
+    $('.entry-secondary').append(resume);
     resume.addEventListener('click', () => resumeRoom(previousRoom));
   }
   $('[data-open-rules]').addEventListener('click', openRules);
-  app.insertAdjacentHTML('beforeend', packCatalogMarkup('entry'));
   bindPackCards($('#entry-packs'), 'entry');
+  try { $('#nickname').value = window.localStorage.getItem('hvylia.nickname') || ''; } catch { /* Nicknames can still be entered manually. */ }
+  updateIdentity();
   choose(entryMode);
 }
 
@@ -323,7 +329,7 @@ function mountLobby() {
   settingsDirty = false;
   app.innerHTML = `${roomHeading()}<header class="lobby-heading"><p class="eyebrow">${t.beforeRound}</p><h1>${t.lobbyTitle}</h1><p>${t.lobbyIntro}</p></header><div id="teams" class="lobby-teams"></div><div id="unassigned" class="unassigned"></div><div class="lobby-bottom"><div class="readiness"><button id="ready-button" type="button" class="button"></button><p id="lobby-status" class="field-note"></p></div><div class="host-start" id="host-start"><button id="randomize-button" class="quiet-button" type="button">${t.randomize} ↔</button><button id="start-button" class="button button-dark" type="button">${t.start} →</button></div></div><details id="host-settings" class="settings"><summary>${t.settings} <span aria-hidden="true">+</span></summary><form id="settings-form"><div class="settings-grid"><div><label for="team-name-0">${t.teamName} 1</label><input id="team-name-0" maxlength="28" required></div><div><label for="team-name-1">${t.teamName} 2</label><input id="team-name-1" maxlength="28" required></div><div><label for="win-score">${t.winScore}</label><input id="win-score" type="number" min="5" max="30" step="1" required></div></div><div class="settings-bottom"><label class="checkbox-label"><input id="self-select" type="checkbox">${t.selfSelect}</label><button class="button button-small" id="save-settings" type="submit">${t.save} →</button></div></form></details>`;
   bindRoomTools();
-  $('.lobby-heading').insertAdjacentHTML('afterend', `<details id="lobby-pack-picker" class="lobby-pack-picker" ${window.matchMedia('(min-width: 761px)').matches ? 'open' : ''}><summary><span>${t.packRoom}</span><strong id="lobby-pack-name"></strong><i aria-hidden="true">+</i></summary>${packCatalogMarkup('lobby')}</details><p class="rating-lobby-note">${t.ratingLobby}</p>`);
+  $('.lobby-heading').insertAdjacentHTML('afterend', `<details id="lobby-pack-picker" class="lobby-pack-picker" ><summary><span>${t.packRoom}</span><strong id="lobby-pack-name"></strong><i aria-hidden="true">+</i></summary>${packCatalogMarkup('lobby')}</details>`);
   bindPackCards($('#lobby-packs'), 'lobby');
   $('#win-score').step = '5';
   $('#teams').addEventListener('click', teamEvent);
@@ -408,15 +414,16 @@ function bindRoomTools() {
 }
 
 function mountGame() {
-  app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><p class="phase-description" id="phase-description"></p><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2><button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button></div></div><div id="spectrum-tools" class="spectrum-tools" hidden><button id="replace-spectrum" class="spectrum-swap" type="button"><span class="spectrum-swap-icon" aria-hidden="true">↻</span><span id="replace-spectrum-label">${t.replaceCard}</span></button><p>${t.replaceCardHint}</p></div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessHint}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
+  app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><details class="phase-help"><summary>${t.phaseHelp}<span aria-hidden="true">⌄</span></summary><p class="phase-description" id="phase-description"></p></details><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2><button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button></div></div><div id="spectrum-tools" class="spectrum-tools" hidden><button id="replace-spectrum" class="spectrum-swap" type="button"><span class="spectrum-swap-icon" aria-hidden="true">↻</span><span id="replace-spectrum-label">${t.replaceCard}</span></button><p>${t.replaceCardHint}</p></div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessCompact}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
   bindRoomTools();
   if (!practice && state.config.ranked) $('.room-tools').insertAdjacentHTML('beforeend', `<span class="ranked-match">${t.ratingRanked}</span>`);
   dial = new Dial($('#dial'), position => {
     if (state?.phase !== 'TEAM_GUESS' || !online) return;
-    sound.play('move');
+    sound.play('move'); haptics?.selection();
     activeSession().action({ type: 'move', position, roundId: state.round.id }).catch(error => { if (online) notice(errorText(error)); });
   }, { nudgeControls: [$('#nudge-left'), $('#nudge-right')] });
   $('#dial').addEventListener('shutterchange', updateClueControl);
+  $('#dial').addEventListener('click', event => { if (event.target.closest('.dial-shutter-control') && dial.canPeek) haptics?.impact(); });
   $('#clue-form').addEventListener('submit', event => {
     event.preventDefault();
     if (!dial.clueReady || busy.has('clue') || busy.has('replace-spectrum')) return;
@@ -495,6 +502,7 @@ function updateGame() {
   setText('#spectrum-left', round.spectrum.left); setText('#spectrum-right', round.spectrum.right);
   $('.spectrum-poles').classList.toggle('is-long', Math.max(round.spectrum.left.length, round.spectrum.right.length) > 22);
   setHidden('#spectator-note', !spectator);
+  updateSpectatorJoin(spectator);
   setHidden('#pause-banner', !state.paused); setText('#pause-reason', state.pauseReason || t.defaultPauseReason);
   setHidden('#return-lobby', !isHost()); setDisabled('#return-lobby', !online || busy.has('lobby'));
   setHidden('#clue-form', !canClue);
@@ -541,6 +549,155 @@ function updateGame() {
   $('#scoreboard').dataset.scores = state.teams.map(team => team.score).join(',');
 }
 
+function telegramIdentity() { return inTelegram() || account?.identityType === 'telegram' || account?.profile?.identityType === 'telegram'; }
+
+function updateIdentity() {
+  const profile = account?.profile;
+  const button = $('#account-button');
+  if (button) {
+    button.textContent = profile?.name ? Array.from(profile.name)[0].toUpperCase() : '↗';
+    button.setAttribute('aria-label', profile ? `${t.profile}: ${profile.name}` : t.telegramLogin);
+    button.classList.toggle('has-profile', Boolean(profile));
+  }
+  document.querySelectorAll('[data-identity]').forEach(element => {
+    const content = telegramIdentity() && profile
+      ? `<button class="identity-linked" type="button" data-open-profile><span class="identity-dot" aria-hidden="true"></span>${esc(profile.name)}<small>Telegram ✓</small></button>`
+      : `<button class="telegram-login" type="button" data-telegram-login><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="m3 10 17-7c1-.4 1.5.2 1.3 1.2l-3 15c-.2 1-.8 1.2-1.6.6l-5-3.7-2.4 2.3c-.3.3-.5.4-.7.4l.4-5.1 9.3-8.4c.4-.3-.1-.6-.6-.3L6.2 11.4l-3.1-1c-.8-.3-.8-.8-.1-1.1Z"/></svg>${t.telegramLogin}</button>`;
+    replacePreservingFocus(element, content);
+  });
+  if (collectionDialog?.isConnected) updatePackCards($('#collection-packs', collectionDialog), 'collection');
+}
+
+function initializeShell() {
+  const nav = $('.site-bar nav');
+  const existing = Array.from(nav.children);
+  nav.innerHTML = `<button id="account-button" class="account-button" type="button" aria-label="${t.telegramLogin}">↗</button><button id="menu-button" class="menu-button" type="button" aria-label="${t.menu}" aria-haspopup="dialog"><span aria-hidden="true">☰</span></button>`;
+  appMenu = document.createElement('dialog');
+  appMenu.className = 'app-menu';
+  appMenu.setAttribute('aria-labelledby', 'menu-title');
+  appMenu.innerHTML = `<div class="dialog-top"><h2 id="menu-title">${t.menu}</h2><button type="button" class="quiet-button" data-menu-close>${t.close} ×</button></div><div data-identity class="menu-identity"></div><div class="menu-actions"><button id="collection-button" type="button">${t.packsShort}<span aria-hidden="true">↗</span></button><button id="participants-button" type="button" hidden>${t.showPlayers}<span aria-hidden="true">↗</span></button></div><div class="menu-preferences"><button id="haptics-button" type="button" aria-pressed="true"></button></div><a class="creator-link" href="https://lordskamp.github.io/">Lordskamp ↗</a>`;
+  document.body.append(appMenu);
+  for (const button of existing) (button.id === 'sound-button' ? $('.menu-preferences', appMenu) : $('.menu-actions', appMenu)).append(button);
+  haptics = new Haptics($('#haptics-button'));
+  $('#menu-button').addEventListener('click', () => {
+    updateIdentity(); setHidden('#participants-button', !state || Boolean(practice));
+    appMenu.showModal(); updateTelegramBack();
+  });
+  $('#account-button').addEventListener('click', () => account?.profile ? openRanking() : openTelegramLogin());
+  $('[data-menu-close]').addEventListener('click', () => appMenu.close());
+  appMenu.addEventListener('close', updateTelegramBack);
+  $('#collection-button').addEventListener('click', openCollection);
+  $('#participants-button').addEventListener('click', openParticipants);
+  document.addEventListener('click', event => {
+    if (event.target.closest('[data-telegram-login]')) openTelegramLogin();
+    if (event.target.closest('[data-open-profile]')) openRanking();
+  });
+  // Stage instructions remain one tap away while the main action stays prominent.
+  const rulesNote = $('.rules-footnote');
+  if (rulesNote) rulesNote.textContent = rulesNote.textContent.replace('Перша команда з 10 очками перемагає.', 'Переможну кількість очок обирає ведучий: 5, 10, 15, 20, 25 або 30.');
+}
+
+function openCollection() {
+  appMenu.close();
+  if (collectionDialog?.isConnected) return;
+  const dialog = collectionDialog = document.createElement('dialog');
+  dialog.className = 'collection-dialog'; dialog.setAttribute('aria-label', t.packsShort);
+  dialog.innerHTML = `<div class="dialog-top"><h2>${t.packsShort}</h2><button class="quiet-button" type="button" data-close-collection>${t.close} ×</button></div>${packCatalogMarkup('collection')}`;
+  document.body.append(dialog);
+  bindPackCards($('#collection-packs', dialog), 'collection');
+  $('[data-close-collection]', dialog).addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => { collectionDialog = null; dialog.remove(); updateTelegramBack(); });
+  updatePackCards($('#collection-packs', dialog), 'collection');
+  dialog.showModal(); updateTelegramBack();
+}
+
+async function openTelegramLogin() {
+  appMenu?.close(); rankingDialog?.close();
+  if (loginDialog?.isConnected) return;
+  if (inTelegram()) { await refreshAccount({ quiet: false }); openRanking(); return; }
+  const dialog = loginDialog = document.createElement('dialog');
+  dialog.className = 'login-dialog'; dialog.setAttribute('aria-labelledby', 'login-title');
+  dialog.innerHTML = `<div class="dialog-top"><p class="eyebrow">TELEGRAM</p><button type="button" class="quiet-button" data-login-close>${t.close} ×</button></div><h2 id="login-title">${t.telegramLogin}</h2><p class="login-intro">${t.telegramLoginHint}</p><a id="login-bot-link" class="button button-dark" target="_blank" rel="noopener noreferrer" aria-disabled="true">${t.loginPreparing}</a><form id="telegram-login-form"><label for="telegram-login-code">${t.telegramCode}</label><input id="telegram-login-code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" minlength="6" placeholder="000000" required disabled><button class="button" type="submit" id="telegram-login-submit" disabled>${t.loginConfirm} →</button></form><p id="login-error" class="form-error" role="alert" hidden></p><p class="field-note">${t.loginCodeHint}</p>`;
+  let challenge = null;
+  document.body.append(dialog);
+  $('[data-login-close]', dialog).addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => { challenge = null; loginDialog = null; dialog.remove(); updateTelegramBack(); });
+  dialog.showModal(); updateTelegramBack();
+  $('#telegram-login-code', dialog).addEventListener('input', event => { event.target.value = event.target.value.replace(/\D/gu, ''); });
+  $('#telegram-login-form', dialog).addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!challenge || $('#telegram-login-submit', dialog).disabled) return;
+    $('#telegram-login-submit', dialog).disabled = true;
+    $('#login-error', dialog).hidden = true;
+    try {
+      await transport.loginTelegram({ loginId: challenge.loginId, secret: challenge.secret, code: $('#telegram-login-code', dialog).value });
+      const visible = dialog.isConnected;
+      challenge = null; if (visible) dialog.close();
+      await refreshAccount({ quiet: false });
+      if (visible) { haptics?.success(); notice(t.telegramLoggedIn); }
+    } catch (error) {
+      if (!dialog.isConnected) return;
+      $('#login-error', dialog).textContent = errorText(error); $('#login-error', dialog).hidden = false;
+      $('#telegram-login-submit', dialog).disabled = false;
+    }
+  });
+  try {
+    challenge = await transport.beginTelegramLogin();
+    if (!dialog.isConnected) { challenge = null; return; }
+    const botURL = new URL(challenge.url);
+    if (botURL.protocol !== 'https:' || botURL.hostname !== 't.me') throw { code: 'TELEGRAM_UNAVAILABLE' };
+    const link = $('#login-bot-link', dialog);
+    link.href = botURL.href; link.removeAttribute('aria-disabled'); link.textContent = `${t.loginOpenBot} ↗`;
+    $('#telegram-login-code', dialog).disabled = false; $('#telegram-login-submit', dialog).disabled = false;
+  } catch (error) {
+    if (!dialog.isConnected) return;
+    $('#login-error', dialog).textContent = errorText(error); $('#login-error', dialog).hidden = false;
+    $('#login-bot-link', dialog).hidden = true;
+  }
+}
+
+function updateSpectatorJoin(spectator) {
+  let element = $('#spectator-join');
+  if (!element) {
+    element = document.createElement('div'); element.id = 'spectator-join'; element.className = 'spectator-join';
+    $('#spectator-note').after(element);
+    element.addEventListener('click', teamEvent);
+  }
+  const joining = spectator && state.phase !== 'GAME_OVER' && !practice;
+  element.hidden = !joining;
+  if (!joining) return;
+  const counts = state.teams.map((_, index) => state.players.filter(player => player.team === index && player.connected).length);
+  const allow = state.config.selfSelect || isHost();
+  const buttons = state.teams.map((team, index) => `<button type="button" class="spectator-team" data-team="${index}" ${!online || !allow || counts[index] > counts[1 - index] || busy.has('team') ? 'disabled' : ''}>${esc(team.name)} <span aria-hidden="true">→</span></button>`).join('');
+  replacePreservingFocus(element, `<p>${allow ? t.spectatorJoin : t.spectatorHost}</p><div>${buttons}</div>`);
+}
+
+function openParticipants() {
+  appMenu.close();
+  if (!state) return;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'participants-dialog'; dialog.setAttribute('aria-label', t.showPlayers);
+  const playing = state.phase !== 'LOBBY';
+  dialog.innerHTML = `<div class="dialog-top"><h2>${t.players}</h2><button class="quiet-button" type="button" data-close-participants>${t.close} ×</button></div><ul class="player-list">${state.players.map(playerMarkup).join('')}</ul>`;
+  document.body.append(dialog);
+  if (playing) dialog.querySelectorAll('[data-player-team]').forEach(select => {
+    const player = state.players.find(item => item.id === select.dataset.playerTeam);
+    select.disabled = player?.team != null || state.phase === 'GAME_OVER' || !online;
+    if (player?.team == null) select.querySelector('option[value=""]').textContent = t.spectatorRoleShort;
+  });
+  dialog.addEventListener('change', async event => {
+    if (!event.target.matches('[data-player-team]')) return;
+    await act({ type: 'team', playerId: event.target.dataset.playerTeam, team: event.target.value === '' ? null : Number(event.target.value) });
+    dialog.close();
+  });
+  dialog.addEventListener('click', event => {
+    if (event.target.closest('[data-kick]')) { dialog.close(); teamEvent(event); }
+  });
+  $('[data-close-participants]', dialog).addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => { dialog.remove(); updateTelegramBack(); });
+  dialog.showModal(); updateTelegramBack();
+}
+
 function confirmAction(title, description, buttonLabel, action) {
   const dialog = document.createElement('dialog');
   dialog.className = 'confirm-dialog';
@@ -551,14 +708,14 @@ function confirmAction(title, description, buttonLabel, action) {
   dialog.addEventListener('close', () => dialog.remove());
   dialog.showModal();
 }
-function openRules() { $('#rules').showModal(); updateTelegramBack(); }
+function openRules() { appMenu?.close(); $('#rules').showModal(); updateTelegramBack(); }
 $('#rules-button').addEventListener('click', openRules);
 $('#rules').addEventListener('close', updateTelegramBack);
 
 function profileMarkup() {
   const profile = account?.profile;
-  if (!profile) return `<div class="rating-guest"><p>${t.ratingGuest}</p>${account?.botUsername ? `<button class="button button-small button-outline" type="button" data-rating-telegram>${t.packTelegram} ↗</button>` : ''}</div>`;
-  return `<section class="rating-profile" aria-label="${t.ratingYou}"><div class="rating-identity"><span class="rating-avatar" aria-hidden="true">${esc(Array.from(profile.name || '?')[0])}</span><div><p class="eyebrow">${t.ratingYou}</p><h3>${esc(profile.name)}</h3></div></div><dl class="rating-stats">${[['wins', t.ratingWins], ['losses', t.ratingLosses], ['played', t.ratingPlayed], ['points', t.ratingPoints]].map(([key, title]) => `<div><dt>${title}</dt><dd>${Number(profile.stats?.[key]) || 0}</dd></div>`).join('')}</dl></section>`;
+  if (!profile) return `<div class="rating-guest"><p>${t.ratingGuest}</p><button class="telegram-login" type="button" data-telegram-login>${t.telegramLogin} ↗</button></div>`;
+  return `<section class="rating-profile" aria-label="${t.ratingYou}">${!telegramIdentity() ? `<p class="nickname-profile-note">${t.nicknameRating}</p>` : ''}<div class="rating-identity"><span class="rating-avatar" aria-hidden="true">${esc(Array.from(profile.name || '?')[0])}</span><div><p class="eyebrow">${t.ratingYou}</p><h3>${esc(profile.name)}</h3></div></div><dl class="rating-stats">${[['wins', t.ratingWins], ['losses', t.ratingLosses], ['played', t.ratingPlayed], ['points', t.ratingPoints]].map(([key, title]) => `<div><dt>${title}</dt><dd>${Number(profile.stats?.[key]) || 0}</dd></div>`).join('')}</dl>${!telegramIdentity() ? `<button class="telegram-login" type="button" data-telegram-login>${t.telegramLogin} ↗</button>` : ''}</section>`;
 }
 
 async function loadRanking(dialog) {
@@ -578,6 +735,7 @@ async function loadRanking(dialog) {
 }
 
 function openRanking() {
+  appMenu?.close();
   if (rankingDialog?.isConnected) return;
   const dialog = rankingDialog = document.createElement('dialog');
   dialog.className = 'rating-dialog'; dialog.setAttribute('aria-labelledby', 'rating-title');
@@ -606,6 +764,7 @@ async function resumeRoom(resumeCode) {
   }
 }
 
+initializeShell();
 render();
 telegramReady.then(() => {
   const startRoom = telegramRoomCode();

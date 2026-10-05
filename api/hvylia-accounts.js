@@ -37,7 +37,7 @@ function chargeId(value) {
   return typeof value === 'string' && value.length >= 1 && value.length <= 256 && !/[\p{Cc}\p{Cf}]/u.test(value);
 }
 
-/** One SQLite-backed account per verified Telegram user; raw IDs stay server-side. */
+/** One SQLite-backed account per authenticated identity; owner keys stay server-side. */
 export class WaveAccountDO extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -48,7 +48,7 @@ export class WaveAccountDO extends DurableObject {
 
   row() {
     const row = this.ctx.storage.sql.exec('SELECT * FROM profile WHERE id = 1').toArray()[0];
-    if (!row) fail('ACCOUNT', 'Спершу увійдіть через Telegram.', 401);
+    if (!row) fail('ACCOUNT', 'Спершу створіть профіль гравця.', 401);
     return row;
   }
 
@@ -66,10 +66,23 @@ export class WaveAccountDO extends DurableObject {
     }
     const row = this.row();
     const ownedPacks = this.ctx.storage.sql.exec("SELECT DISTINCT pack_id FROM purchases WHERE status IN ('paid', 'refund_pending') ORDER BY pack_id").toArray().map(item => item.pack_id);
-    return { publicId: row.public_id, name: row.name, ownedPacks, stats: { wins: row.wins, losses: row.losses, played: row.played, points: row.points }, revision: row.revision };
+    return { publicId: row.public_id, kind: row.telegram_id.startsWith('g:') ? 'guest' : 'telegram', name: row.name, ownedPacks, stats: { wins: row.wins, losses: row.losses, played: row.played, points: row.points }, revision: row.revision };
+  }
+
+  guestProfile(user) {
+    if (!user || typeof user.id !== 'string' || !UUID.test(user.id)) fail('ACCOUNT', 'Не вдалося визначити профіль гравця.', 401);
+    const owner = `g:${user.id.toLowerCase()}`;
+    const name = displayName(user.name);
+    const existing = this.ctx.storage.sql.exec('SELECT * FROM profile WHERE id = 1').toArray()[0];
+    // The Worker must verify the signed guest credential before routing to this owner's DO.
+    if (existing && existing.telegram_id !== owner) fail('ACCOUNT', 'Цей профіль не відповідає акаунту.', 401);
+    if (!existing) this.ctx.storage.sql.exec('INSERT INTO profile (id, telegram_id, public_id, name) VALUES (1, ?, ?, ?)', owner, crypto.randomUUID(), name);
+    else if (existing.name !== name) this.ctx.storage.sql.exec('UPDATE profile SET name = ?, revision = revision + 1 WHERE id = 1', name);
+    return this.profile();
   }
 
   async createInvoice(packId) {
+    if (this.row().telegram_id.startsWith('g:')) fail('TELEGRAM_REQUIRED', 'Щоб придбати набір, увійдіть через Telegram.', 401);
     const pack = product(packId);
     const account = this.profile();
     if (account.ownedPacks.includes(packId)) fail('OWNED', 'Цей набір уже відкрито.', 409);

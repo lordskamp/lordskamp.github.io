@@ -45,13 +45,15 @@ before(async () => {
     durable_objects: { bindings: [
       { name: 'ROOMS', class_name: 'FeatureRoomDO' },
       { name: 'HVYLIA_ACCOUNTS', class_name: 'FeatureAccountDO' },
-      { name: 'HVYLIA_LEADERBOARD', class_name: 'FeatureLeaderboardDO' }
+      { name: 'HVYLIA_LEADERBOARD', class_name: 'FeatureLeaderboardDO' },
+      { name: 'HVYLIA_LOGINS', class_name: 'WaveLoginDO' }
     ] },
-    migrations: [{ tag: 'test-v1', new_sqlite_classes: ['FeatureRoomDO', 'FeatureAccountDO', 'FeatureLeaderboardDO'] }],
+    migrations: [{ tag: 'test-v1', new_sqlite_classes: ['FeatureRoomDO', 'FeatureAccountDO', 'FeatureLeaderboardDO', 'WaveLoginDO'] }],
     vars: {
       SITE_ORIGIN: origin,
       ROOM_TTL_MS: '86400000',
       HVYLIA_BOT_TOKEN: BOT_TOKEN,
+      HVYLIA_AUTH_SECRET: 'local_feature_auth_tests_32_bytes_minimum',
       HVYLIA_WEBHOOK_SECRET: WEBHOOK_SECRET,
       HVYLIA_BOT_USERNAME: 'local_feature_test_bot',
       HVYLIA_PAYMENT_SUPPORT: '@local_feature_support'
@@ -113,19 +115,27 @@ function initData(userId, name = 'Український гравець', authDa
   return params.toString();
 }
 
-async function request(path, { body, token, telegram, secret, method = 'POST' } = {}) {
+async function request(path, { body, token, telegram, profile, secret, requestOrigin, method = 'POST' } = {}) {
   const response = await fetch(`${origin}${path}`, {
     method,
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(telegram ? { 'X-Telegram-Init-Data': telegram } : {}),
+      ...(profile ? { 'X-Hvylia-Profile': profile } : {}),
+      ...(requestOrigin ? { Origin: requestOrigin } : {}),
       ...(secret ? { 'X-Telegram-Bot-Api-Secret-Token': secret } : {})
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(6000)
   });
-  return { status: response.status, data: await response.json() };
+  let data = null;
+  if (response.status !== 204) {
+    const raw = await response.text();
+    try { data = JSON.parse(raw); }
+    catch { throw new Error(`Non-JSON ${response.status} response from ${path}; isolated Worker output: ${output}`); }
+  }
+  return { status: response.status, data, headers: response.headers };
 }
 
 class PlayerClient {
@@ -480,4 +490,242 @@ test('expired room retries an interrupted ranking delivery after deletion withou
   const history = await request('/__test/history', { body: { userId } });
   assert.equal(history.data.matches.length, 1);
   assert.equal(history.data.matches[0].id, receipt.matchId);
+});
+
+async function guestProfile(name, profile) {
+  const registered = await request('/api/hvylia/auth/guest', { profile, body: { name } });
+  assert.equal(registered.status, 200);
+  assert.equal(registered.data.profile.kind, 'guest');
+  assert.equal(registered.data.identityType, 'nickname');
+  return registered.data;
+}
+
+test('nickname credentials persist independent stats, allow renaming, enforce account ownership and require Telegram for purchases', async () => {
+  const first = await guestProfile('Самостійний нік');
+  assert.ok(first.expiresAt > Date.now() + 364 * 86400000);
+  const reopened = await request('/api/hvylia/account', { method: 'GET', profile: first.token });
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.data.identityType, 'nickname');
+  assert.equal(reopened.data.profile.publicId, first.profile.publicId);
+  const renamed = await guestProfile('Новий нік', first.token);
+  assert.equal(renamed.profile.publicId, first.profile.publicId);
+  assert.equal(renamed.profile.name, 'Новий нік');
+  const other = await guestProfile('Новий нік');
+  assert.notEqual(other.profile.publicId, renamed.profile.publicId, 'A nickname is not somebody else’s credential');
+  const invoice = await request('/api/hvylia/invoice', { profile: renamed.token, body: { packId: 'anime' } });
+  assert.equal(invoice.status, 401);
+  assert.equal(invoice.data.code, 'TELEGRAM_REQUIRED');
+  const locked = await request('/api/rooms', { profile: renamed.token, body: { name: 'Платний нік', packId: 'anime', ownedPacks: ['anime'] } });
+  assert.equal(locked.status, 403);
+  assert.equal(locked.data.code, 'PACK_LOCKED');
+  const forged = await request('/api/hvylia/account', { method: 'GET', profile: `${renamed.token}tampered` });
+  assert.equal(forged.status, 401);
+  assert.equal(forged.data.code, 'TELEGRAM_AUTH');
+  const created = await request('/api/rooms', { profile: renamed.token, body: { name: 'Новий нік' } });
+  assert.equal(created.status, 201);
+  const wrongIdentity = await request(`/api/rooms/${created.data.code}/resume`, { profile: other.token, token: created.data.token });
+  assert.equal(wrongIdentity.status, 403);
+  assert.equal(wrongIdentity.data.code, 'SESSION');
+  const resumed = await request(`/api/rooms/${created.data.code}/resume`, { profile: renamed.token, token: created.data.token });
+  assert.equal(resumed.status, 200);
+  assert.equal(resumed.data.playerId, created.data.playerId);
+});
+
+test('bot-code browser login verifies the bound secret and one-time code and supports authenticated CORS requests', async () => {
+  const start = await request('/api/hvylia/auth/telegram/start', { body: {}, requestOrigin: origin });
+  assert.equal(start.status, 200);
+  assert.match(start.data.loginId, /^[a-f0-9]{48}$/u);
+  assert.match(start.data.secret, /^[a-f0-9]{48}$/u);
+  assert.equal(new URL(start.data.url).searchParams.get('start'), `login_${start.data.loginId}`);
+  assert.equal(start.data.url.includes(start.data.secret), false);
+  assert.equal(start.headers.get('Access-Control-Allow-Origin'), origin);
+  const body = { loginId: start.data.loginId, secret: start.data.secret, code: '000000' };
+  const pending = await request('/api/hvylia/auth/telegram/finish', { body });
+  assert.equal(pending.status, 401);
+  assert.equal(pending.data.code, 'LOGIN_PENDING');
+  const user = { id: 940001, first_name: 'Браузер Олена' };
+  const attached = await request('/__test/login/attach', { body: { loginId: body.loginId, user } });
+  assert.equal(attached.status, 200);
+  assert.match(attached.data.code, /^\d{6}$/u);
+  const wrongOwner = await request('/__test/login/attach', { body: { loginId: body.loginId, user: { ...user, id: user.id + 1 } } });
+  assert.equal(wrongOwner.status, 401);
+  assert.equal(wrongOwner.data.code, 'LOGIN_OWNER');
+  const wrongSecret = await request('/api/hvylia/auth/telegram/finish', { body: { ...body, secret: 'ef'.repeat(24), code: attached.data.code } });
+  assert.equal(wrongSecret.status, 401);
+  assert.equal(wrongSecret.data.code, 'LOGIN_SECRET');
+  const wrongCode = await request('/api/hvylia/auth/telegram/finish', { body: { ...body, code: 'invalid' } });
+  assert.equal(wrongCode.status, 401);
+  assert.equal(wrongCode.data.code, 'LOGIN_CODE');
+  const finished = await request('/api/hvylia/auth/telegram/finish', { body: { ...body, code: attached.data.code }, requestOrigin: origin });
+  assert.equal(finished.status, 200);
+  assert.equal(finished.data.identityType, 'telegram');
+  assert.equal(finished.data.profile.name, user.first_name);
+  assert.equal(finished.data.profile.kind, 'telegram');
+  assert.ok(!JSON.stringify(finished.data.profile).includes(String(user.id)));
+  const repeated = await request('/api/hvylia/auth/telegram/finish', { body: { ...body, code: attached.data.code } });
+  assert.equal(repeated.status, 401);
+  assert.equal(repeated.data.code, 'LOGIN_USED');
+  const native = await request('/api/hvylia/account', { method: 'GET', telegram: initData(user.id, user.first_name) });
+  const browser = await request('/api/hvylia/account', { method: 'GET', profile: finished.data.token, requestOrigin: origin });
+  assert.equal(browser.status, 200);
+  assert.equal(browser.data.profile.publicId, native.data.profile.publicId);
+  assert.equal(browser.headers.get('Access-Control-Allow-Origin'), origin);
+  const preflight = await request('/api/hvylia/account', { method: 'OPTIONS', requestOrigin: origin });
+  assert.equal(preflight.status, 204);
+  assert.match(preflight.headers.get('Access-Control-Allow-Headers'), /X-Hvylia-Profile/u);
+  const blockedOrigin = await request('/api/hvylia/account', { method: 'GET', profile: finished.data.token, requestOrigin: 'https://unrelated.example' });
+  assert.equal(blockedOrigin.status, 403);
+  assert.equal(blockedOrigin.data.code, 'ORIGIN');
+  const room = await request('/api/rooms', { profile: finished.data.token, body: { name: 'Браузерна Олена' } });
+  assert.equal(room.status, 201);
+});
+
+test('real bot-code login caps bad attempts and preserves that cap when requesting a new code', async () => {
+  const start = await request('/api/hvylia/auth/telegram/start', { body: {} });
+  const loginId = start.data.loginId;
+  const user = { id: 940002, first_name: 'Код Марко' };
+  const attached = await request('/__test/login/attach', { body: { loginId, user } });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const invalid = await request('/api/hvylia/auth/telegram/finish', { body: { loginId, secret: start.data.secret, code: 'wrong' } });
+    assert.equal(invalid.status, attempt === 4 ? 429 : 401);
+    assert.equal(invalid.data.code, attempt === 4 ? 'LOGIN_LOCKED' : 'LOGIN_CODE');
+    if (attempt === 1) {
+      const resent = await request('/__test/login/attach', { body: { loginId, user } });
+      assert.equal(resent.status, 200);
+    }
+  }
+  const validAfterLock = await request('/api/hvylia/auth/telegram/finish', { body: { loginId, secret: start.data.secret, code: attached.data.code } });
+  assert.equal(validAfterLock.status, 429);
+  assert.equal(validAfterLock.data.code, 'LOGIN_LOCKED');
+  const resendAfterLock = await request('/__test/login/attach', { body: { loginId, user } });
+  assert.equal(resendAfterLock.status, 429);
+});
+
+test('nickname players earn wins exactly once while late joiners enter the smaller team without earning the ongoing match', { timeout: 30000 }, async () => {
+  const names = ['Нік Олена', 'Нік Марко', 'Нік Леся', 'Нік Тарас', 'Пізня Оксана', 'Пізній Петро'];
+  const profiles = [];
+  for (const name of names) profiles.push(await guestProfile(name));
+  const created = await request('/api/rooms', { profile: profiles[0].token, body: { name: names[0] } });
+  const code = created.data.code;
+  const sessions = [created.data];
+  for (let index = 1; index < 4; index += 1) {
+    const joined = await request(`/api/rooms/${code}/join`, { profile: profiles[index].token, body: { name: names[index] } });
+    assert.equal(joined.status, 200);
+    sessions.push(joined.data);
+  }
+  const players = [];
+  for (const session of sessions) players.push(await connect(session));
+  await sync(players, state => state.players.every(player => player.connected));
+  await formMatch(players, true);
+  const psychic = players.find(client => client.state.you.role === 'psychic');
+  const before = structuredClone(psychic.state.round);
+  for (let index = 4; index < 6; index += 1) {
+    const joined = await request(`/api/rooms/${code}/join`, { profile: profiles[index].token, body: { name: names[index] } });
+    assert.equal(joined.status, 200);
+    assert.equal(joined.data.state.you.role, 'spectator');
+    assert.equal(Object.hasOwn(joined.data.state.round, 'target'), false);
+    const newcomer = await connect(joined.data);
+    players.push(newcomer);
+    await sync(players, state => state.players.length === index + 1 && state.players.every(player => player.connected));
+    if (index === 5) {
+      const wrongTeam = await newcomer.action({ type: 'team', team: 0 });
+      assert.equal(wrongTeam.type, 'error');
+      assert.equal(wrongTeam.code, 'TEAM_BALANCE');
+    }
+    await newcomer.accept({ type: 'team', team: index === 4 ? 0 : 1 });
+    await sync(players, state => state.players.find(player => player.id === newcomer.session.playerId)?.team === (index === 4 ? 0 : 1));
+    assert.deepEqual(psychic.state.round, before);
+    assert.equal(psychic.state.phase, 'PSYCHIC_VIEW');
+    assert.equal(psychic.state.config.ranked, true);
+    assertPrivate(players);
+  }
+  const winner = await playPerfectMatch(players, 'standard');
+  await request('/__test/flush', { body: { code } });
+  const rankings = await request('/api/hvylia/leaderboard', { method: 'GET' });
+  for (let index = 0; index < profiles.length; index += 1) {
+    const profile = await request('/api/hvylia/account', { method: 'GET', profile: profiles[index].token });
+    assert.equal(profile.status, 200);
+    assert.equal(profile.data.profile.publicId, profiles[index].profile.publicId);
+    assert.equal(profile.data.profile.stats.played, index < 4 ? 1 : 0);
+    if (index < 4) {
+      assert.equal(profile.data.profile.stats.wins, Math.floor(index / 2) === winner ? 1 : 0);
+      assert.ok(rankings.data.entries.some(entry => entry.publicId === profile.data.profile.publicId && entry.name === names[index]));
+    } else assert.ok(!rankings.data.entries.some(entry => entry.publicId === profile.data.profile.publicId));
+  }
+  await request('/__test/flush', { body: { code } });
+  const repeated = await request('/api/hvylia/leaderboard', { method: 'GET' });
+  assert.deepEqual(repeated.data.entries, rankings.data.entries);
+  const previousEntry = rankings.data.entries.find(entry => entry.publicId === profiles[0].profile.publicId);
+  const renamed = await guestProfile('Нік Олена оновлена', profiles[0].token);
+  assert.equal(renamed.profile.publicId, previousEntry.publicId);
+  assert.deepEqual(renamed.profile.stats, { wins: previousEntry.wins, losses: previousEntry.losses, played: previousEntry.played, points: previousEntry.points });
+  const afterRename = await request('/api/hvylia/leaderboard', { method: 'GET' });
+  assert.equal(afterRename.data.entries.length, rankings.data.entries.length);
+  assert.deepEqual(afterRename.data.entries.find(entry => entry.publicId === previousEntry.publicId), { ...previousEntry, name: 'Нік Олена оновлена' });
+  const repeatedRename = await guestProfile('Нік Олена оновлена', profiles[0].token);
+  assert.equal(repeatedRename.profile.revision, renamed.profile.revision);
+  const remembered = await request('/api/hvylia/account', { method: 'GET', profile: renamed.token });
+  assert.equal(remembered.data.profile.name, 'Нік Олена оновлена');
+  assert.deepEqual(remembered.data.profile.stats, renamed.profile.stats);
+  for (const player of players) player.close();
+});
+
+test('a match containing players without a profile remains unranked even when nickname profiles participate', { timeout: 20000 }, async () => {
+  const first = await guestProfile('Дружня Олена');
+  const second = await guestProfile('Дружній Марко');
+  const created = await request('/api/rooms', { profile: first.token, body: { name: 'Дружня Олена' } });
+  const sessions = [created.data];
+  const guests = [{ name: 'Дружній Марко', profile: second.token }, { name: 'Без профілю Леся' }, { name: 'Без профілю Тарас' }];
+  for (const guest of guests) {
+    const joined = await request(`/api/rooms/${created.data.code}/join`, { profile: guest.profile, body: { name: guest.name } });
+    assert.equal(joined.status, 200);
+    sessions.push(joined.data);
+  }
+  const players = [];
+  for (const session of sessions) players.push(await connect(session));
+  await sync(players, state => state.players.every(player => player.connected));
+  await formMatch(players, false);
+  await playPerfectMatch(players, 'standard');
+  await request('/__test/flush', { body: { code: created.data.code } });
+  for (const profile of [first, second]) {
+    const refreshed = await request('/api/hvylia/account', { method: 'GET', profile: profile.token });
+    assert.equal(refreshed.data.profile.stats.played, 0);
+  }
+  for (const player of players) player.close();
+});
+
+test('a replacement socket survives stale close and alarm callbacks and heals false disconnection on ping or action', { timeout: 15000 }, async () => {
+  const created = await request('/api/rooms', { body: { name: 'Відновлення' } });
+  const session = created.data;
+  const first = await connect(session);
+  const before = await request('/__test/connection/status', { body: { code: session.code, playerId: session.playerId } });
+  const replacement = await connect(session);
+  await first.wait(() => first.packets.find(packet => packet.type === 'replaced'), 'replacement notice');
+  const current = await request('/__test/connection/status', { body: { code: session.code, playerId: session.playerId } });
+  assert.notEqual(current.data.connectionId, before.data.connectionId);
+  const stale = await request('/__test/connection/stale-close', { body: { code: session.code, playerId: session.playerId, connectionId: before.data.connectionId } });
+  assert.equal(stale.data.connected, true);
+  assert.equal(stale.data.connectionId, current.data.connectionId);
+  const expired = await request('/__test/connection/expired', { body: { code: session.code, playerId: session.playerId } });
+  assert.equal(expired.status, 200);
+  assert.equal(expired.data.expiredSocketBefore, 1);
+  assert.ok([2, 3].includes(expired.data.expiredSocketAfter), 'The real alarm closes the stale socket');
+  assert.equal(expired.data.connected, true);
+  assert.equal(expired.data.connectionId, current.data.connectionId);
+  for (const mode of ['ping', 'action']) {
+    const falsePresence = await request('/__test/connection/false', { body: { code: session.code, playerId: session.playerId } });
+    assert.equal(falsePresence.data.connected, false);
+    await replacement.waitState(state => state.players.find(player => player.id === session.playerId)?.connected === false);
+    if (mode === 'ping') {
+      const cursor = replacement.packets.length;
+      replacement.socket.send(JSON.stringify({ type: 'ping' }));
+      await replacement.wait(() => replacement.packets.slice(cursor).some(packet => packet.type === 'pong'), 'healing pong');
+    } else await replacement.accept({ type: 'settings', winScore: 15 });
+    await replacement.waitState(state => state.players.find(player => player.id === session.playerId)?.connected === true);
+    const healed = await request('/__test/connection/status', { body: { code: session.code, playerId: session.playerId } });
+    assert.equal(healed.data.connected, true);
+    assert.equal(healed.data.connectionId, current.data.connectionId);
+    assert.equal(replacement.socket.readyState, 1);
+  }
+  replacement.close();
 });

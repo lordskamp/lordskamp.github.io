@@ -276,7 +276,7 @@ test('four real WebSocket clients play an entire match with private targets, rac
     await sync(players, state => state.phase === 'PSYCHIC_VIEW' && state.round.id !== oldId);
     const after = psychic.state;
     assert.notEqual(after.round.spectrum.id, before.round.spectrum.id);
-    assert.equal(after.round.target, before.round.target);
+    assert.notEqual(after.round.target, before.round.target);
     assert.equal(after.round.psychicId, before.round.psychicId);
     assert.equal(after.round.activeTeam, before.round.activeTeam);
     assert.equal(after.round.number, before.round.number);

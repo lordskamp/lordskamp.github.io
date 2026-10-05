@@ -70,6 +70,37 @@ test('account profile needs a registered owner, uses an opaque public identity a
   assert.throws(() => instance.profile({ ...USER, id: USER.id + 1 }), error => error.code === 'ACCOUNT');
 });
 
+test('nickname accounts keep opaque owners and receipt-based rankings without granting Telegram purchases', async t => {
+  const first = account(t, null);
+  const second = account(t, null);
+  const guest = { id: '00000000-0000-4000-8000-000000000001', name: '  Хвиля   ' };
+  const profile = first.guestProfile(guest);
+  assert.equal(profile.kind, 'guest');
+  assert.equal(profile.name, 'Хвиля');
+  assert.equal(JSON.stringify(profile).includes(guest.id), false);
+  const other = second.guestProfile({ ...guest, id: '00000000-0000-4000-8000-000000000002' });
+  assert.notEqual(profile.publicId, other.publicId);
+  assert.equal(profile.name, other.name);
+  assert.throws(() => first.guestProfile({ ...guest, id: '00000000-0000-4000-8000-000000000003' }), error => error.code === 'ACCOUNT');
+  assert.throws(() => first.profile(USER), error => error.code === 'ACCOUNT');
+  assert.throws(() => second.guestProfile({ id: 'not-a-uuid', name: 'Нік' }), error => error.code === 'ACCOUNT');
+  await assert.rejects(first.createInvoice('anime'), error => error.code === 'TELEGRAM_REQUIRED');
+  const receipt = { matchId: 'guest-match', won: true, points: 12, packId: 'standard', finishedAt: Date.now(), name: 'Forged winner' };
+  const result = first.recordMatch(receipt);
+  assert.equal(result.name, 'Хвиля');
+  assert.deepEqual(result.stats, { wins: 1, losses: 0, played: 1, points: 12 });
+  assert.deepEqual(first.recordMatch(receipt), result);
+  const renamed = first.guestProfile({ ...guest, name: 'Марко' });
+  assert.equal(renamed.publicId, profile.publicId);
+  assert.deepEqual(renamed.stats, result.stats);
+  assert.equal(renamed.name, 'Марко');
+  const leaderboard = new WaveLeaderboardDO({ storage: storage(t) }, {});
+  leaderboard.update(renamed);
+  assert.equal(leaderboard.list().entries[0].name, 'Марко');
+  assert.equal(JSON.stringify(leaderboard.list()).includes(guest.id), false);
+  assert.equal(first.preCheckout({ from: USER, currency: 'XTR', total_amount: 150, invoice_payload: 'hvylia:v1:00000000-0000-4000-8000-000000000001' }), false);
+});
+
 test('Stars invoices persist before Bot API I/O, use server pricing and reuse an unpaid invoice', async t => {
   const instance = account(t);
   let requests = 0;

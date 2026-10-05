@@ -29,6 +29,10 @@
       {
         "name": "HVYLIA_LEADERBOARD",
         "class_name": "WaveLeaderboardDO"
+      },
+      {
+        "name": "HVYLIA_LOGINS",
+        "class_name": "WaveLoginDO"
       }
     ]
   },
@@ -45,6 +49,12 @@
         "WaveAccountDO",
         "WaveLeaderboardDO"
       ]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": [
+        "WaveLoginDO"
+      ]
     }
   ],
   "observability": {
@@ -54,7 +64,7 @@
   "vars": {
     "SITE_ORIGIN": "https://lordskamp.github.io",
     "ROOM_TTL_MS": "86400000",
-    "HVYLIA_BOT_USERNAME": "",
-    "HVYLIA_PAYMENT_SUPPORT": ""
+    "HVYLIA_BOT_USERNAME": "DovzhynaHvyli_bot",
+    "HVYLIA_PAYMENT_SUPPORT": "@Lordskamp"
   }
 }

@@ -2,6 +2,9 @@ import { timingSafeEqual } from 'node:crypto';
 
 const encoder = new TextEncoder();
 const AUTH_LIFETIME_SECONDS = 12 * 60 * 60;
+const GUEST_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
+const SESSION_PURPOSE = 'hvylia-browser-v1';
 
 function telegramFault(code, message, status = 400) {
   return Object.assign(new Error(message), { code, status });
@@ -12,6 +15,73 @@ export function constantTimeEqual(left, right) {
   const first = encoder.encode(left);
   const second = encoder.encode(right);
   return first.byteLength === second.byteLength && timingSafeEqual(first, second);
+}
+
+function browserIdentity(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.kind === 'guest') {
+    if (typeof value.id !== 'string' || !UUID.test(value.id) || typeof value.name !== 'string') return null;
+    const name = value.name.normalize('NFC').replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/\s+/gu, ' ').trim();
+    if (!name || Array.from(name).length > 64) return null;
+    return { kind: 'guest', id: value.id.toLowerCase(), name };
+  }
+  if (value.kind !== 'telegram' || !Number.isSafeInteger(value.id) || value.id <= 0 || value.id > 4503599627370495
+    || typeof value.first_name !== 'string' || !value.first_name.trim() || value.first_name.length > 256
+    || (value.last_name !== undefined && (typeof value.last_name !== 'string' || value.last_name.length > 256))
+    || (value.username !== undefined && (typeof value.username !== 'string' || value.username.length > 64)) || value.is_bot === true) return null;
+  return { kind: 'telegram', id: value.id, first_name: value.first_name,
+    ...(value.last_name !== undefined ? { last_name: value.last_name } : {}),
+    ...(value.username !== undefined ? { username: value.username } : {}) };
+}
+
+function base64url(bytes) {
+  return globalThis.btoa(String.fromCharCode(...bytes)).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
+}
+
+function decodeBase64url(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/u.test(value)) throw new Error('Invalid encoding');
+  const raw = globalThis.atob(value.replace(/-/gu, '+').replace(/_/gu, '/') + '='.repeat((4 - value.length % 4) % 4));
+  const bytes = Uint8Array.from(raw, character => character.charCodeAt(0));
+  if (base64url(bytes) !== value) throw new Error('Noncanonical encoding');
+  return bytes;
+}
+
+async function browserSigningKey(secret, usage) {
+  if (typeof secret !== 'string' || secret.length < 32 || secret.length > 1024) throw telegramFault('AUTH_SETUP', 'Вхід ще не налаштовано.', 503);
+  return crypto.subtle.importKey('raw', encoder.encode(`${SESSION_PURPOSE}\n${secret}`), { name: 'HMAC', hash: 'SHA-256' }, false, [usage]);
+}
+
+/** Server-issued identity credentials; nickname alone never recovers somebody else's stats. */
+export async function createBrowserSession(identity, secret, now = Date.now()) {
+  const normalized = browserIdentity(identity);
+  if (!normalized || !Number.isFinite(now) || now < 0) throw telegramFault('AUTH', 'Не вдалося підтвердити профіль.', 401);
+  const issued = Math.floor(now / 1000);
+  const expires = issued + (normalized.kind === 'guest' ? GUEST_LIFETIME_SECONDS : AUTH_LIFETIME_SECONDS);
+  const payload = base64url(encoder.encode(JSON.stringify({ purpose: SESSION_PURPOSE, iat: issued, exp: expires, identity: normalized })));
+  const key = await browserSigningKey(secret, 'sign');
+  const signature = base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(payload))));
+  return { token: `${payload}.${signature}`, expiresAt: expires * 1000 };
+}
+
+/** Expiry, signature and bounded identity shape are checked before exposing an account. */
+export async function verifyBrowserSession(token, secret, now = Date.now()) {
+  if (typeof token !== 'string' || !token || token.length > 4096 || !Number.isFinite(now) || now < 0) return null;
+  try {
+    const segments = token.split('.');
+    if (segments.length !== 2) return null;
+    const [payload, signature] = segments;
+    const signatureBytes = decodeBase64url(signature);
+    if (signatureBytes.byteLength !== 32) return null;
+    const key = await browserSigningKey(secret, 'verify');
+    if (!await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(payload))) return null;
+    const claims = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(decodeBase64url(payload)));
+    const identity = browserIdentity(claims.identity);
+    const seconds = Math.floor(now / 1000);
+    if (!identity || claims.purpose !== SESSION_PURPOSE || !Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.exp)
+      || claims.iat < 0 || claims.iat > seconds + 60 || claims.exp <= seconds
+      || claims.exp - claims.iat !== (identity.kind === 'guest' ? GUEST_LIFETIME_SECONDS : AUTH_LIFETIME_SECONDS)) return null;
+    return identity;
+  } catch { return null; }
 }
 
 /** Verify Telegram's Mini App HMAC, including every signed field except hash. */

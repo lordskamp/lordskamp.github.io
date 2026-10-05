@@ -3,13 +3,14 @@ import { createRoom, addPlayer, applyAction, viewFor, setConnection, recoverDisc
 import { SPECTRA } from '../content/hvylia/spectra.js';
 import { PACKS } from '../content/hvylia/packs.js';
 import { getPremiumSpectra } from './hvylia-premium-cards.js';
-import { verifyTelegramInitData, telegramCall, constantTimeEqual } from './hvylia-telegram.js';
+import { verifyTelegramInitData, telegramCall, constantTimeEqual, createBrowserSession, verifyBrowserSession } from './hvylia-telegram.js';
 export { WaveAccountDO, WaveLeaderboardDO } from './hvylia-accounts.js';
+export { WaveLoginDO } from './hvylia-login.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/u;
 const BODY_LIMIT = 2048;
-const HEARTBEAT_TIMEOUT = 65000;
+const HEARTBEAT_TIMEOUT = 150000;
 const TICKET_TTL = 30000;
 
 function fault(code, message, status = 400) {
@@ -79,7 +80,7 @@ function json(data, status = 200, origin = '') {
       'X-Content-Type-Options': 'nosniff',
       'Access-Control-Allow-Origin': origin || '*',
       'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Telegram-Init-Data',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Telegram-Init-Data, X-Hvylia-Profile',
       'Vary': 'Origin'
     }
   });
@@ -103,13 +104,30 @@ function deck(state) {
 function account(env, id) { return env.HVYLIA_ACCOUNTS.getByName(String(id), { locationHint: 'eeur' }); }
 function ranking(env) { return env.HVYLIA_LEADERBOARD.getByName('network-wins', { locationHint: 'eeur' }); }
 
+function identityKey(user) { return user?.kind === 'guest' ? 'g:' + user.id : user ? String(user.id) : null; }
+function authSecret(env) { return env.HVYLIA_AUTH_SECRET || env.HVYLIA_BOT_TOKEN; }
+function randomHex(size = 24) { return Array.from(crypto.getRandomValues(new Uint8Array(size)), byte => byte.toString(16).padStart(2, '0')).join(''); }
 async function identity(request, env, required = false) {
   const raw = request.headers.get('X-Telegram-Init-Data');
-  if (!raw && !required) return null;
-  const user = await verifyTelegramInitData(raw, env.HVYLIA_BOT_TOKEN);
-  if (!user) throw fault('TELEGRAM_AUTH', 'Відкрийте гру заново через Telegram.', 401);
-  await account(env, user.id).profile(user);
+  const token = request.headers.get('X-Hvylia-Profile');
+  let user = null;
+  if (raw) user = await verifyTelegramInitData(raw, env.HVYLIA_BOT_TOKEN);
+  else if (token) user = await verifyBrowserSession(token, authSecret(env));
+  else if (!required) return null;
+  if (!user) throw fault('TELEGRAM_AUTH', 'Увійдіть ще раз, щоб відновити свій профіль.', 401);
+  if (required && user.kind === 'guest') throw fault('TELEGRAM_REQUIRED', 'Для покупки увійдіть через Telegram.', 401);
+  if (user.kind !== 'guest') await account(env, user.id).profile(user);
+  else await account(env, identityKey(user)).profile();
   return user;
+}
+async function accountPayload(user, env) {
+  const profile = user ? await account(env, identityKey(user)).profile() : null;
+  return {
+    telegramAvailable: Boolean(env.HVYLIA_BOT_TOKEN && env.HVYLIA_BOT_USERNAME),
+    botUsername: env.HVYLIA_BOT_USERNAME || '', paymentReady: paymentReady(env), profile,
+    identityType: !user ? 'anonymous' : user.kind === 'guest' ? 'nickname' : 'telegram',
+    packs: PACKS.map(pack => ({ ...pack, owned: pack.free || Boolean(profile?.ownedPacks.includes(pack.id)), available: true }))
+  };
 }
 
 async function ownPack(env, accountId, packId) {
@@ -147,7 +165,13 @@ async function webhook(request, env) {
   } else if (update.message?.chat?.type === 'private' && typeof update.message.text === 'string') {
     const message = update.message;
     const command = message.text.split(/\s/u)[0].split('@')[0];
-    if (command === '/paysupport') {
+    const loginId = message.text.split(/\s/u)[1]?.match(/^login_([a-f0-9]{48})$/u)?.[1];
+    if (command === '/start' && loginId) {
+      let result;
+      try { result = await env.HVYLIA_LOGINS.getByName(loginId).attachTelegram(message.from); }
+      catch { await telegramCall(env, 'sendMessage', { chat_id: message.chat.id, text: 'Це посилання входу вже минуло. Відкрийте новий вхід на сайті гри.' }); return { ok: true }; }
+      await telegramCall(env, 'sendMessage', { chat_id: message.chat.id, text: 'Код входу до гри «Довжина хвилі»: ' + result.code + '\nВведіть його на сайті, де ви почали вхід. Код діє 5 хвилин. Не передавайте його іншим.' });
+    } else if (command === '/paysupport') {
       await telegramCall(env, 'sendMessage', { chat_id: message.chat.id, text: `Підтримка оплат гри «Довжина хвилі»: ${env.HVYLIA_PAYMENT_SUPPORT || 'Зверніться до власника бота.'}` });
     } else if (command === '/start' || command === '/help') {
       const code = message.text.split(/\s/u)[1]?.match(/^room_([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4})$/u)?.[1];
@@ -192,14 +216,14 @@ export class WaveRoom extends DurableObject {
 
   async initialize(code, rawName, user = null, packId = 'standard') {
     if (this.ctx.storage.sql.exec('SELECT id FROM room WHERE id = 1').toArray().length) return { collision: true };
-    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: String(user.id) } : {}) };
+    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: identityKey(user) } : {}) };
     const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
     const tokenHash = await hash(token);
     // Another creation may have finished while digesting the token.
     if (this.ctx.storage.sql.exec('SELECT id FROM room WHERE id = 1').toArray().length) return { collision: true };
     const state = createRoom(code, player);
     state.config.packId = packId;
-    state._packSponsor = user ? String(user.id) : null;
+    state._packSponsor = user ? identityKey(user) : null;
     this.ctx.storage.transactionSync(() => {
       this.write(state);
       this.ctx.storage.sql.exec('INSERT INTO sessions VALUES (?, ?)', tokenHash, player.id);
@@ -209,11 +233,11 @@ export class WaveRoom extends DurableObject {
   }
 
   async join(rawName, user = null) {
-    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: String(user.id) } : {}) };
+    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: identityKey(user) } : {}) };
     const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
     const tokenHash = await hash(token);
     const { state } = this.read();
-    const existing = user && state.players.find(item => item._accountId === String(user.id));
+    const existing = user && state.players.find(item => item._accountId === identityKey(user));
     if (existing) {
       this.ctx.storage.sql.exec('INSERT INTO sessions VALUES (?, ?)', tokenHash, existing.id);
       return { code: state.code, playerId: existing.id, token, state: viewFor(state, existing.id) };
@@ -242,9 +266,10 @@ export class WaveRoom extends DurableObject {
     const { state } = this.read();
     const player = state.players.find(item => item.id === playerId);
     if (user) {
-      const id = String(user.id);
-      if (player._accountId && player._accountId !== id) throw fault('SESSION', 'Ця кімната збережена для іншого Telegram-акаунта.', 403);
-      if (!player._accountId && state.phase === 'LOBBY') {
+      const id = identityKey(user);
+      const upgradingGuest = player._accountId?.startsWith('g:') && user.kind !== 'guest';
+      if (player._accountId && player._accountId !== id && !upgradingGuest) throw fault('SESSION', 'Ця кімната збережена для іншого профілю.', 403);
+      if ((!player._accountId || upgradingGuest) && state.phase === 'LOBBY') {
         if (state.players.some(item => item.id !== playerId && item._accountId === id)) throw fault('PLAYER_EXISTS', 'Ви вже є в цій кімнаті.');
         player._accountId = id;
         state.revision += 1;
@@ -335,8 +360,10 @@ export class WaveRoom extends DurableObject {
         }
       }
       this.ctx.acceptWebSocket(server);
-      server.serializeAttachment({ playerId: entry.player_id, connectionId: crypto.randomUUID(), lastSeen: Date.now(), bucket: Date.now(), count: 0 });
+      const connectionId = crypto.randomUUID();
+      server.serializeAttachment({ playerId: entry.player_id, connectionId, lastSeen: Date.now(), bucket: Date.now(), count: 0 });
       const next = recoverDisconnected(setConnection(state, entry.player_id, true), Date.now(), random, deck(state));
+      next.players.find(player => player.id === entry.player_id)._connectionId = connectionId;
       this.write(next);
       this.broadcast(next);
       await this.schedule();
@@ -375,7 +402,10 @@ export class WaveRoom extends DurableObject {
       socket.serializeAttachment(info);
       if (info.count > 35) throw fault('RATE', 'Забагато дій. Зачекайте мить.', 429);
       let { state, lastActivity } = this.read();
-      if (!state.players.some(player => player.id === info.playerId)) throw fault('SESSION', 'Ви вже вийшли з кімнати.', 401);
+      const activePlayer = state.players.find(player => player.id === info.playerId);
+      if (!activePlayer) throw fault('SESSION', 'Ви вже вийшли з кімнати.', 401);
+      if (activePlayer._connectionId && activePlayer._connectionId !== info.connectionId) { this.send(socket, { type: 'replaced' }); socket.close(4001, 'Інша вкладка'); return; }
+      if (!activePlayer.connected) { state = setConnection(state, info.playerId, true, now); this.write(state); this.broadcast(state); }
       if (packet.type === 'ping') {
         if (now - lastActivity > 60000) this.ctx.storage.sql.exec('UPDATE room SET last_activity = ? WHERE id = 1', now);
         this.send(socket, { type: 'pong' });
@@ -390,6 +420,9 @@ export class WaveRoom extends DurableObject {
       const authorization = await this.authorizePack(info.playerId, packet.action);
       // Entitlement RPC may yield; apply the action to the latest committed room state.
       ({ state } = this.read());
+      const latestPlayer = state.players.find(player => player.id === info.playerId);
+      if (socket.readyState !== 1 || (latestPlayer?._connectionId && latestPlayer._connectionId !== info.connectionId)) return;
+      if (latestPlayer && !latestPlayer.connected) state = setConnection(state, info.playerId, true, now);
       if (authorization && (authorization.packId !== (state.config.packId || 'standard') || authorization.sponsor !== state._packSponsor)) {
         throw fault('STALE', 'Пак кімнати змінився. Спробуйте почати матч ще раз.');
       }
@@ -427,7 +460,8 @@ export class WaveRoom extends DurableObject {
     if (!playerId || this.ctx.getWebSockets().some(other => other !== socket && other.readyState === 1 && other.deserializeAttachment()?.playerId === playerId)) return;
     try {
       const { state } = this.read();
-      if (!state.players.some(player => player.id === playerId)) return;
+      const player = state.players.find(item => item.id === playerId);
+      if (!player || (player._connectionId && player._connectionId !== socket.deserializeAttachment()?.connectionId)) return;
       const next = setConnection(state, playerId, false);
       this.write(next, false);
       this.broadcast(next);
@@ -479,7 +513,9 @@ export class WaveRoom extends DurableObject {
       const info = socket.deserializeAttachment();
       if (socket.readyState === 1 && info && now - info.lastSeen >= HEARTBEAT_TIMEOUT) {
         socket.close(4000, 'Зв’язок перервано');
-        if (state.players.some(player => player.id === info.playerId)) state = setConnection(state, info.playerId, false, now);
+        const player = state.players.find(item => item.id === info.playerId);
+        const hasOther = this.ctx.getWebSockets().some(other => other !== socket && other.readyState === 1 && other.deserializeAttachment()?.playerId === info.playerId && now - (other.deserializeAttachment()?.lastSeen || 0) < HEARTBEAT_TIMEOUT);
+        if (player && !hasOther && (!player._connectionId || player._connectionId === info.connectionId)) state = setConnection(state, info.playerId, false, now);
       }
     }
     state = recoverDisconnected(state, now, random, deck(state));
@@ -511,14 +547,31 @@ export default {
       if (url.pathname === '/api/health' && request.method === 'GET') return json({ ok: true, game: 'Довжина хвилі' }, 200, origin);
       if (url.pathname === '/api/hvylia/telegram-webhook' && request.method === 'POST') return json(await webhook(request, env));
       if (url.pathname === '/api/hvylia/leaderboard' && request.method === 'GET') return json(await ranking(env).list(50), 200, origin);
-      if (url.pathname === '/api/hvylia/account' && request.method === 'GET') {
-        const user = await identity(request, env);
-        const profile = user ? await account(env, user.id).profile() : null;
-        return json({
-          telegramAvailable: Boolean(env.HVYLIA_BOT_TOKEN && env.HVYLIA_BOT_USERNAME),
-          botUsername: env.HVYLIA_BOT_USERNAME || '', paymentReady: paymentReady(env), profile,
-          packs: PACKS.map(pack => ({ ...pack, owned: pack.free || Boolean(profile?.ownedPacks.includes(pack.id)), available: true }))
-        }, 200, origin);
+      if (url.pathname === '/api/hvylia/account' && request.method === 'GET') return json(await accountPayload(await identity(request, env), env), 200, origin);
+      if (url.pathname === '/api/hvylia/auth/guest' && request.method === 'POST') {
+        const { name: rawName } = await readJson(request);
+        const name = nickname(rawName);
+        const current = await identity(request, env);
+        if (current && current.kind !== 'guest') return json({ ...(await accountPayload(current, env)), unchanged: true }, 200, origin);
+        const user = { kind: 'guest', id: current?.id || crypto.randomUUID(), name };
+        const profile = await account(env, identityKey(user)).guestProfile(user);
+        if (profile.stats.played > 0) await ranking(env).update(profile);
+        const session = await createBrowserSession(user, authSecret(env));
+        return json({ ...session, profile, identityType: 'nickname' }, 200, origin);
+      }
+      if (url.pathname === '/api/hvylia/auth/telegram/start' && request.method === 'POST') {
+        if (!env.HVYLIA_BOT_TOKEN || !env.HVYLIA_BOT_USERNAME || !env.HVYLIA_LOGINS) throw fault('TELEGRAM_UNAVAILABLE', 'Вхід стане доступним після підключення бота.', 503);
+        const loginId = randomHex(), secret = randomHex();
+        const started = await env.HVYLIA_LOGINS.getByName(loginId).begin({ secret });
+        return json({ loginId, secret, url: 'https://t.me/' + env.HVYLIA_BOT_USERNAME + '?start=login_' + loginId, ...started }, 200, origin);
+      }
+      if (url.pathname === '/api/hvylia/auth/telegram/finish' && request.method === 'POST') {
+        const { loginId, secret, code } = await readJson(request);
+        if (!/^[a-f0-9]{48}$/u.test(loginId || '')) throw fault('LOGIN_INVALID', 'Почніть вхід ще раз.');
+        const user = await env.HVYLIA_LOGINS.getByName(loginId).finish({ secret, code });
+        await account(env, user.id).profile(user);
+        const session = await createBrowserSession({ ...user, kind: 'telegram' }, authSecret(env));
+        return json({ ...session, ...(await accountPayload({ ...user, kind: 'telegram' }, env)) }, 200, origin);
       }
       if (url.pathname === '/api/hvylia/invoice' && request.method === 'POST') {
         if (!paymentReady(env)) throw fault('PAYMENT_SETUP', 'Оплата стане доступною після підключення Telegram-бота.', 503);
@@ -536,7 +589,7 @@ export default {
       if (url.pathname === '/api/rooms' && request.method === 'POST') {
         const { name, packId = 'standard' } = await readJson(request);
         const user = await identity(request, env);
-        await ownPack(env, user?.id, packId);
+        await ownPack(env, identityKey(user), packId);
         nickname(name);
         for (let attempt = 0; attempt < 8; attempt += 1) {
           const code = roomCode();

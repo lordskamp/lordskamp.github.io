@@ -106,6 +106,26 @@ test('generated targets keep the four-point wedge visible and allow clipped oute
   assert.equal(applyAction(lobby(), 'host', { type: 'start' }, randomSequence(0, 0, 0.999999999)).round.target, 100);
 });
 
+test('target draws cover all positions uniformly and replacements uniformly skip the previous position', () => {
+  const initial = lobby();
+  const positions = new Set();
+  for (let index = 0; index <= 1000; index += 1) {
+    const state = applyAction(initial, 'host', { type: 'start' }, randomSequence(0, 0, (index + .5) / 1001));
+    assert.equal(state.round.target, index / 10);
+    positions.add(state.round.target);
+  }
+  assert.equal(positions.size, 1001);
+  const running = started();
+  positions.clear();
+  for (let index = 0; index < 1000; index += 1) {
+    const state = applyAction(running, 'host', { type: 'replace-spectrum', roundId: running.round.id }, randomSequence(0, (index + .5) / 1000));
+    assert.equal(state.round.target, (index < 500 ? index : index + 1) / 10);
+    assert.notEqual(state.round.target, running.round.target);
+    positions.add(state.round.target);
+  }
+  assert.equal(positions.size, 1000);
+});
+
 test('the second team starts with one point whichever team wins the first-turn draw', () => {
   for (const [draw, firstTeam] of [[0, 0], [0.999999, 1]]) {
     const state = applyAction(lobby(), 'host', { type: 'start' }, randomSequence(draw, 0, 0.5));
@@ -459,12 +479,152 @@ test('all-offline psychic recovery waits safely until a teammate returns', () =>
   assert.equal(state.paused, false);
 });
 
-test('late guests are spectators and cannot control the match', () => {
-  const state = addPlayer(started(), { id: 'guest', name: 'Новачок' });
+test('late guests can join balanced teams without seeing the private target or replacing the current turn', () => {
+  const initial = started();
+  let state = addPlayer(initial, { id: 'guest', name: 'Новачок' });
   assert.equal(viewFor(state, 'guest').you.role, 'spectator');
   assert.ok(!Object.hasOwn(viewFor(state, 'guest').round, 'target'));
-  throwsCode('PHASE', () => applyAction(state, 'guest', { type: 'team', team: 0 }));
   throwsCode('ROLE', () => applyAction(state, 'guest', { type: 'clue', text: 'Потяг', roundId: state.round.id }));
+  state = applyAction(state, 'guest', { type: 'team', team: 0 });
+  assert.equal(viewFor(state, 'guest').you.role, 'guesser');
+  assert.equal(viewFor(state, 'guest').you.team, 0);
+  assert.ok(!Object.hasOwn(viewFor(state, 'guest').round, 'target'));
+  assert.deepEqual(state.round, initial.round);
+  assert.deepEqual(state.teams, initial.teams);
+  assert.deepEqual(state._rotation, initial._rotation);
+  assert.equal(state.players.find(player => player.id === 'guest').ready, true);
+  assert.deepEqual(viewFor(state, 'guest').turnOrder[0], ['ally', 'guest', 'host']);
+  throwsCode('TEAM_LOCKED', () => applyAction(state, 'guest', { type: 'team', team: 1 }));
+  throwsCode('TEAM_LOCKED', () => applyAction(state, 'host', { type: 'team', playerId: 'ally', team: 1 }));
+  state = addPlayer(state, { id: 'guest2', name: 'Новачок 2' });
+  throwsCode('TEAM_BALANCE', () => applyAction(state, 'guest2', { type: 'team', team: 0 }));
+  state = applyAction(state, 'guest2', { type: 'team', team: 1 });
+  assert.equal(viewFor(state, 'guest2').you.role, 'opponent');
+  assert.deepEqual(state.round, initial.round);
+  state = applyAction(state, 'host', { type: 'clue', text: 'Потяг', roundId: state.round.id });
+  state = applyAction(state, 'guest', { type: 'move', position: 39, roundId: state.round.id });
+  assert.equal(state.round.guess, 39);
+});
+
+test('host can assign late spectators while self selection is off, but cannot move existing players', () => {
+  let state = applyAction(lobby(), 'host', { type: 'settings', selfSelect: false });
+  state = applyAction(state, 'host', { type: 'start' }, randomSequence(0, 0, .5));
+  state = addPlayer(state, { id: 'guest', name: 'Новачок' });
+  throwsCode('ROLE', () => applyAction(state, 'guest', { type: 'team', team: 1 }));
+  throwsCode('TEAM_LOCKED', () => applyAction(state, 'host', { type: 'team', playerId: 'other', team: 0 }));
+  state = applyAction(state, 'host', { type: 'team', playerId: 'guest', team: 1 });
+  assert.equal(viewFor(state, 'guest').you.team, 1);
+  state = addPlayer(state, { id: 'offline', name: 'Без мережі', connected: false });
+  throwsCode('DISCONNECTED', () => applyAction(state, 'host', { type: 'team', playerId: 'offline', team: 0 }));
+  state.phase = 'GAME_OVER';
+  state = addPlayer(state, { id: 'finished', name: 'Після гри' });
+  throwsCode('PHASE', () => applyAction(state, 'host', { type: 'team', playerId: 'finished', team: 0 }));
+});
+
+test('late teammates join every running phase and enter later psychic turns without altering the current round', () => {
+  const initial = started();
+  const guessing = applyAction(initial, 'host', { type: 'clue', text: 'Потяг', roundId: initial.round.id });
+  const betting = applyAction(guessing, 'ally', { type: 'lock', position: 0, roundId: guessing.round.id });
+  const revealing = applyAction(betting, 'other', { type: 'bet', side: 'right', roundId: betting.round.id });
+  const score = applyAction(revealing, null, { type: 'advance', now: revealing.round.revealAt + GAME_CONFIG.scoreDelayMs });
+  for (const phaseState of [initial, guessing, betting, revealing, score]) {
+    let joined = addPlayer(phaseState, { id: 'guest', name: 'Новачок' });
+    joined = applyAction(joined, 'guest', { type: 'team', team: 0 });
+    assert.deepEqual(joined.round, phaseState.round, phaseState.phase);
+    assert.deepEqual(joined.teams, phaseState.teams);
+    assert.equal(joined.phase, phaseState.phase);
+    assert.equal(viewFor(joined, 'guest').round.target, phaseState.round.revealed ? phaseState.round.target : undefined);
+  }
+  let state = applyAction(addPlayer(initial, { id: 'guest', name: 'Новачок' }), 'guest', { type: 'team', team: 0 });
+  for (let round = 0; round < 4; round += 1) {
+    state = scored(state, 0, 'left');
+    state = applyAction(state, 'host', { type: 'next', roundId: state.round.id }, randomSequence(0, .5));
+  }
+  assert.equal(state.round.psychicId, 'guest');
+  assert.equal(viewFor(state, 'guest').you.role, 'psychic');
+});
+
+test('late team joins can unpause a short-handed team and do not mutate the ranked start roster', () => {
+  let state = started();
+  state.config.ranked = true;
+  state._ratedRoster = state.players.map(player => ({ playerId: player.id, team: player.team }));
+  const roster = structuredClone(state._ratedRoster);
+  state = applyAction(state, 'ally', { type: 'leave' });
+  assert.equal(state.paused, true);
+  const round = structuredClone(state.round);
+  state = addPlayer(state, { id: 'guest', name: 'Новачок' });
+  state = applyAction(state, 'guest', { type: 'team', team: 0 });
+  assert.equal(state.paused, false);
+  assert.deepEqual(state.round, round);
+  assert.deepEqual(state._ratedRoster, roster);
+  state = applyAction(state, 'guest', { type: 'leave' });
+  assert.equal(state.paused, true);
+  assert.deepEqual(state._ratedRoster, roster);
+});
+
+test('late joins recover a departed psychic when the original team was empty', () => {
+  let state = applyAction(started(), 'ally', { type: 'leave' });
+  state = applyAction(state, 'host', { type: 'leave' });
+  assert.equal(state.paused, true);
+  const id = state.round.id;
+  state = addPlayer(state, { id: 'guest', name: 'Новачок' });
+  state = applyAction(state, 'guest', { type: 'team', team: 0 }, randomSequence(0, .8));
+  assert.equal(state.round.psychicId, 'guest');
+  assert.notEqual(state.round.id, id);
+  assert.equal(state.round.number, 1);
+  assert.equal(state.paused, true, 'one player still cannot give and guess a clue alone');
+  state = addPlayer(state, { id: 'guest2', name: 'Новачок 2' });
+  const round = structuredClone(state.round);
+  state = applyAction(state, 'guest2', { type: 'team', team: 0 });
+  assert.equal(state.paused, false);
+  assert.deepEqual(state.round, round);
+});
+
+test('balanced shuffles change teammate groups instead of only swapping team names', () => {
+  let state = lobby();
+  const signature = room => [0, 1].map(team => room.players.filter(player => player.team === team).map(player => player.id).sort().join(',')).sort().join('|');
+  const combinations = new Set([signature(state)]);
+  for (let index = 0; index < 24; index += 1) {
+    const previous = signature(state);
+    state = applyAction(state, 'host', { type: 'randomize' }, () => 0);
+    assert.notEqual(signature(state), previous);
+    assert.deepEqual([0, 1].map(team => state.players.filter(player => player.team === team).length), [2, 2]);
+    assert.ok(state.players.every(player => !player.ready));
+    combinations.add(signature(state));
+  }
+  for (let first = 0; first < 4; first += 1) {
+    for (let second = 0; second < 3; second += 1) {
+      for (let third = 0; third < 2; third += 1) {
+        const shuffled = applyAction(lobby(), 'host', { type: 'randomize' }, randomSequence((first + .5) / 4, (second + .5) / 3, (third + .5) / 2));
+        combinations.add(signature(shuffled));
+      }
+    }
+  }
+  assert.equal(combinations.size, 3, 'all possible four-person teammate groups remain reachable');
+});
+
+test('repeated Fisher-Yates shuffles mix larger even rosters and keep odd rosters balanced', () => {
+  let state = lobby();
+  for (let index = 4; index < 8; index += 1) state = addPlayer(state, { id: `extra-${index}`, name: `Гравець ${index}` });
+  let seed = 348125;
+  const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
+  const groups = new Set();
+  const teamZeroCounts = new Map(state.players.map(player => [player.id, 0]));
+  let previous = null;
+  for (let index = 0; index < 128; index += 1) {
+    state = applyAction(state, 'host', { type: 'randomize' }, random);
+    assert.deepEqual([0, 1].map(team => state.players.filter(player => player.team === team).length), [4, 4]);
+    const grouping = [0, 1].map(team => state.players.filter(player => player.team === team).map(player => player.id).sort().join(',')).sort().join('|');
+    assert.notEqual(grouping, previous);
+    groups.add(grouping);
+    previous = grouping;
+    state.players.filter(player => player.team === 0).forEach(player => teamZeroCounts.set(player.id, teamZeroCounts.get(player.id) + 1));
+  }
+  assert.ok(groups.size >= 25);
+  assert.ok([...teamZeroCounts.values()].every(count => count > 30 && count < 95));
+  state = addPlayer(state, { id: 'odd', name: 'Дев’ятий' });
+  state = applyAction(state, 'host', { type: 'randomize' }, random);
+  assert.deepEqual([0, 1].map(team => state.players.filter(player => player.team === team).length), [5, 4]);
 });
 
 test('public functions never mutate their input states, including failure paths', () => {
@@ -520,18 +680,19 @@ test('verified account identity remains private in all room views', () => {
   }
 });
 
-test('psychic replaces only the spectrum and keeps the same target, turn, score and rotation', () => {
+test('psychic replaces the card and target while keeping the turn, score and rotation', () => {
   const initial = started();
   const snapshot = structuredClone(initial);
   const next = applyAction(initial, initial.round.psychicId, {
     type: 'replace-spectrum', roundId: initial.round.id
   }, () => 0);
   assert.notEqual(next.round.spectrum.id, initial.round.spectrum.id);
+  assert.notEqual(next.round.target, initial.round.target);
   assert.notEqual(next.round.id, initial.round.id);
   assert.equal(next._roundSerial, initial._roundSerial + 1);
   assert.equal(next.revision, initial.revision + 1);
   assert.equal(next.phase, 'PSYCHIC_VIEW');
-  assert.deepEqual({ ...next.round, id: initial.round.id, spectrum: initial.round.spectrum }, initial.round);
+  assert.deepEqual({ ...next.round, id: initial.round.id, spectrum: initial.round.spectrum, target: initial.round.target }, initial.round);
   assert.deepEqual(next.teams, initial.teams);
   assert.deepEqual(next.players, initial.players);
   assert.deepEqual(next._rotation, initial._rotation);
@@ -541,7 +702,7 @@ test('psychic replaces only the spectrum and keeps the same target, turn, score 
     const view = viewFor(next, id);
     assert.equal(view.round.spectrum.id, next.round.spectrum.id);
     assert.equal(Object.hasOwn(view.round, 'target'), id === next.round.psychicId);
-    if (id === next.round.psychicId) assert.equal(view.round.target, initial.round.target);
+    if (id === next.round.psychicId) assert.equal(view.round.target, next.round.target);
   }
 });
 
@@ -577,7 +738,7 @@ test('replacement invalidates queued commands for the previous card without chan
   ]) throwsCode('STALE', () => applyAction(next, 'host', { ...action, roundId: initial.round.id }));
   const guessing = applyAction(next, 'host', { type: 'clue', text: 'Підказка до нової картки', roundId: next.round.id });
   assert.equal(guessing.phase, 'TEAM_GUESS');
-  assert.equal(guessing.round.target, initial.round.target);
+  assert.equal(guessing.round.target, next.round.target);
   assert.equal(guessing.round.spectrum.id, next.round.spectrum.id);
   assert.deepEqual(guessing.teams, initial.teams);
 });
@@ -587,7 +748,7 @@ test('replacement draws unused cards from the supplied paid deck and avoids cons
     let state = applyAction(lobby(), 'host', { type: 'settings', packId });
     state = applyAction(state, 'host', { type: 'start' }, randomSequence(0, 0, 0.5), cards);
     const seen = new Set([state.round.spectrum.id]);
-    const turn = { target: state.round.target, psychic: state.round.psychicId, team: state.round.activeTeam, number: state.round.number, rotation: structuredClone(state._rotation), scores: structuredClone(state.teams) };
+    const turn = { psychic: state.round.psychicId, team: state.round.activeTeam, number: state.round.number, rotation: structuredClone(state._rotation), scores: structuredClone(state.teams) };
     for (let index = 1; index < cards.length; index += 1) {
       state = applyAction(state, state.round.psychicId, { type: 'replace-spectrum', roundId: state.round.id }, () => 0, cards);
       assert.equal(seen.has(state.round.spectrum.id), false);
@@ -597,9 +758,10 @@ test('replacement draws unused cards from the supplied paid deck and avoids cons
     }
     assert.equal(seen.size, cards.length);
     const previous = state.round.spectrum.id;
+    const previousTarget = state.round.target;
     state = applyAction(state, state.round.psychicId, { type: 'replace-spectrum', roundId: state.round.id }, () => 0, cards);
     assert.notEqual(state.round.spectrum.id, previous);
-    assert.equal(state.round.target, turn.target);
+    assert.notEqual(state.round.target, previousTarget);
     assert.equal(state.round.psychicId, turn.psychic);
     assert.equal(state.round.activeTeam, turn.team);
     assert.equal(state.round.number, turn.number);
@@ -615,5 +777,6 @@ test('an empty or one-card replacement deck fails atomically instead of changing
   throwsCode('CONTENT', () => applyAction(initial, 'host', action, () => 0, []));
   throwsCode('CONTENT', () => applyAction(initial, 'host', action, () => 0, [initial.round.spectrum]));
   throwsCode('RANDOM', () => applyAction(initial, 'host', action, () => 1));
+  throwsCode('RANDOM', () => applyAction(initial, 'host', action, randomSequence(0, 1)));
   assert.deepEqual(initial, snapshot);
 });

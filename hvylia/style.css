@@ -417,3 +417,353 @@ dialog::backdrop{background:#092635b3}
 }
 @media(max-width:350px){.site-bar{gap:8px}.site-bar nav{gap:9px}.site-bar .quiet-button{font-size:9px}.brand{font-size:15px}.brand span{display:none}.pack-card{grid-template-columns:76px minmax(0,1fr)}.pack-copy{padding-left:12px;padding-right:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Application layout: the instrument and current action lead each screen. */
+body{background:radial-gradient(ellipse at 50% 0,#ffffffa0,transparent 65%),var(--paper)}
+.site-bar{max-width:1120px;padding:10px 28px;border-bottom:0;min-height:64px}
+.site-bar>.brand{display:none}
+.game-wordmark{font-size:18px;letter-spacing:-.055em;font-weight:700;display:flex;align-items:center;gap:9px}
+.game-wordmark::before{content:'∿';display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:50%;background:var(--ink);color:var(--paper);font-family:Arial,sans-serif;font-size:26px;line-height:1}
+.site-bar nav{gap:8px}
+.account-button,.menu-button{width:40px;height:40px;min-height:40px;display:flex;align-items:center;justify-content:center;background:#ffffff80;border:1px solid #cbd6ce;border-radius:50%;font-size:18px}
+.account-button.has-profile{background:var(--ink);color:var(--paper);border-color:var(--ink);font-size:15px;font-weight:600}
+.menu-button{font-size:20px;line-height:1}
+main{width:calc(100% - 48px);max-width:1080px;min-height:calc(100svh - 110px)}
+.site-footer{max-width:1080px;margin:24px auto 0;padding:16px 24px;font-size:10px;border:0;opacity:.7}
+.button{border-radius:14px;min-height:50px;padding:12px 20px;justify-content:center;gap:12px;font-size:13px}
+input:not([type=checkbox]),select{border-radius:12px;min-height:48px;background:#ffffff60;border-color:#bdc9c1}
+label{font-size:11px;margin-bottom:7px}
+.notice{border-radius:16px;padding:13px 18px;font-size:12px}
+.connection{position:fixed;z-index:20;left:50%;top:64px;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 28px);border:1px solid #cbd6ce;border-radius:24px;background:#f5f2eaf0;color:var(--muted);box-shadow:0 3px 20px #1232470d;padding:7px 14px;gap:10px;font-size:10px;backdrop-filter:blur(8px)}
+.connection button{color:var(--ink);font-size:10px;min-height:28px;padding:0}
+.entry-screen{max-width:880px;grid-template-columns:minmax(0,1fr) minmax(290px,340px);gap:44px;padding:34px 0 22px;align-items:center}
+.entry-intro h1{font-size:49px;letter-spacing:-.065em;line-height:1.04;margin:0 0 9px}
+.entry-intro>.eyebrow{font-size:8px;letter-spacing:1.4px;margin-bottom:10px;color:var(--sage)}
+.entry-description{font-size:14px;margin-bottom:9px;letter-spacing:-.02em}
+.entry-dial{max-width:420px;margin:0 -12px 0;width:calc(100% + 24px)}
+.entry-meta{font-size:8px;letter-spacing:.6px;margin-top:3px;text-transform:none}
+.entry-panel{padding:22px;background:#ffffff85;border:1px solid #d9e2da;border-radius:24px;box-shadow:0 10px 36px #12324705}
+.entry-tabs{gap:8px;margin-bottom:19px;background:#e8eee8;padding:4px;border:0;border-radius:12px}
+.entry-tab{flex:1;font-size:11px;min-height:42px;padding:9px 10px;border:0;border-radius:9px;margin:0}
+.entry-tab[aria-selected=true]{background:var(--paper);box-shadow:0 2px 6px #12324712}
+.entry-tab[aria-selected=false]{background:transparent}
+.entry-form h2.sr-only{margin:0}
+.entry-form .button{width:100%;margin-top:15px;min-height:48px}
+.entry-form #room-code-field{margin-top:14px}
+#room-code{font-size:21px;min-height:48px;letter-spacing:.19em}
+.entry-secondary{display:flex;align-items:center;justify-content:space-between;gap:5px 12px;flex-wrap:wrap;margin-top:8px}
+.entry-secondary>.quiet-button{font-size:10px;min-height:40px;padding:7px 0}
+.entry-secondary #saved-room-button{flex-basis:100%;text-align:left;color:var(--sage);margin-top:-5px}
+.entry-identity{margin-top:4px}
+.telegram-login{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:9px 0;background:transparent;font-size:11px;font-weight:600;color:#317caf;line-height:1.4}
+.entry-identity .telegram-login{width:100%;border-top:1px solid var(--line);padding-top:13px}
+.identity-linked{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;width:100%;padding:10px 0;min-height:42px;background:transparent;font-size:11px;border-top:1px solid var(--line);color:var(--ink)}
+.identity-linked>small{font-size:9px;color:var(--sage)}
+.identity-dot{width:5px;height:5px;flex:none;border-radius:50%;background:var(--sage)}
+.entry-pack-picker{border-top:1px solid var(--line);margin-top:6px}
+.entry-pack-picker>summary{display:flex;align-items:center;gap:8px;min-height:44px;font-size:10px}
+.entry-pack-picker>summary>span:first-child{font-size:10px;transform:none;color:var(--muted)}
+.entry-pack-picker>summary>strong{font-size:11px;margin-left:auto;font-weight:600}
+.disclosure-icon{font-size:14px!important;color:var(--sage)}
+.entry-pack-picker .pack-catalog{margin:0;padding:12px 0 4px;border:0}
+.entry-pack-picker .pack-catalog-heading{display:none}
+.entry-pack-picker .pack-grid{grid-template-columns:1fr;gap:10px}
+.entry-pack-picker .pack-card{display:grid;grid-template-columns:56px minmax(0,1fr);border-radius:12px}
+.entry-pack-picker .pack-art{height:auto;min-height:100px}
+.entry-pack-picker .pack-symbol{font-size:48px}
+.entry-pack-picker .pack-copy{padding:12px}
+.entry-pack-picker .pack-topline{font-size:8px;margin-bottom:6px;flex-wrap:wrap;gap:4px}
+.entry-pack-picker .pack-copy h3{font-size:19px;margin-bottom:5px}
+.entry-pack-picker .pack-copy>p{font-size:9px;line-height:1.5;min-height:0;margin-bottom:6px}
+.entry-pack-picker .pack-copy>small{font-size:8px}
+.entry-pack-picker .pack-action{grid-column:1/-1;font-size:10px;min-height:42px;padding:9px}
+.entry-pack-picker .pack-art-dot{display:none}
+.entry-pack-picker .pack-sharing-note{font-size:9px;margin-top:10px}
+.entry-pack-picker .pack-refresh{font-size:9px;min-height:36px;margin-top:2px}
+.room-tools,.practice-tools{padding:5px 0 9px;border-color:#d6dfd7;gap:16px;min-height:43px;flex-wrap:nowrap}
+.room-label{font-size:10px;gap:7px}
+.room-label strong{font-size:17px;letter-spacing:.12em}
+.room-tools .text-link,.room-tools .quiet-button,.practice-tools .quiet-button{font-size:10px;min-height:34px;padding:5px 0;border:0}
+.room-tools #invite-button{margin-left:auto}
+.practice-badge{font-size:10px;letter-spacing:0;text-transform:none}
+.practice-help{display:none}
+#practice-step{font-size:9px;line-height:1.35;margin:6px auto 0}
+.lobby-heading{padding-top:22px;margin-bottom:20px}
+.lobby-heading .eyebrow{font-size:8px;margin-bottom:7px}
+.lobby-heading h1{font-size:37px;margin-bottom:8px}
+.lobby-heading>p:last-child{font-size:12px}
+.lobby-teams{gap:20px}
+.team-column{border:1px solid var(--line);border-radius:18px;padding:15px;background:#ffffff65}
+.team-column>header{gap:9px;padding-bottom:12px;border-width:2px}
+.team-column h2{font-size:23px}
+.team-number,.team-count{font-size:10px}
+.player-row{min-height:54px;padding:10px 0;gap:7px}
+.player-name{font-size:12px;gap:6px}
+.player-name small{font-size:8px}
+.player-state{font-size:9px}
+.player-controls{gap:8px}
+.player-controls select{min-height:38px;border-radius:9px;font-size:10px;padding:6px 9px}
+.kick-button{min-height:38px;min-width:38px}
+.team-join{min-height:42px;font-size:11px;padding:10px 0 0}
+.empty-team{padding:16px 0;font-size:11px}
+.lobby-bottom{margin-top:20px;padding-top:18px;gap:20px}
+.readiness .field-note{font-size:10px;max-width:340px;margin-top:8px}
+.host-start{gap:20px}
+.host-start>.quiet-button{font-size:10px;min-height:44px}
+.lobby-pack-picker{margin:0 0 18px;background:#ffffff40;border:1px solid var(--line);border-radius:13px;padding:0 13px}
+.lobby-pack-picker>summary{min-height:46px;padding:8px 0;gap:10px}
+.lobby-pack-picker>summary>span{font-size:10px}
+.lobby-pack-picker>summary>strong{font-size:14px}
+.lobby-pack-picker .pack-catalog-heading{display:none}
+.lobby-pack-picker .pack-art{height:78px}
+.settings{margin-top:20px}
+.settings>summary{font-size:11px;min-height:46px}
+.settings-grid{gap:15px}
+.settings-bottom{margin-top:16px}
+.settings form{padding:10px 0 18px}
+.unassigned{margin-top:18px;padding-top:16px}
+.game-layout{margin-top:10px;padding:15px 18px 20px;border-radius:26px;gap:15px;background:#e5ede7;border-color:#d5dfd7;grid-template-columns:minmax(140px,1fr) minmax(380px,480px) minmax(140px,1fr)}
+.score-team{margin-top:68px;padding:14px 8px 12px;border:0;background:#ffffff50;border-radius:16px}
+.team-heading h2{font-size:21px;margin-bottom:6px}
+.team-kicker{font-size:8px;margin-bottom:3px;letter-spacing:.8px}
+.team-turn{font-size:8px;min-height:16px;margin-bottom:7px}
+.team-score strong{font-size:45px}
+.team-score span{font-size:13px}
+.team-standing{margin:4px 0 12px;grid-template-columns:minmax(0,1fr) 56px;column-gap:5px}
+.team-standing .team-score{margin-bottom:6px;gap:3px 5px}
+.team-standing .team-remaining{font-size:10px;padding:0;max-width:none}
+.score-track{--head-width:50px;--head-height:55px;width:56px;height:180px;margin-top:0}
+.score-track-tick{gap:5px}
+.score-track-tick>span{width:12px;font-size:8px}
+.score-track-tick>i{width:28px;height:4px}
+.score-track-marker{left:31px}
+.team-1 .score-track-marker{left:calc(100% - 31px)}
+.team-members{display:flex;flex-wrap:wrap;gap:5px;padding-top:10px;border:0}
+.team-members li{border:1px solid #bdcec480;border-radius:8px;background:#ffffff60;padding:3px 6px;gap:2px 4px}
+.member-name{font-size:10px;line-height:1.3}
+.member-role{font-size:8px;line-height:1.3}
+.team-members .member-psychic{padding-left:6px;border-color:var(--team-color)}
+.team-members .member-psychic::before{display:none}
+.team-next{font-size:8px;line-height:1.4;margin-top:8px}
+.round-meta{font-size:8px;gap:12px;margin-bottom:5px}
+.round-meta span+span::before{margin-right:12px}
+.phase-heading .eyebrow{font-size:8px;margin-bottom:4px;letter-spacing:.9px}
+.phase-heading h1{font-size:23px;line-height:1.16;margin-bottom:4px}
+.psychic-banner{margin:6px auto 0;gap:3px 6px}
+.psychic-banner>span{font-size:8px}
+.psychic-banner>strong{font-size:13px}
+.phase-help{display:inline-block;max-width:450px;text-align:center;vertical-align:top}
+.phase-help>summary{justify-content:center;gap:6px;min-height:22px;font-size:9px;color:var(--muted);font-weight:400;line-height:1.4}
+.phase-help>summary>span{font-size:12px}
+.phase-help .phase-description{font-size:10px;line-height:1.55;padding:5px 0;margin:0}
+.game-dial{margin-top:4px;max-width:480px}
+.game-dial .dial-caption{font-size:8px}
+.spectrum-poles h2{min-height:100px;font-size:18px;padding:12px 13px 14px}
+.spectrum-poles.is-long h2{font-size:15px;padding:12px 11px}
+.spectrum-tools{gap:7px;margin:3px auto 6px;max-width:100%}
+.spectrum-tools>p{display:none}
+.spectrum-swap{min-height:36px;font-size:10px;padding:6px 12px;background:#ffffff70;border-color:#bfcec4}
+.spectrum-swap-icon{font-size:17px}
+.round-content{margin-top:8px}
+.clue-form{gap:8px}
+.clue-form input{background:#ffffff90;min-height:48px;font-size:13px}
+.clue-form .button{font-size:12px;gap:8px;min-height:48px;padding:11px 17px}
+.clue-form .field-note{font-size:9px;margin-top:1px}
+.guess-controls>.field-note{font-size:10px;margin:0 auto 8px}
+.clue-display{margin-bottom:10px}
+.clue-display>span{font-size:8px;margin-bottom:3px}
+.clue-display>strong{font-size:24px;line-height:1.2}
+.result-points{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 4px}
+.result-points>strong{font-size:36px}
+.result-points>span{font-size:10px}
+.round-result>p{font-size:10px;margin-bottom:9px}
+.round-result .button{min-height:48px;margin-top:1px}
+.spectator-note{display:none!important}
+.spectator-join{margin:8px auto 2px;max-width:360px}
+.spectator-join>p{font-size:10px;margin:0 0 5px}
+.spectator-join>div{display:flex;gap:8px}
+.spectator-team{min-height:40px;background:#ffffff80;border:1px solid var(--line);border-radius:11px;flex:1;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:11px}
+.pause-banner{padding:11px;margin:8px 0 12px;font-size:10px;border-radius:12px}
+.pause-banner p{margin-bottom:7px}
+.app-menu,.login-dialog,.collection-dialog,.participants-dialog{width:min(430px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:22px;border:1px solid #bdc9c1;border-radius:24px;background:var(--paper);color:var(--ink);box-shadow:0 18px 70px #12324724}
+.app-menu::backdrop,.login-dialog::backdrop,.collection-dialog::backdrop,.participants-dialog::backdrop{background:#12324770;backdrop-filter:blur(3px)}
+.app-menu h2,.collection-dialog h2,.participants-dialog h2{font-size:25px;margin:0;line-height:1.2}
+.app-menu .dialog-top,.collection-dialog .dialog-top,.participants-dialog .dialog-top{margin-bottom:12px}
+.menu-actions,.menu-preferences{display:grid;gap:0;border-top:1px solid var(--line);margin-top:13px}
+.menu-actions>button,.menu-preferences>button{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;width:100%;min-height:52px;border-bottom:1px solid var(--line);background:transparent;padding:11px 0;font-size:13px;font-weight:500}
+.menu-actions>button>span{font-size:15px}
+.menu-preferences{margin-top:20px}
+.preference-value{font-size:11px;color:var(--muted)}
+.creator-link{display:block;font-size:10px;color:var(--muted);padding:16px 0 0}
+.menu-identity .telegram-login{font-size:13px}
+.menu-identity .identity-linked{border:0;justify-content:flex-start;padding:8px 0}
+.login-dialog h2{font-size:29px;line-height:1.15;margin:12px 0}
+.login-intro{font-size:12px;line-height:1.6;color:var(--muted);margin-bottom:18px}
+.login-dialog .button{width:100%}
+#login-bot-link[aria-disabled=true]{pointer-events:none;opacity:.5}
+#telegram-login-form{margin-top:20px}
+#telegram-login-code{font-size:26px;font-weight:600;letter-spacing:.3em;text-align:center;padding-left:22px}
+#telegram-login-submit{margin-top:12px}
+.login-dialog .field-note{font-size:10px;margin-top:14px}
+.collection-dialog{width:min(860px,calc(100vw - 32px))}
+.collection-dialog .pack-catalog{padding-top:0;margin-top:8px;margin-bottom:0;border:0}
+.collection-dialog .pack-catalog-heading{display:none}
+.participants-dialog .player-name>span{max-width:190px}
+.nickname-profile-note{font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:14px}
+.rating-profile .telegram-login{font-size:10px;margin-top:13px;padding:6px 0;min-height:36px}
+@media(max-width:1000px){
+  .game-layout{grid-template-columns:1fr 1fr;padding:14px 15px 18px;gap:12px 16px}
+  .score-team{margin-top:0;padding:12px}
+  .score-team.team-0{grid-column:1;grid-row:1}.score-team.team-1{grid-column:2;grid-row:1}
+  .game-stage{grid-column:1/-1;grid-row:2;width:100%;max-width:500px;justify-self:center}
+  .team-standing{grid-template-columns:minmax(0,1fr) 52px;max-width:100%;margin-bottom:4px;column-gap:6px}
+  .score-track{--head-width:42px;--head-height:46px;width:52px;height:94px;margin:0}
+  .score-track-marker{left:29px}.team-1 .score-track-marker{left:calc(100% - 29px)}
+  .score-track-tick:not([data-key-tick]){display:none}
+  .team-heading h2{font-size:19px}
+  .team-kicker{display:none}.team-turn{font-size:8px;margin-bottom:1px;min-height:14px}
+  .team-standing .team-score strong{font-size:35px}.team-standing .team-score span{font-size:11px}
+  .team-standing .team-remaining{font-size:9px;line-height:1.4}
+  .team-members{padding-top:4px;gap:4px}
+  .team-next{display:none}
+}
+@media(max-width:760px){
+  .site-bar{padding:7px 16px;min-height:54px;gap:10px}
+  .game-wordmark{font-size:16px;letter-spacing:-.055em;gap:7px}
+  .game-wordmark::before{width:27px;height:27px;font-size:24px}
+  .site-bar nav{gap:7px}.account-button,.menu-button{width:36px;height:36px;min-height:36px}
+  main{width:calc(100% - 28px);max-width:540px;min-height:calc(100svh - 100px)}
+  .site-footer{margin:16px 14px 0;padding:12px 0;font-size:9px}
+  .connection{top:55px;font-size:9px}
+  .entry-screen{display:flex;flex-direction:column;gap:14px;padding:9px 0 15px;max-width:420px}
+  .entry-intro{display:block;width:100%;text-align:center}
+  .entry-intro>.eyebrow{font-size:7px;margin-bottom:6px;letter-spacing:1px}
+  .entry-intro>h1{font-size:30px;line-height:1.1;margin-bottom:6px;letter-spacing:-.06em}
+  .entry-description{font-size:11px;line-height:1.5;margin-bottom:4px}
+  .entry-dial{width:220px;max-width:68vw;margin:0 auto}
+  .entry-meta{font-size:8px;margin-top:0;letter-spacing:0}
+  .preview-poles{top:63%;left:15%;width:70%;border-radius:6px;font-size:11px}
+  .preview-poles span{min-height:45px;font-size:11px;padding:7px 5px;line-height:1.2}
+  .entry-panel{width:100%;padding:16px;border-radius:20px}
+  .entry-tabs{gap:5px;margin-bottom:14px}.entry-tab{font-size:11px;min-height:38px;padding:8px}
+  .entry-form .button{margin-top:13px;min-height:46px;font-size:12px}
+  .entry-secondary{margin-top:5px}
+  .entry-secondary>.quiet-button{min-height:36px;font-size:10px}
+  .entry-identity .telegram-login{font-size:10px;min-height:40px;padding-top:11px}
+  .entry-pack-picker{margin-top:3px}.entry-pack-picker>summary{min-height:40px}
+  .room-tools,.practice-tools{padding:3px 0 7px;min-height:37px;gap:12px;flex-wrap:nowrap}
+  .room-label{font-size:9px;gap:6px}.room-label strong{font-size:15px}
+  .room-tools .text-link,.room-tools .quiet-button,.practice-tools .quiet-button{font-size:9px;min-height:32px;padding:5px 0}
+  .practice-badge{font-size:9px}.practice-tools .quiet-button{font-size:9px}
+  #practice-step{font-size:8px;margin:4px auto 0}
+  .lobby-heading{padding-top:17px;margin-bottom:15px}
+  .lobby-heading h1{font-size:29px;margin-bottom:7px}.lobby-heading>p:last-child{font-size:11px}
+  .lobby-teams{grid-template-columns:1fr 1fr;gap:10px}
+  .team-column{padding:11px;border-radius:15px}.team-column>header{gap:6px;padding-bottom:9px}
+  .team-column h2{font-size:16px;line-height:1.15}.team-number{display:none}.team-count{font-size:9px}
+  .player-row{min-height:48px;padding:9px 0;gap:5px}.player-name{font-size:11px;gap:3px}
+  .player-name>span{max-width:135px}.player-state{font-size:8px;margin-left:0;flex-basis:100%}
+  .player-name small{font-size:7px}.player-name .host-label{font-size:7px;padding:1px 3px}
+  .player-controls{gap:4px}.player-controls select{min-width:0;padding:5px 6px;min-height:36px;font-size:9px}
+  .kick-button{min-width:27px;min-height:36px;font-size:18px}
+  .team-join{font-size:9px;min-height:40px;line-height:1.4;padding-top:10px}
+  .empty-team{font-size:10px;padding:15px 0;min-height:61px}
+  .lobby-bottom{margin-top:15px;padding-top:13px;flex-direction:column;gap:12px}
+  .readiness>.button{width:100%;min-height:46px;font-size:12px}.readiness .field-note{font-size:9px}
+  .host-start{gap:12px;width:100%}.host-start>.quiet-button{font-size:9px;flex:1;min-height:42px}
+  .host-start>.button{min-height:46px;font-size:12px;flex:1;padding:11px 14px}
+  .lobby-pack-picker{margin-bottom:15px;padding:0 11px;border-radius:11px}
+  .lobby-pack-picker>summary{min-height:43px}.lobby-pack-picker>summary>span{font-size:9px}.lobby-pack-picker>summary>strong{font-size:13px}
+  .settings{margin-top:16px}.settings-grid{gap:12px}.settings-bottom{gap:12px;margin-top:12px}.checkbox-label{font-size:10px}
+  .game-layout{padding:9px 8px 15px;gap:11px 8px;margin-top:7px;border-radius:20px}
+  .score-team{padding:9px 8px 8px;border-radius:12px;min-width:0}
+  .team-heading h2{font-size:15px;line-height:1.15;margin-bottom:3px}
+  .team-turn{font-size:7px;min-height:12px;gap:4px;margin-bottom:0}.team-turn::before{width:4px;height:4px}
+  .team-standing{grid-template-columns:minmax(0,1fr) 37px;column-gap:4px;margin:2px 0 3px;max-width:none}
+  .team-standing .team-score{gap:3px;margin:0 0 4px}
+  .team-standing .team-score strong{font-size:29px}.team-standing .team-score span{font-size:10px}
+  .team-standing .team-remaining{font-size:8px;line-height:1.35;max-width:none;padding:0}
+  .score-track{--head-width:33px;--head-height:36px;width:37px;height:66px;padding-bottom:2px;margin:0}
+  .score-track-tick{gap:3px}.score-track-tick>span{width:8px;font-size:6px}.score-track-tick>i{width:18px;height:3px}
+  .score-track-marker{left:20px;filter:drop-shadow(0 1px 0 #12324718)}.team-1 .score-track-marker{left:calc(100% - 20px)}
+  .team-members{gap:3px;padding:2px 0 0}
+  .team-members li{padding:3px 4px;border-radius:6px;gap:1px 3px}
+  .member-name{font-size:9px;line-height:1.25}.member-role{font-size:7px;line-height:1.25}
+  .team-members .member-psychic{padding-left:4px}
+  .round-meta{font-size:7px;gap:8px;margin:0 0 4px}.round-meta span+span::before{margin-right:8px}
+  .phase-heading .eyebrow{font-size:7px;letter-spacing:.6px;margin-bottom:3px}
+  .phase-heading h1{font-size:20px;line-height:1.15;margin-bottom:1px}
+  .phase-help>summary{font-size:8px;min-height:19px}.phase-help .phase-description{font-size:9px;line-height:1.55;padding:4px 0}
+  .psychic-banner{margin-top:3px;gap:3px 5px}.psychic-banner>span{font-size:7px}.psychic-banner>strong{font-size:11px}
+  .game-dial{width:calc(100% + 4px);margin:3px -2px 0;max-width:480px}
+  .spectrum-poles{top:62.5%;left:15.5%;width:69%;border-radius:8px}
+  .spectrum-poles h2{min-height:70px;padding:10px 7px 10px;font-size:14px;line-height:1.14}
+  .spectrum-poles h2::before{font-size:21px;margin-bottom:7px;line-height:.8}
+  .spectrum-poles.is-long h2{font-size:12px;line-height:1.15;padding:8px 7px 10px}
+  .spectrum-poles.is-long h2::before{font-size:17px;margin-bottom:6px}
+  .game-dial .dial-caption{position:absolute;top:87%;left:17%;right:17%;margin:0;color:#c2d6da;font-size:6px;max-width:none;line-height:1.4}
+  .sector-label{font-size:23px}
+  .spectrum-tools{margin:2px auto 6px;gap:0}.spectrum-swap{min-height:32px;padding:5px 11px;font-size:9px}
+  .round-content{margin-top:5px}
+  .clue-form{grid-template-columns:1fr;gap:7px}.clue-form input{min-height:44px;font-size:12px}
+  .clue-form .button{min-height:46px;font-size:12px;width:100%;padding:11px 16px}
+  .clue-form .field-note{font-size:8px;margin-top:0;line-height:1.4}
+  .guess-controls .field-note{font-size:9px;margin-bottom:7px;line-height:1.4}
+  .guess-controls .button,.round-result .button,.game-over-controls .button{min-height:46px;font-size:12px;width:100%}
+  .clue-display{margin-bottom:9px}.clue-display>span{font-size:7px;margin-bottom:3px}.clue-display>strong{font-size:21px}
+  .bet-controls{gap:8px}.bet-controls .button{min-height:46px;font-size:11px;padding:11px 10px}
+  .result-points>strong{font-size:31px}.result-points>span{font-size:9px}.round-result>p{font-size:9px;line-height:1.5;margin-bottom:8px}
+  .is-game-over .phase-heading h1{font-size:26px}
+  .ranked-match{font-size:0;gap:0}.ranked-match::before{font-size:12px}
+  .app-menu,.login-dialog,.collection-dialog,.participants-dialog{padding:20px;border-radius:22px;max-height:calc(100dvh - 24px);width:calc(100vw - 24px)}
+  .app-menu{margin:auto 12px max(12px,env(safe-area-inset-bottom));width:calc(100vw - 24px)}
+  .collection-dialog .pack-art{min-height:100px}.collection-dialog .pack-copy>p{font-size:10px}
+  .login-dialog h2{font-size:27px}.login-intro{font-size:11px}.login-dialog .field-note{font-size:9px}
+  .participants-dialog .player-row{flex-wrap:wrap}.participants-dialog .player-state{flex-basis:auto;margin-left:auto}.participants-dialog .player-name>span{max-width:180px}
+}
+@media(max-width:350px){
+  .site-bar{padding-left:12px;padding-right:12px}.game-wordmark{font-size:14px;gap:6px}.game-wordmark::before{width:25px;height:25px;font-size:22px}
+  main{width:calc(100% - 20px)}.entry-screen{gap:12px;padding-top:7px}.entry-intro>h1{font-size:27px}.entry-dial{width:190px}.entry-panel{padding:14px}
+  .team-column{padding:9px}.team-column h2{font-size:14px}.player-name>span{max-width:105px}.team-join{font-size:8px}
+  .team-heading h2{font-size:13px}.team-standing .team-score strong{font-size:26px}.team-standing .team-remaining{font-size:7px}
+  .game-layout{padding-left:6px;padding-right:6px;gap:10px 7px}.score-team{padding:8px 6px}.member-name{font-size:8px}.member-role{font-size:6px}
+  .phase-heading h1{font-size:18px}.spectrum-poles h2{min-height:62px;font-size:12px;padding:8px 6px}.spectrum-poles h2::before{font-size:18px;margin-bottom:5px}
+  .spectrum-poles.is-long h2{font-size:10px;padding:7px 5px 8px}.spectrum-poles.is-long h2::before{font-size:16px;margin-bottom:5px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+.lobby-teams .player-controls,.unassigned .player-controls{display:none}
+
+.site-footer{display:none}
+main{min-height:calc(100svh - 64px)}
+.phase-heading{position:relative;padding-right:26px;padding-left:26px}
+.phase-help{position:absolute;right:0;top:0;z-index:4}
+.phase-help>summary{font-size:0;min-height:24px;width:24px;padding:0;border:1px solid #bccdc2;border-radius:50%;background:#ffffff70}
+.phase-help>summary::before{content:'?';font-size:11px;font-weight:600;color:var(--muted)}
+.phase-help>summary>span{display:none}
+.phase-help .phase-description{position:absolute;right:0;top:29px;width:260px;max-width:calc(100vw - 58px);padding:12px;background:var(--paper);box-shadow:0 4px 24px #12324718;border:1px solid var(--line);border-radius:13px;text-align:left;z-index:5}
+.practice-member .member-role{display:none}
+@media(max-width:1000px){
+ .team-heading{padding-right:10px}
+ .team-heading h2{margin-bottom:4px}
+ .team-turn{position:absolute;right:0;top:5px;font-size:0;min-height:6px;margin:0}
+ .team-turn::before{width:5px;height:5px}
+ .score-team:not(.active):not(.team-winner) .team-turn::before{opacity:.25}
+}
+@media(max-width:760px){
+ main{min-height:calc(100svh - 54px)}
+ .score-track{--head-width:30px;--head-height:33px;height:56px}
+ .team-standing .team-score strong{font-size:27px}
+ .team-standing .team-score{margin-bottom:3px}
+ .team-standing{margin-bottom:2px}
+ .phase-heading{padding-right:22px;padding-left:22px}
+ .phase-help>summary{font-size:0;min-height:22px;width:22px}
+ .phase-help>summary::before{font-size:10px}
+ .phase-help .phase-description{font-size:10px;padding:11px}
+ .clue-form .field-note{display:none}
+}
+
+@media(max-width:1000px){.score-track-tick:not(:first-child):not(:nth-last-child(2))>span{visibility:hidden}}
+
+.entry-dial .shutter-hitarea{stroke:transparent;stroke-width:80;pointer-events:all}
+@media(max-width:760px){.spectrum-swap{min-height:40px}}

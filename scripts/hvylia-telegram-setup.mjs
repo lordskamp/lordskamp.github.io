@@ -21,7 +21,7 @@ try {
   try { local = JSON.parse(await readFile(localPath, 'utf8')); }
   catch (error) {
     if (error.code !== 'ENOENT') throw new Error('Не вдалося прочитати .hvylia-bot.local.json. Перевірте, що це коректний JSON.');
-    await writeFile(localPath, `${JSON.stringify({ botToken: '', paymentSupport: '', webhookSecret: '', adminToken: '' }, null, 2)}\n`, { flag: 'wx' });
+    await writeFile(localPath, `${JSON.stringify({ botToken: '', paymentSupport: '', webhookSecret: '', adminToken: '', authSecret: '' }, null, 2)}\n`, { flag: 'wx' });
     throw new Error('Створено .hvylia-bot.local.json. Впишіть токен нового бота і контакт підтримки, потім повторіть запуск. Цей файл не потрапляє в Git.');
   }
   if (!/^\d+:[A-Za-z0-9_-]{20,}$/u.test(local.botToken || '')) throw new Error('Заповніть botToken у .hvylia-bot.local.json токеном від BotFather.');
@@ -31,7 +31,9 @@ try {
   if (!bot?.is_bot || !/^[A-Za-z0-9_]{5,32}$/u.test(bot.username || '')) throw new Error('Telegram не підтвердив цього бота. Перевірте токен.');
   local.webhookSecret ||= randomBytes(32).toString('hex');
   local.adminToken ||= randomBytes(32).toString('hex');
+  local.authSecret ||= randomBytes(32).toString('hex');
   if (!/^[A-Za-z0-9_-]{32,256}$/u.test(local.webhookSecret) || !/^[A-Za-z0-9_-]{32,256}$/u.test(local.adminToken)) throw new Error('Залиште webhookSecret/adminToken порожніми для автоматичної генерації або вкажіть довгі випадкові значення.');
+  if (!/^[A-Za-z0-9_-]{32,256}$/u.test(local.authSecret)) throw new Error('Залиште authSecret порожнім для автоматичної генерації або вкажіть довге випадкове значення.');
   await writeFile(localPath, `${JSON.stringify(local, null, 2)}\n`);
   const configPath = resolve(project, 'wrangler.hvylia.jsonc');
   const config = JSON.parse(await readFile(configPath, 'utf8'));
@@ -42,7 +44,8 @@ try {
   await run([wrangler, 'secret', 'bulk', '--config', 'wrangler.hvylia.jsonc'], JSON.stringify({
     HVYLIA_BOT_TOKEN: local.botToken,
     HVYLIA_WEBHOOK_SECRET: local.webhookSecret,
-    HVYLIA_ADMIN_TOKEN: local.adminToken
+    HVYLIA_ADMIN_TOKEN: local.adminToken,
+    HVYLIA_AUTH_SECRET: local.authSecret
   }));
   await run([resolve(project, 'scripts/hvylia-build.mjs')]);
   await run([wrangler, 'deploy', '--config', 'wrangler.hvylia.jsonc']);
@@ -60,7 +63,7 @@ try {
   ] });
   const webhook = await telegramCall(env, 'getWebhookInfo', {});
   if (webhook.url !== `${workerUrl}/api/hvylia/telegram-webhook`) throw new Error('Адреса Telegram webhook не збігається. Повторіть налаштування.');
-  console.log(`Бот @${bot.username} підключений. У BotFather увімкніть Main Mini App з адресою ${appUrl}, щоб працювали прямі запрошення до кімнат.`);
+  console.log(`Бот @${bot.username} підключений: кнопка гри, Stars і вхід через одноразовий код. Main Mini App у BotFather можна додатково ввімкнути з адресою ${appUrl}.`);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

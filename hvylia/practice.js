@@ -8,12 +8,6 @@ const SEATS = [
   { id: 'practice-psychic-1', name: 'Роль Телепата 2', team: 1 },
   { id: 'practice-guesser-1', name: 'Роль команди 2', team: 1 }
 ];
-const SCENARIOS = [
-  { spectrum: 0, target: 38 },
-  { spectrum: 0.28, target: 66 },
-  { spectrum: 0.54, target: 50 },
-  { spectrum: 0.78, target: 72 }
-];
 
 export class PracticeSession {
   constructor(onState) {
@@ -41,15 +35,12 @@ export class PracticeSession {
     }
     // Keep round IDs unique across restarts so existing inputs always reset.
     room._roundSerial = this.run * 1000;
-    this.room = applyAction(room, host, { type: 'start' }, this.roundRandom(0, true));
+    let firstDraw = true;
+    this.room = applyAction(room, host, { type: 'start' }, () => {
+      if (firstDraw) { firstDraw = false; return 0; }
+      return Math.random();
+    });
     this.publish();
-  }
-
-  roundRandom(index, starting = false) {
-    const scenario = SCENARIOS[index % SCENARIOS.length];
-    const draws = [scenario.spectrum, scenario.target / 100];
-    if (starting) draws.unshift(0);
-    return () => draws.shift() ?? 0.5;
   }
 
   actor() {
@@ -76,8 +67,7 @@ export class PracticeSession {
     if (action.type === 'rematch') { this.start(); return; }
     const allowed = ['replace-spectrum', 'clue', 'move', 'lock', 'bet', 'next'];
     if (!allowed.includes(action.type)) throw new Error('У тренуванні ця дія недоступна.');
-    const random = action.type === 'next' ? this.roundRandom(this.room.round.number) : Math.random;
-    this.room = applyAction(this.room, this.actor(), action, random);
+    this.room = applyAction(this.room, this.actor(), action, Math.random);
     this.publish();
     if (action.type === 'bet') this.scheduleReveal();
   }

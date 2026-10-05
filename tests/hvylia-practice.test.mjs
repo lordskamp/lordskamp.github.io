@@ -3,11 +3,12 @@ import test from 'node:test';
 import { PracticeSession } from '../hvylia/practice.js';
 import { GAME_CONFIG, scoreGuess } from '../api/hvylia-core.js';
 
-function practice(t) {
+function practice(t, random = () => 0.38) {
   let now = 100_000;
   let serial = 0;
   const scheduled = new Map();
   t.mock.method(Date, 'now', () => now);
+  t.mock.method(Math, 'random', random);
   t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
     const id = ++serial;
     scheduled.set(id, { at: now + delay, callback });
@@ -101,6 +102,25 @@ test('practice completes a short match with the second-team starting point and r
   run.session.close();
 });
 
+test('practice draws fresh random cards and targets on subsequent rounds and visits', async t => {
+  const draws = [.12, .23, .45, .87, .65, .01];
+  const run = practice(t, () => draws.shift() ?? .5);
+  const first = structuredClone(run.state.round);
+  assert.equal(first.target, 23);
+  await run.action('clue', { text: 'Спокійна неділя' });
+  await run.action('lock', { position: first.target });
+  await run.action('bet', { side: 'right' });
+  run.tick(GAME_CONFIG.revealDelayMs + GAME_CONFIG.scoreDelayMs);
+  await run.action('next');
+  assert.equal(run.state.round.target, 87);
+  assert.notEqual(run.state.round.spectrum.id, first.spectrum.id);
+  run.session.start();
+  assert.equal(run.state.round.target, 1);
+  assert.notEqual(run.state.round.spectrum.id, first.spectrum.id);
+  assert.deepEqual(draws, []);
+  run.session.close();
+});
+
 test('practice rejects duplicate and stale actions without awarding points twice', async t => {
   const run = practice(t);
   const originalId = run.state.round.id;
@@ -146,15 +166,14 @@ test('exiting or restarting practice cancels both reveal timers', async t => {
   run.session.close();
 });
 
-test('practice can replace a card before the clue without changing the lesson target, role or score', async t => {
-  t.mock.method(Math, 'random', () => 0);
-  const run = practice(t);
+test('practice can replace the card and target before the clue without changing role or score', async t => {
+  const run = practice(t, () => 0);
   const initial = structuredClone(run.state);
   const rotation = structuredClone(run.session.room._rotation);
   await run.action('replace-spectrum');
   assert.equal(run.state.phase, 'PSYCHIC_VIEW');
   assert.equal(run.state.you.role, 'psychic');
-  assert.equal(run.state.round.target, initial.round.target);
+  assert.notEqual(run.state.round.target, initial.round.target);
   assert.equal(run.state.round.number, initial.round.number);
   assert.equal(run.state.round.psychicId, initial.round.psychicId);
   assert.equal(run.state.round.activeTeam, initial.round.activeTeam);
@@ -164,18 +183,21 @@ test('practice can replace a card before the clue without changing the lesson ta
   assert.deepEqual(run.session.room._rotation, rotation);
   assert.equal(run.scheduled.size, 0);
   const firstReplacement = run.state.round.spectrum.id;
+  const firstTarget = run.state.round.target;
   await run.action('replace-spectrum');
   assert.equal([initial.round.spectrum.id, firstReplacement].includes(run.state.round.spectrum.id), false);
+  assert.notEqual(run.state.round.target, firstTarget);
+  const target = run.state.round.target;
   await assert.rejects(run.session.action({ type: 'clue', roundId: initial.round.id, text: 'Підказка до старого спектра' }), { code: 'STALE' });
   await run.action('clue', { text: 'Підказка до нового спектра' });
   assert.equal('target' in run.state.round, false);
   const guessing = structuredClone(run.state);
   await assert.rejects(run.action('replace-spectrum'), { code: 'PHASE' });
   assert.deepEqual(run.state, guessing);
-  await run.action('lock', { position: initial.round.target });
+  await run.action('lock', { position: target });
   await run.action('bet', { side: 'right' });
   run.tick(GAME_CONFIG.revealDelayMs + GAME_CONFIG.scoreDelayMs);
-  assert.equal(run.state.round.target, initial.round.target);
+  assert.equal(run.state.round.target, target);
   assert.equal(run.state.round.result.activePoints, 4);
   run.session.close();
 });

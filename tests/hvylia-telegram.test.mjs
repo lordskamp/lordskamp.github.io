@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { test } from 'node:test';
-import { constantTimeEqual, telegramCall, verifyTelegramInitData } from '../api/hvylia-telegram.js';
+import { constantTimeEqual, createBrowserSession, telegramCall, verifyBrowserSession, verifyTelegramInitData } from '../api/hvylia-telegram.js';
 
 const TOKEN = '123456:local_test_bot_token';
 const NOW = Date.UTC(2026, 9, 4, 10, 0, 0);
 const USER = { id: 123456789, first_name: 'Соломія', last_name: 'Гончар', username: 'solomiia' };
+const SESSION_SECRET = 'test_session_secret_32_bytes_minimum';
 
 function signed(fields = {}, token = TOKEN) {
   const params = new URLSearchParams({ auth_date: String(NOW / 1000), user: JSON.stringify(USER), query_id: 'test-query', ...fields });
@@ -60,6 +61,46 @@ test('secret comparison handles Unicode bytes, different lengths and absent conf
   assert.equal(constantTimeEqual('a', 'aa'), false);
   assert.equal(constantTimeEqual(undefined, undefined), false);
   assert.equal(constantTimeEqual('', ''), false);
+});
+
+test('signed browser credentials keep Telegram identity for twelve hours and guest identity for return visits', async () => {
+  const telegram = { ...USER, kind: 'telegram' };
+  const session = await createBrowserSession(telegram, SESSION_SECRET, NOW);
+  assert.equal(session.expiresAt, NOW + 43200000);
+  assert.deepEqual(await verifyBrowserSession(session.token, SESSION_SECRET, NOW), telegram);
+  assert.deepEqual(await verifyBrowserSession(session.token, SESSION_SECRET, session.expiresAt - 1), telegram);
+  assert.equal(await verifyBrowserSession(session.token, SESSION_SECRET, session.expiresAt), null);
+  const guest = { kind: 'guest', id: '00000000-0000-4000-8000-000000000001', name: '  Мій\u200b   нік  ' };
+  const anonymous = await createBrowserSession(guest, SESSION_SECRET, NOW);
+  assert.equal(anonymous.expiresAt, NOW + 365 * 86400000);
+  assert.deepEqual(await verifyBrowserSession(anonymous.token, SESSION_SECRET, NOW + 30 * 86400000), { ...guest, name: 'Мій нік' });
+  assert.equal(await verifyBrowserSession(anonymous.token, SESSION_SECRET, anonymous.expiresAt), null);
+});
+
+test('browser credentials reject tampered identity, signatures, other secrets and malformed tokens', async () => {
+  const session = await createBrowserSession({ ...USER, kind: 'telegram' }, SESSION_SECRET, NOW);
+  const [payload, signature] = session.token.split('.');
+  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  claims.identity.id += 1;
+  const forged = `${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${signature}`;
+  assert.equal(await verifyBrowserSession(forged, SESSION_SECRET, NOW), null);
+  assert.equal(await verifyBrowserSession(session.token, `${SESSION_SECRET}_different`, NOW), null);
+  for (const token of [null, '', 'x'.repeat(4097), `${payload}.invalid`, `${payload}.${signature}.extra`, `${payload}=.${signature}`, `${payload}.${signature}=`, `${payload}.${signature.slice(0, -1)}`]) {
+    assert.equal(await verifyBrowserSession(token, SESSION_SECRET, NOW), null);
+  }
+  assert.equal(await verifyBrowserSession(session.token, SESSION_SECRET, NOW - 61000), null);
+  assert.equal(await verifyBrowserSession(session.token, '', NOW), null);
+});
+
+test('session creation rejects missing configuration, malformed identities and client stats', async () => {
+  for (const identity of [null, {}, { ...USER }, { ...USER, kind: 'telegram', is_bot: true }, { ...USER, kind: 'telegram', id: -1 }, { kind: 'guest', id: 'not-a-uuid', name: 'Ім’я' }, { kind: 'guest', id: '00000000-0000-4000-8000-000000000001', name: '' }]) {
+    await assert.rejects(createBrowserSession(identity, SESSION_SECRET, NOW), error => error.code === 'AUTH');
+  }
+  await assert.rejects(createBrowserSession({ ...USER, kind: 'telegram' }, 'too-short', NOW), error => error.code === 'AUTH_SETUP');
+  const credential = await createBrowserSession({ ...USER, kind: 'telegram', stats: { wins: 999 }, ownedPacks: ['anime'] }, SESSION_SECRET, NOW);
+  const identity = await verifyBrowserSession(credential.token, SESSION_SECRET, NOW);
+  assert.equal(Object.hasOwn(identity, 'stats'), false);
+  assert.equal(Object.hasOwn(identity, 'ownedPacks'), false);
 });
 
 test('Bot API helper uses a timeout and returns sanitized errors without leaking secrets', async t => {
