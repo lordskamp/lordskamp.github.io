@@ -65,6 +65,7 @@
     "SITE_ORIGIN": "https://lordskamp.github.io",
     "ROOM_TTL_MS": "86400000",
     "HVYLIA_BOT_USERNAME": "DovzhynaHvyli_bot",
+    "HVYLIA_APP_URL": "https://dovzhyna-hvyli.lordskamp.workers.dev/hvylia/",
     "HVYLIA_PAYMENT_SUPPORT": "@Lordskamp"
   }
 }

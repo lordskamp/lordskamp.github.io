@@ -49,7 +49,7 @@ try {
   }));
   await run([resolve(project, 'scripts/hvylia-build.mjs')]);
   await run([wrangler, 'deploy', '--config', 'wrangler.hvylia.jsonc']);
-  const appUrl = `${config.vars.SITE_ORIGIN}/hvylia/`;
+  const appUrl = config.vars.HVYLIA_APP_URL || `${config.vars.SITE_ORIGIN}/hvylia/`;
   const workerUrl = 'https://dovzhyna-hvyli.lordskamp.workers.dev';
   await telegramCall(env, 'setWebhook', {
     url: `${workerUrl}/api/hvylia/telegram-webhook`, secret_token: local.webhookSecret,

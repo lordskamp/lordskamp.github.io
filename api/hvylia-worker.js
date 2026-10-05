@@ -175,11 +175,12 @@ async function webhook(request, env) {
       await telegramCall(env, 'sendMessage', { chat_id: message.chat.id, text: `Підтримка оплат гри «Довжина хвилі»: ${env.HVYLIA_PAYMENT_SUPPORT || 'Зверніться до власника бота.'}` });
     } else if (command === '/start' || command === '/help') {
       const code = message.text.split(/\s/u)[1]?.match(/^room_([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4})$/u)?.[1];
-      const appUrl = `${env.SITE_ORIGIN}/hvylia/${code ? `?r=${code}` : ''}`;
+      const appUrl = new URL(env.HVYLIA_APP_URL || `${env.SITE_ORIGIN}/hvylia/`);
+      if (code) appUrl.searchParams.set('r', code);
       await telegramCall(env, 'sendMessage', {
         chat_id: message.chat.id,
         text: 'Довжина хвилі — командна гра про спільні асоціації. Створіть кімнату, запросіть друзів і ловіть одну хвилю! Тематичний пак купує лише ведучий, грати можуть усі в кімнаті.',
-        reply_markup: { inline_keyboard: [[{ text: 'Грати', web_app: { url: appUrl } }]] }
+        reply_markup: { inline_keyboard: [[{ text: 'Грати', web_app: { url: appUrl.href } }]] }
       });
     }
   }
