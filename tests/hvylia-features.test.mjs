@@ -102,11 +102,11 @@ after(async () => {
   }
 });
 
-function initData(userId, name = 'Український гравець', authDate = Math.floor(Date.now() / 1000)) {
+function initData(userId, name = 'Український гравець', authDate = Math.floor(Date.now() / 1000), fields = {}) {
   const params = new URLSearchParams({
     auth_date: String(authDate),
     query_id: `query-${userId}`,
-    user: JSON.stringify({ id: userId, first_name: name, language_code: 'uk' })
+    user: JSON.stringify({ id: userId, first_name: name, language_code: 'uk', ...fields })
   });
   const check = [...params.entries()].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     .map(([key, value]) => `${key}=${value}`).join('\n');
@@ -728,4 +728,38 @@ test('a replacement socket survives stale close and alarm callbacks and heals fa
     assert.equal(replacement.socket.readyState, 1);
   }
   replacement.close();
+});
+
+test('verified Telegram usernames and opaque avatar proxies reach profiles and room players while retaining manual nicknames', async () => {
+  const userId = 950001;
+  const telegram = initData(userId, 'Олена', undefined, { username: '_olena_123', photo_url: 'https://t.me/i/userpic/320/fixture-avatar.jpg' });
+  const account = await request('/api/hvylia/account', { method: 'GET', telegram });
+  assert.equal(account.status, 200);
+  assert.equal(account.data.profile.name, '@_olena_123');
+  const avatar = new URL(account.data.profile.avatarUrl);
+  assert.equal(avatar.origin, origin);
+  assert.equal(avatar.pathname, `/api/hvylia/avatar/${account.data.profile.publicId}`);
+  assert.ok(!avatar.href.includes(String(userId)));
+  await request('/__test/avatar/cache', { body: { publicId: account.data.profile.publicId, userId } });
+  const photo = await fetch(avatar);
+  assert.equal(photo.status, 200);
+  assert.equal(photo.headers.get('Content-Type'), 'image/jpeg');
+  assert.equal(photo.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(photo.headers.get('Cache-Control'), 'public, max-age=60');
+  assert.equal(photo.headers.get('Location'), null);
+  assert.deepEqual(new Uint8Array(await photo.arrayBuffer()), Uint8Array.from([255, 216, 255, 224, 0, 0, 255, 217]));
+  const missing = await fetch(`${origin}/api/hvylia/avatar/00000000-0000-4000-8000-000000000000`);
+  assert.equal(missing.status, 404);
+  const created = await request('/api/rooms', { telegram, body: { name: 'Мій ручний нік' } });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.state.players[0].name, 'Мій ручний нік');
+  assert.equal(created.data.state.players[0].avatarUrl, avatar.href);
+  await request('/__test/connection/no-avatar', { body: { code: created.data.code, playerId: created.data.playerId } });
+  const joinedOtherDevice = await request(`/api/rooms/${created.data.code}/join`, { telegram, body: { name: 'Інша назва пристрою' } });
+  assert.equal(joinedOtherDevice.status, 200);
+  assert.equal(joinedOtherDevice.data.playerId, created.data.playerId);
+  assert.equal(joinedOtherDevice.data.state.players[0].name, 'Мій ручний нік');
+  assert.equal(joinedOtherDevice.data.state.players[0].avatarUrl, avatar.href);
+  assert.equal(joinedOtherDevice.data.state.players.length, 1);
+  assert.ok(!JSON.stringify(joinedOtherDevice.data.state).includes(String(userId)));
 });

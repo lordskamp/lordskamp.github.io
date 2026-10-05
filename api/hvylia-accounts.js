@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { telegramCall } from './hvylia-telegram.js';
+import { telegramCall, telegramUser, telegramPhotoUrl, telegramAvatar } from './hvylia-telegram.js';
 import { getPack } from '../content/hvylia/packs.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
@@ -44,6 +44,10 @@ export class WaveAccountDO extends DurableObject {
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS profile (id INTEGER PRIMARY KEY CHECK(id = 1), telegram_id TEXT UNIQUE NOT NULL, public_id TEXT UNIQUE NOT NULL, name TEXT NOT NULL, wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0, played INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1)');
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS purchases (id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, amount INTEGER NOT NULL, currency TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, invoice_link TEXT, charge_id TEXT UNIQUE, refund_started INTEGER NOT NULL DEFAULT 0)');
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS matches (id TEXT PRIMARY KEY, won INTEGER NOT NULL, points INTEGER NOT NULL, pack_id TEXT NOT NULL, finished_at INTEGER NOT NULL)');
+    const columns = this.ctx.storage.sql.exec('PRAGMA table_info(profile)').toArray();
+    if (!columns.some(column => column.name === 'username')) this.ctx.storage.sql.exec('ALTER TABLE profile ADD COLUMN username TEXT');
+    this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS avatar_source (id INTEGER PRIMARY KEY CHECK(id = 1), telegram_id TEXT NOT NULL, photo_url TEXT, version INTEGER NOT NULL DEFAULT 1)');
+    this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS avatar_cache (id INTEGER PRIMARY KEY CHECK(id = 1), bytes BLOB, mime TEXT, expires_at INTEGER NOT NULL, version INTEGER NOT NULL)');
   }
 
   row() {
@@ -54,19 +58,60 @@ export class WaveAccountDO extends DurableObject {
 
   profile(user) {
     if (user !== undefined) {
-      const id = telegramId(user?.id);
-      const name = displayName([user.first_name, user.last_name].filter(value => typeof value === 'string').join(' '));
+      const signed = telegramUser(user);
+      if (!signed) fail('ACCOUNT', 'Не вдалося підтвердити Telegram-профіль.', 401);
+      const id = telegramId(signed.id);
+      const name = displayName(signed.username ? `@${signed.username}` : [signed.first_name, signed.last_name].filter(Boolean).join(' '));
+      const username = signed.username || null;
       const existing = this.ctx.storage.sql.exec('SELECT * FROM profile WHERE id = 1').toArray()[0];
       if (existing && existing.telegram_id !== id) fail('ACCOUNT', 'Цей Telegram-профіль не відповідає акаунту.', 401);
       if (!existing) {
-        this.ctx.storage.sql.exec('INSERT INTO profile (id, telegram_id, public_id, name) VALUES (1, ?, ?, ?)', id, crypto.randomUUID(), name);
-      } else if (existing.name !== name) {
-        this.ctx.storage.sql.exec('UPDATE profile SET name = ?, revision = revision + 1 WHERE id = 1', name);
+        this.ctx.storage.sql.exec('INSERT INTO profile (id, telegram_id, public_id, name, username) VALUES (1, ?, ?, ?, ?)', id, crypto.randomUUID(), name, username);
+      } else if (existing.name !== name || existing.username !== username) {
+        this.ctx.storage.sql.exec('UPDATE profile SET name = ?, username = ?, revision = revision + 1 WHERE id = 1', name, username);
       }
     }
     const row = this.row();
     const ownedPacks = this.ctx.storage.sql.exec("SELECT DISTINCT pack_id FROM purchases WHERE status IN ('paid', 'refund_pending') ORDER BY pack_id").toArray().map(item => item.pack_id);
-    return { publicId: row.public_id, kind: row.telegram_id.startsWith('g:') ? 'guest' : 'telegram', name: row.name, ownedPacks, stats: { wins: row.wins, losses: row.losses, played: row.played, points: row.points }, revision: row.revision };
+    const guest = row.telegram_id.startsWith('g:');
+    return { publicId: row.public_id, kind: guest ? 'guest' : 'telegram', name: row.name,
+      avatarUrl: guest ? null : `/api/hvylia/avatar/${row.public_id}`, ownedPacks,
+      stats: { wins: row.wins, losses: row.losses, played: row.played, points: row.points }, revision: row.revision };
+  }
+
+  /** Called only by the trusted Worker on the private avatar:<publicId> DO. */
+  setAvatarSource(source) {
+    const owner = telegramId(source?.telegramId);
+    if (source.photoUrl !== undefined && source.photoUrl !== null && !telegramPhotoUrl(source.photoUrl)) fail('AVATAR', 'Некоректне фото профілю.');
+    const existing = this.ctx.storage.sql.exec('SELECT * FROM avatar_source WHERE id = 1').toArray()[0];
+    if (existing && existing.telegram_id !== owner) fail('AVATAR', 'Фото не відповідає профілю.', 401);
+    const photo = source.photoUrl === undefined ? existing?.photo_url || null : source.photoUrl === null ? null : telegramPhotoUrl(source.photoUrl);
+    if (!existing) this.ctx.storage.sql.exec('INSERT INTO avatar_source (id, telegram_id, photo_url) VALUES (1, ?, ?)', owner, photo);
+    else if (existing.photo_url !== photo) this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec('UPDATE avatar_source SET photo_url = ?, version = version + 1 WHERE id = 1', photo);
+      this.ctx.storage.sql.exec('DELETE FROM avatar_cache');
+    });
+    return { ok: true };
+  }
+
+  async avatar() {
+    const source = this.ctx.storage.sql.exec('SELECT * FROM avatar_source WHERE id = 1').toArray()[0];
+    if (!source) return null;
+    const cached = this.ctx.storage.sql.exec('SELECT * FROM avatar_cache WHERE id = 1').toArray()[0];
+    if (cached && cached.version === source.version && cached.expires_at > Date.now()) {
+      return cached.bytes ? { bytes: new Uint8Array(cached.bytes).buffer, type: cached.mime } : null;
+    }
+    if (this.avatarLoading) return this.avatarLoading;
+    const pending = (async () => {
+      const image = await telegramAvatar(this.env, Number(source.telegram_id), source.photo_url);
+      const latest = this.ctx.storage.sql.exec('SELECT version FROM avatar_source WHERE id = 1').toArray()[0];
+      if (latest?.version !== source.version) return null;
+      this.ctx.storage.sql.exec('INSERT INTO avatar_cache VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes, mime=excluded.mime, expires_at=excluded.expires_at, version=excluded.version', image?.bytes.buffer || null, image?.type || null, Date.now() + (image ? 15 * 60000 : 60000), source.version);
+      return image ? { bytes: image.bytes.buffer, type: image.type } : null;
+    })();
+    this.avatarLoading = pending;
+    try { return await pending; }
+    finally { if (this.avatarLoading === pending) this.avatarLoading = null; }
   }
 
   guestProfile(user) {
@@ -207,6 +252,8 @@ export class WaveLeaderboardDO extends DurableObject {
     super(ctx, env);
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS rankings (public_id TEXT PRIMARY KEY, name TEXT NOT NULL, wins INTEGER NOT NULL, losses INTEGER NOT NULL, played INTEGER NOT NULL, points INTEGER NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL)');
     this.ctx.storage.sql.exec('CREATE INDEX IF NOT EXISTS ranking_order ON rankings (wins DESC, points DESC, played ASC, public_id ASC)');
+    const columns = this.ctx.storage.sql.exec('PRAGMA table_info(rankings)').toArray();
+    if (!columns.some(column => column.name === 'avatar_url')) this.ctx.storage.sql.exec('ALTER TABLE rankings ADD COLUMN avatar_url TEXT');
   }
 
   update(profile) {
@@ -214,9 +261,15 @@ export class WaveLeaderboardDO extends DurableObject {
       || !profile.stats || ['wins', 'losses', 'played', 'points'].some(key => !Number.isSafeInteger(profile.stats[key]) || profile.stats[key] < 0)
       || profile.stats.played !== profile.stats.wins + profile.stats.losses) fail('RANKING', 'Некоректний результат для рейтингу.');
     const name = displayName(profile.name);
+    const avatar = profile.avatarUrl === `/api/hvylia/avatar/${profile.publicId}` ? profile.avatarUrl : null;
     const existing = this.ctx.storage.sql.exec('SELECT revision FROM rankings WHERE public_id = ?', profile.publicId).toArray()[0];
-    if (existing && existing.revision >= profile.revision) return { updated: false };
-    this.ctx.storage.sql.exec('INSERT INTO rankings VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(public_id) DO UPDATE SET name=excluded.name, wins=excluded.wins, losses=excluded.losses, played=excluded.played, points=excluded.points, revision=excluded.revision, updated_at=excluded.updated_at', profile.publicId, name, profile.stats.wins, profile.stats.losses, profile.stats.played, profile.stats.points, profile.revision, Date.now());
+    if (existing && existing.revision > profile.revision) return { updated: false };
+    if (existing && existing.revision === profile.revision) {
+      // Backfill the optional avatar column on existing committed revisions.
+      this.ctx.storage.sql.exec('UPDATE rankings SET avatar_url = ? WHERE public_id = ?', avatar, profile.publicId);
+      return { updated: false };
+    }
+    this.ctx.storage.sql.exec('INSERT INTO rankings (public_id, name, wins, losses, played, points, revision, updated_at, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(public_id) DO UPDATE SET name=excluded.name, wins=excluded.wins, losses=excluded.losses, played=excluded.played, points=excluded.points, revision=excluded.revision, updated_at=excluded.updated_at, avatar_url=excluded.avatar_url', profile.publicId, name, profile.stats.wins, profile.stats.losses, profile.stats.played, profile.stats.points, profile.revision, Date.now(), avatar);
     return { updated: true };
   }
 
@@ -225,7 +278,7 @@ export class WaveLeaderboardDO extends DurableObject {
     const rows = this.ctx.storage.sql.exec('SELECT * FROM rankings WHERE played > 0 ORDER BY wins DESC, points DESC, played ASC, public_id ASC LIMIT ?', count).toArray();
     const latest = this.ctx.storage.sql.exec('SELECT MAX(updated_at) AS updated_at FROM rankings').one();
     return {
-      entries: rows.map((row, index) => ({ rank: index + 1, publicId: row.public_id, name: row.name, wins: row.wins, losses: row.losses, played: row.played, points: row.points })),
+      entries: rows.map((row, index) => ({ rank: index + 1, publicId: row.public_id, name: row.name, avatarUrl: row.avatar_url || null, wins: row.wins, losses: row.losses, played: row.played, points: row.points })),
       updatedAt: latest.updated_at || 0
     };
   }

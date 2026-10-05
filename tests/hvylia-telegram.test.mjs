@@ -55,6 +55,26 @@ test('Mini App verification rejects missing fields, malformed JSON, bot users an
   assert.equal(await verifyTelegramInitData(signed(), '', NOW), null);
 });
 
+test('signed profile photo metadata is optional, allowlisted and tamper protected without making photo failures reject login', async () => {
+  const photo = 'https://t.me/i/userpic/320/signed-photo.jpg';
+  const user = { ...USER, username: '_123_name', photo_url: photo };
+  const raw = signed({ user: JSON.stringify(user) });
+  assert.deepEqual(await verifyTelegramInitData(raw, TOKEN, NOW), user);
+  const changed = new URLSearchParams(raw);
+  changed.set('user', JSON.stringify({ ...user, photo_url: 'https://evil.example/avatar.jpg' }));
+  assert.equal(await verifyTelegramInitData(changed.toString(), TOKEN, NOW), null);
+  for (const photo_url of ['https://future-cdn.telegram-cdn.org/photo.jpg', 'https://127.0.0.1/private', 'data:text/html,<script/>', null, 123]) {
+    const safe = await verifyTelegramInitData(signed({ user: JSON.stringify({ ...user, photo_url }) }), TOKEN, NOW);
+    assert.deepEqual(safe, { ...USER, username: '_123_name' });
+  }
+  const session = await createBrowserSession({ ...user, kind: 'telegram' }, SESSION_SECRET, NOW);
+  assert.deepEqual(await verifyBrowserSession(session.token, SESSION_SECRET, NOW), { ...user, kind: 'telegram' });
+  for (const username of ['spaces not allowed', '<script>', 'a'.repeat(33), 'юзер']) {
+    assert.equal(await verifyTelegramInitData(signed({ user: JSON.stringify({ ...USER, username }) }), TOKEN, NOW), null);
+  }
+  assert.deepEqual(await verifyTelegramInitData(signed({ user: JSON.stringify({ ...USER, username: '', photo_url: '' }) }), TOKEN, NOW), { id: USER.id, first_name: USER.first_name, last_name: USER.last_name });
+});
+
 test('secret comparison handles Unicode bytes, different lengths and absent configuration', () => {
   assert.equal(constantTimeEqual('таємний ключ', 'таємний ключ'), true);
   assert.equal(constantTimeEqual('secret-one', 'secret-two'), false);
@@ -75,6 +95,14 @@ test('signed browser credentials keep Telegram identity for twelve hours and gue
   assert.equal(anonymous.expiresAt, NOW + 365 * 86400000);
   assert.deepEqual(await verifyBrowserSession(anonymous.token, SESSION_SECRET, NOW + 30 * 86400000), { ...guest, name: 'Мій нік' });
   assert.equal(await verifyBrowserSession(anonymous.token, SESSION_SECRET, anonymous.expiresAt), null);
+});
+
+test('browser credentials accept server-issued bounded photo metadata with long Unicode names', async () => {
+  const prefix = 'https://t.me/i/userpic/320/';
+  const identity = { ...USER, kind: 'telegram', first_name: 'І'.repeat(256), last_name: 'Ї'.repeat(256), photo_url: prefix + 'a'.repeat(2048 - prefix.length) };
+  const session = await createBrowserSession(identity, SESSION_SECRET, NOW);
+  assert.ok(session.token.length > 4096);
+  assert.deepEqual(await verifyBrowserSession(session.token, SESSION_SECRET, NOW), identity);
 });
 
 test('browser credentials reject tampered identity, signatures, other secrets and malformed tokens', async () => {

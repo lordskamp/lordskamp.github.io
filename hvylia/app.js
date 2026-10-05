@@ -33,6 +33,44 @@ let collectionDialog = null;
 let haptics = null;
 try { lastPurchaseId = window.localStorage.getItem('hvylia.lastPurchase') || ''; } catch { /* Live receipts still work without storage. */ }
 const busy = new Set();
+const failedAvatars = new Set();
+
+function avatarURL(value) {
+  if (typeof value !== 'string' || value.length > 512) return null;
+  try {
+    const url = new URL(value);
+    const api = new URL(transport.base);
+    if (url.origin !== api.origin || url.username || url.password || url.search || url.hash
+      || !/^\/api\/hvylia\/avatar\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(url.pathname)) return null;
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) return null;
+    return url.href;
+  } catch { return null; }
+}
+
+function avatarMarkup(person, style = '') {
+  const initial = Array.from(String(person?.name || '?').trim().replace(/^@/u, ''))[0]?.toUpperCase() || '?';
+  const url = avatarURL(person?.avatarUrl);
+  return `<span class="avatar ${style}" aria-hidden="true"><span class="avatar-fallback">${esc(initial)}</span>${url && !failedAvatars.has(url) ? `<img class="avatar-image" data-avatar-image src="${esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ''}</span>`;
+}
+
+document.addEventListener('error', event => {
+  const image = event.target;
+  if (!(image instanceof window.HTMLImageElement) || !image.hasAttribute('data-avatar-image')) return;
+  failedAvatars.add(image.src);
+  image.hidden = true;
+  image.parentElement?.classList.remove('avatar-image-loaded');
+}, true);
+document.addEventListener('load', event => {
+  const image = event.target;
+  if (image instanceof window.HTMLImageElement && image.hasAttribute('data-avatar-image')) image.parentElement?.classList.add('avatar-image-loaded');
+}, true);
+
+function prefillNickname() {
+  const nickname = $('#nickname');
+  const profile = account?.profile;
+  if (!nickname || !profile?.name || nickname.dataset.edited === 'true') return;
+  if (!nickname.value || telegramIdentity()) nickname.value = Array.from(profile.name).slice(0, 33).join('');
+}
 
 function announce(text) { $('#live').textContent = text; }
 function notice(text) {
@@ -143,8 +181,8 @@ async function refreshAccount({ quiet = true } = {}) {
   updatePackCards($('#entry-packs'), 'entry'); updatePackCards($('#lobby-packs'), 'lobby');
   try {
     account = await transport.get('/hvylia/account');
-    const nickname = $('#nickname');
-    if (nickname && !nickname.value && account.profile?.name) nickname.value = Array.from(account.profile.name).slice(0, 24).join('');
+    failedAvatars.delete(avatarURL(account.profile?.avatarUrl));
+    prefillNickname();
   } catch (error) { if (!quiet) notice(errorText(error)); }
   finally {
     accountLoading = false;
@@ -240,7 +278,7 @@ function mountEntry() {
   if (inviteCode) entryMode = 'join';
   app.innerHTML = `<section class="entry-intro" aria-labelledby="entry-title"><p class="eyebrow">${t.entryEyebrow}</p><h1 id="entry-title">${t.entryTitle}</h1><p class="entry-description">${t.entryIntro}</p><div class="entry-dial">${dialMarkup('preview-dial')}<div class="preview-poles"><span>${t.previewLeft}</span><span>${t.previewRight}</span></div></div><p class="entry-meta">${t.entryMeta}</p></section>
     <section class="entry-panel" aria-label="${t.joiningLabel}"><div class="entry-tabs" role="tablist" aria-label="${t.actionLabel}"><button type="button" id="create-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.createShort}</button><button type="button" id="join-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.join}</button></div>
-    <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><h2 id="entry-form-title" class="sr-only"></h2><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="24" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><div class="entry-secondary"><button id="practice-button" class="quiet-button" type="button">${t.practiceStart} →</button><button class="quiet-button" type="button" data-open-rules>${t.helpShort} ?</button></div><div class="entry-identity" data-identity></div><details id="entry-pack-picker" class="entry-pack-picker"><summary><span>${t.packsShort}</span><strong id="entry-pack-name"></strong><span class="disclosure-icon" aria-hidden="true">⌄</span></summary>${packCatalogMarkup('entry')}</details></section>`;
+    <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><h2 id="entry-form-title" class="sr-only"></h2><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="33" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><div class="entry-secondary"><button id="practice-button" class="quiet-button" type="button">${t.practiceStart} →</button><button class="quiet-button" type="button" data-open-rules>${t.helpShort} ?</button></div><div class="entry-identity" data-identity></div><details id="entry-pack-picker" class="entry-pack-picker"><summary><span>${t.packsShort}</span><strong id="entry-pack-name"></strong><span class="disclosure-icon" aria-hidden="true">⌄</span></summary>${packCatalogMarkup('entry')}</details></section>`;
   const previewTarget = Math.round(18 + Math.random() * 64);
   const previewPosition = Math.round(previewTarget + (previewTarget < 50 ? 1 : -1) * (16 + Math.random() * 18));
   dial = new Dial($('#preview-dial'), () => {}, { preview: true });
@@ -268,6 +306,7 @@ function mountEntry() {
     $(entryMode === 'create' ? '#create-tab' : '#join-tab').focus();
   });
   $('#room-code').addEventListener('input', event => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+  $('#nickname').addEventListener('input', event => { event.target.dataset.edited = 'true'; });
   $('#entry-form').addEventListener('submit', async event => {
     event.preventDefault();
     const name = $('#nickname').value.trim();
@@ -294,6 +333,7 @@ function mountEntry() {
   $('[data-open-rules]').addEventListener('click', openRules);
   bindPackCards($('#entry-packs'), 'entry');
   try { $('#nickname').value = window.localStorage.getItem('hvylia.nickname') || ''; } catch { /* Nicknames can still be entered manually. */ }
+  prefillNickname();
   updateIdentity();
   choose(entryMode);
 }
@@ -348,7 +388,7 @@ function mountLobby() {
 }
 function playerMarkup(player) {
   const mine = player.id === me()?.id;
-  return `<li data-player-id="${esc(player.id)}" class="player-row${player.connected ? '' : ' player-offline'}"><div class="player-name"><span>${esc(player.name)}</span>${mine ? `<small>${t.you}</small>` : ''}${player.id === state.hostId ? `<small class="host-label">${t.host}</small>` : ''}</div><span class="player-state${player.ready && player.connected ? ' is-ready' : ''}">${player.connected ? (player.ready ? `✓ ${t.ready}` : t.notReady) : t.disconnected}</span>${isHost() ? `<div class="player-controls"><select aria-label="${t.movePlayer}: ${esc(player.name)}" data-player-team="${esc(player.id)}" data-focus-key="team-${esc(player.id)}" ${!online ? 'disabled' : ''}><option value="" ${player.team == null ? 'selected' : ''}>${t.noTeam}</option>${state.teams.map((team, i) => `<option value="${i}" ${player.team === i ? 'selected' : ''}>${esc(team.name)}</option>`).join('')}</select>${!mine ? `<button type="button" class="kick-button" aria-label="${t.removePlayer}: ${esc(player.name)}" data-kick="${esc(player.id)}" ${!online ? 'disabled' : ''}>×</button>` : ''}</div>` : ''}</li>`;
+  return `<li data-player-id="${esc(player.id)}" class="player-row${player.connected ? '' : ' player-offline'}"><div class="player-name">${avatarMarkup(player, 'avatar-player')}<span>${esc(player.name)}</span>${mine ? `<small>${t.you}</small>` : ''}${player.id === state.hostId ? `<small class="host-label">${t.host}</small>` : ''}</div><span class="player-state${player.ready && player.connected ? ' is-ready' : ''}">${player.connected ? (player.ready ? `✓ ${t.ready}` : t.notReady) : t.disconnected}</span>${isHost() ? `<div class="player-controls"><select aria-label="${t.movePlayer}: ${esc(player.name)}" data-player-team="${esc(player.id)}" data-focus-key="team-${esc(player.id)}" ${!online ? 'disabled' : ''}><option value="" ${player.team == null ? 'selected' : ''}>${t.noTeam}</option>${state.teams.map((team, i) => `<option value="${i}" ${player.team === i ? 'selected' : ''}>${esc(team.name)}</option>`).join('')}</select>${!mine ? `<button type="button" class="kick-button" aria-label="${t.removePlayer}: ${esc(player.name)}" data-kick="${esc(player.id)}" ${!online ? 'disabled' : ''}>×</button>` : ''}</div>` : ''}</li>`;
 }
 function replacePreservingFocus(element, markup) {
   if (element.dataset.markup === markup) return;
@@ -415,6 +455,7 @@ function bindRoomTools() {
 
 function mountGame() {
   app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><details class="phase-help"><summary>${t.phaseHelp}<span aria-hidden="true">⌄</span></summary><p class="phase-description" id="phase-description"></p></details><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2><button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button></div></div><div id="spectrum-tools" class="spectrum-tools" hidden><button id="replace-spectrum" class="spectrum-swap" type="button"><span class="spectrum-swap-icon" aria-hidden="true">↻</span><span id="replace-spectrum-label">${t.replaceCard}</span></button><p>${t.replaceCardHint}</p></div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessCompact}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
+  $('#psychic-name').insertAdjacentHTML('beforebegin', '<span id="psychic-avatar" class="psychic-avatar" aria-hidden="true"></span>');
   bindRoomTools();
   if (!practice && state.config.ranked) $('.room-tools').insertAdjacentHTML('beforeend', `<span class="ranked-match">${t.ratingRanked}</span>`);
   dial = new Dial($('#dial'), position => {
@@ -455,7 +496,8 @@ function updateGame() {
   const psychic = player?.id === round.psychicId;
   const active = player?.team === round.activeTeam;
   const spectator = player?.team == null;
-  const psychicName = state.players.find(item => item.id === round.psychicId)?.name || t.psychic;
+  const psychicPlayer = state.players.find(item => item.id === round.psychicId);
+  const psychicName = psychicPlayer?.name || t.psychic;
   const canGuess = state.phase === 'TEAM_GUESS' && active && !psychic && !state.paused;
   const canBet = state.phase === 'OPPONENT_BET' && !active && !spectator && !state.paused;
   const canClue = state.phase === 'PSYCHIC_VIEW' && psychic && !state.paused;
@@ -499,6 +541,7 @@ function updateGame() {
   setText('#active-team', t.turnLabel(state.teams[round.activeTeam].name));
   setText('#psychic-label', state.phase === 'PSYCHIC_VIEW' ? t.clueGiver : t.roundPsychic);
   setText('#psychic-name', practice ? t.practicePsychic : psychicName);
+  if ($('#psychic-avatar')) { setHidden('#psychic-avatar', Boolean(practice)); replacePreservingFocus($('#psychic-avatar'), practice ? '' : avatarMarkup(psychicPlayer, 'avatar-psychic')); }
   setText('#spectrum-left', round.spectrum.left); setText('#spectrum-right', round.spectrum.right);
   $('.spectrum-poles').classList.toggle('is-long', Math.max(round.spectrum.left.length, round.spectrum.right.length) > 22);
   setHidden('#spectator-note', !spectator);
@@ -539,7 +582,7 @@ function updateGame() {
     const nextPsychic = members.find(item => item.id === nextPsychicId);
     const roster = practice ? `<li class="practice-member"><span class="member-name">${t.practicePlayer}</span><span class="member-role">${t.practiceTitle}</span></li>` : members.map(item => {
       const roles = [item.id === player?.id ? t.you : '', item.id === round.psychicId ? (state.phase === 'PSYCHIC_VIEW' ? t.clueGiver : t.psychic) : '', item.id === state.hostId ? t.host : '', !item.connected ? t.disconnected : ''].filter(Boolean);
-      return `<li class="${item.connected ? '' : 'member-offline'}${item.id === round.psychicId ? ' member-psychic' : ''}"${item.id === round.psychicId ? ' aria-current="true"' : ''}><span class="member-name">${esc(item.name)}</span>${roles.length ? `<span class="member-role">${esc(roles.join(' · '))}</span>` : ''}</li>`;
+      return `<li class="member-with-avatar ${item.connected ? '' : 'member-offline'}${item.id === round.psychicId ? ' member-psychic' : ''}"${item.id === round.psychicId ? ' aria-current="true"' : ''}>${avatarMarkup(item, 'avatar-chip')}<span class="member-name">${esc(item.name)}</span>${roles.length ? `<span class="member-role">${esc(roles.join(' · '))}</span>` : ''}</li>`;
     }).join('');
     const nextTurn = !practice && !ended && nextPsychic ? `<p class="team-next"><span>${t.nextPsychic}</span> <strong>${esc(nextPsychic.name)}</strong></p>` : '';
     return `<section class="score-team team-${i}${round.activeTeam === i ? ' active' : ''}${winner ? ' team-winner' : ''}" aria-label="${esc(team.name)}"><header class="team-heading"><p class="team-kicker">${t.teamNumber(i + 1)}</p><h2>${esc(team.name)}</h2><span class="team-turn">${winner ? t.teamWinner : ended ? t.matchFinished : round.activeTeam === i ? t.activeLabel : t.waitingTurn}</span></header><div class="team-standing"><div class="team-score"><strong>${team.score}</strong><span>/ ${state.config.winScore}</span></div><p class="team-remaining">${esc(remainingText)}</p>${scoreTrackMarkup({ team: i, score: team.score, goal: state.config.winScore, label: t.teamProgress(team.name) })}</div><ul class="team-members" aria-label="${t.players}">${roster}</ul>${nextTurn}</section>`;
@@ -555,13 +598,13 @@ function updateIdentity() {
   const profile = account?.profile;
   const button = $('#account-button');
   if (button) {
-    button.textContent = profile?.name ? Array.from(profile.name)[0].toUpperCase() : '↗';
+    replacePreservingFocus(button, profile ? avatarMarkup(profile, 'avatar-header') : '↗');
     button.setAttribute('aria-label', profile ? `${t.profile}: ${profile.name}` : t.telegramLogin);
     button.classList.toggle('has-profile', Boolean(profile));
   }
   document.querySelectorAll('[data-identity]').forEach(element => {
     const content = telegramIdentity() && profile
-      ? `<button class="identity-linked" type="button" data-open-profile><span class="identity-dot" aria-hidden="true"></span>${esc(profile.name)}<small>Telegram ✓</small></button>`
+      ? `<button class="identity-linked" type="button" data-open-profile>${avatarMarkup(profile, 'avatar-identity')}${esc(profile.name)}<small>Telegram ✓</small></button>`
       : `<button class="telegram-login" type="button" data-telegram-login><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="m3 10 17-7c1-.4 1.5.2 1.3 1.2l-3 15c-.2 1-.8 1.2-1.6.6l-5-3.7-2.4 2.3c-.3.3-.5.4-.7.4l.4-5.1 9.3-8.4c.4-.3-.1-.6-.6-.3L6.2 11.4l-3.1-1c-.8-.3-.8-.8-.1-1.1Z"/></svg>${t.telegramLogin}</button>`;
     replacePreservingFocus(element, content);
   });
@@ -715,7 +758,7 @@ $('#rules').addEventListener('close', updateTelegramBack);
 function profileMarkup() {
   const profile = account?.profile;
   if (!profile) return `<div class="rating-guest"><p>${t.ratingGuest}</p><button class="telegram-login" type="button" data-telegram-login>${t.telegramLogin} ↗</button></div>`;
-  return `<section class="rating-profile" aria-label="${t.ratingYou}">${!telegramIdentity() ? `<p class="nickname-profile-note">${t.nicknameRating}</p>` : ''}<div class="rating-identity"><span class="rating-avatar" aria-hidden="true">${esc(Array.from(profile.name || '?')[0])}</span><div><p class="eyebrow">${t.ratingYou}</p><h3>${esc(profile.name)}</h3></div></div><dl class="rating-stats">${[['wins', t.ratingWins], ['losses', t.ratingLosses], ['played', t.ratingPlayed], ['points', t.ratingPoints]].map(([key, title]) => `<div><dt>${title}</dt><dd>${Number(profile.stats?.[key]) || 0}</dd></div>`).join('')}</dl>${!telegramIdentity() ? `<button class="telegram-login" type="button" data-telegram-login>${t.telegramLogin} ↗</button>` : ''}</section>`;
+  return `<section class="rating-profile" aria-label="${t.ratingYou}">${!telegramIdentity() ? `<p class="nickname-profile-note">${t.nicknameRating}</p>` : ''}<div class="rating-identity">${avatarMarkup(profile, 'avatar-profile rating-avatar')}<div><p class="eyebrow">${t.ratingYou}</p><h3>${esc(profile.name)}</h3></div></div><dl class="rating-stats">${[['wins', t.ratingWins], ['losses', t.ratingLosses], ['played', t.ratingPlayed], ['points', t.ratingPoints]].map(([key, title]) => `<div><dt>${title}</dt><dd>${Number(profile.stats?.[key]) || 0}</dd></div>`).join('')}</dl>${!telegramIdentity() ? `<button class="telegram-login" type="button" data-telegram-login>${t.telegramLogin} ↗</button>` : ''}</section>`;
 }
 
 async function loadRanking(dialog) {
@@ -729,7 +772,7 @@ async function loadRanking(dialog) {
     $('[data-rating-telegram]', dialog)?.addEventListener('click', () => openTelegram(account?.botUsername));
     const entries = ranking.entries || [];
     if (!entries.length) result.innerHTML = `<p class="rating-empty">${t.ratingEmpty}</p>`;
-    else result.innerHTML = `<div class="rating-table-wrap"><table class="rating-table"><thead><tr><th scope="col"><span class="sr-only">${t.ratingRanked}</span>#</th><th scope="col">${t.ratingPlayer}</th><th scope="col">${t.ratingWins}</th><th scope="col">${t.ratingPlayed}</th></tr></thead><tbody>${entries.map((entry, index) => `<tr${entry.publicId === account?.profile?.publicId ? ' class="rating-mine"' : ''}><td>${Number(entry.rank) || index + 1}</td><th scope="row">${esc(entry.name)}${entry.publicId === account?.profile?.publicId ? `<small>${t.you}</small>` : ''}</th><td class="rating-win-count">${Number(entry.wins) || 0}</td><td>${Number(entry.played) || 0}</td></tr>`).join('')}</tbody></table></div>`;
+    else result.innerHTML = `<div class="rating-table-wrap"><table class="rating-table"><thead><tr><th scope="col"><span class="sr-only">${t.ratingRanked}</span>#</th><th scope="col">${t.ratingPlayer}</th><th scope="col">${t.ratingWins}</th><th scope="col">${t.ratingPlayed}</th></tr></thead><tbody>${entries.map((entry, index) => `<tr${entry.publicId === account?.profile?.publicId ? ' class="rating-mine"' : ''}><td>${Number(entry.rank) || index + 1}</td><th scope="row"><span class="rating-person">${avatarMarkup(entry, 'avatar-ranking')}<span class="rating-person-name">${esc(entry.name)}</span></span>${entry.publicId === account?.profile?.publicId ? `<small>${t.you}</small>` : ''}</th><td class="rating-win-count">${Number(entry.wins) || 0}</td><td>${Number(entry.played) || 0}</td></tr>`).join('')}</tbody></table></div>`;
   } catch { if (dialog.isConnected) result.innerHTML = `<p class="rating-empty" role="status">${t.ratingUnavailable}</p>`; }
   finally { if (dialog.isConnected) refresh.disabled = false; }
 }

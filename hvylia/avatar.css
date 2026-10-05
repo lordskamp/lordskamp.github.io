@@ -1,0 +1,43 @@
+.avatar{--avatar-size:26px;position:relative;display:inline-grid;place-items:center;flex:none;width:var(--avatar-size);height:var(--avatar-size);min-width:var(--avatar-size);overflow:hidden;border-radius:50%;border:1px solid #12324714;background:var(--ink);color:var(--paper);font-size:calc(var(--avatar-size) * .43);font-weight:600;line-height:1;vertical-align:middle;isolation:isolate}
+.avatar-fallback{display:grid;place-items:center;width:100%;height:100%;font-size:inherit;line-height:1;letter-spacing:0}
+.avatar-image{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;background:var(--ink);opacity:0}
+.avatar-image-loaded>.avatar-image{opacity:1}
+.account-button{padding:0;overflow:hidden}
+.account-button>.avatar{width:100%;height:100%;min-width:0;border:0;font-size:15px}
+.avatar-header{--avatar-size:40px}
+.avatar-profile{--avatar-size:46px}
+.avatar-player{--avatar-size:25px}
+.avatar-identity{--avatar-size:23px}
+.avatar-ranking{--avatar-size:25px}
+.avatar-chip{--avatar-size:17px}
+.avatar-psychic{--avatar-size:19px}
+.player-name>.avatar{align-self:center}
+.team-members li{align-items:center}
+.team-members .avatar{align-self:center}
+.team-members .member-with-avatar{--chip-avatar-size:17px;display:grid;grid-template-columns:var(--chip-avatar-size) minmax(0,1fr);width:max-content;max-width:100%;column-gap:4px;row-gap:2px;align-items:center}
+.member-with-avatar>.avatar{grid-column:1;grid-row:1}
+.member-with-avatar>.member-name{grid-column:2;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+.member-with-avatar>.member-role{grid-column:2}
+.psychic-banner .psychic-avatar{display:inline-flex;align-self:center;margin:0 1px}
+.rating-person{display:inline-flex;align-items:center;gap:8px;max-width:100%;vertical-align:middle}
+.rating-person-name{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.rating-identity>div{min-width:0}
+.rating-table tbody th{max-width:230px}
+@media(max-width:760px){
+ .avatar-header{--avatar-size:36px}
+ .avatar-player{--avatar-size:22px}
+ .avatar-ranking{--avatar-size:23px}
+ .avatar-chip{--avatar-size:15px}
+ .team-members .member-with-avatar{--chip-avatar-size:15px}
+ .avatar-psychic{--avatar-size:17px}
+ .team-members li{gap:2px 4px}
+ .rating-person{gap:6px}
+ .rating-table tbody th{max-width:180px}
+}
+@media(max-width:350px){
+ .avatar-chip{--avatar-size:14px}
+ .team-members .member-with-avatar{--chip-avatar-size:14px}
+ .avatar-player{--avatar-size:20px}
+ .avatar-ranking{--avatar-size:21px}
+ .rating-person{gap:5px}
+}

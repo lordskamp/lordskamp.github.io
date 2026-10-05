@@ -11,7 +11,7 @@ export const GAME_CONFIG = Object.freeze({
   revealDelayMs: 700,
   scoreDelayMs: 1_200,
   maxPlayers: 24,
-  maxNameLength: 24,
+  maxNameLength: 33,
   maxClueLength: 120
 });
 
@@ -42,6 +42,7 @@ function playerRecord(player, now = Date.now()) {
     team: null,
     connected: player.connected !== false,
     ready: false,
+    avatarUrl: typeof player.avatarUrl === 'string' && /^https?:\/\/[^\s/?#]+\/api\/hvylia\/avatar\/[a-f0-9-]{36}$/u.test(player.avatarUrl) ? player.avatarUrl : null,
     ...(player._accountId ? { _accountId: player._accountId } : {}),
     ...(player.connected === false ? { disconnectedAt: now } : {})
   };
@@ -520,7 +521,7 @@ export function viewFor(state, playerId) {
     revision: state.revision,
     hostId: state.hostId,
     players: state.players.map(existing => ({
-      id: existing.id, name: existing.name, team: existing.team,
+      id: existing.id, name: existing.name, avatarUrl: existing.avatarUrl || null, team: existing.team,
       connected: existing.connected, ready: existing.ready,
       ...(existing.disconnectedAt === undefined ? {} : { disconnectedAt: existing.disconnectedAt })
     })),

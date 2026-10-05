@@ -20,7 +20,7 @@ function storage(t) {
   return {
     sql: {
       exec(sql, ...args) {
-        const rows = db.prepare(sql).all(...args);
+        const rows = db.prepare(sql).all(...args.map(value => value instanceof ArrayBuffer ? new Uint8Array(value) : value));
         return {
           toArray: () => rows,
           one: () => { assert.equal(rows.length, 1); return rows[0]; }

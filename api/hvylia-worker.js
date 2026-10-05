@@ -33,8 +33,8 @@ async function hash(value) {
 function nickname(raw) {
   if (typeof raw !== 'string') throw fault('INVALID', 'Введіть нікнейм.');
   const name = raw.normalize('NFC').trim().replace(/\s+/gu, ' ');
-  if (name.length < 2 || name.length > 24 || /[\p{Cc}\p{Cf}<>]/u.test(name)) {
-    throw fault('INVALID', 'Нікнейм має містити від 2 до 24 символів.');
+  if (name.length < 2 || name.length > GAME_CONFIG.maxNameLength || /[\p{Cc}\p{Cf}<>]/u.test(name)) {
+    throw fault('INVALID', `Нікнейм має містити від 2 до ${GAME_CONFIG.maxNameLength} символів.`);
   }
   return name;
 }
@@ -106,6 +106,20 @@ function ranking(env) { return env.HVYLIA_LEADERBOARD.getByName('network-wins', 
 
 function identityKey(user) { return user?.kind === 'guest' ? 'g:' + user.id : user ? String(user.id) : null; }
 function authSecret(env) { return env.HVYLIA_AUTH_SECRET || env.HVYLIA_BOT_TOKEN; }
+function absoluteAvatar(path, requestUrl) {
+  return typeof path === 'string' && /^\/api\/hvylia\/avatar\/[a-f0-9-]{36}$/u.test(path) ? new URL(path, requestUrl).href : null;
+}
+async function telegramProfile(user, env, requestUrl, native = false) {
+  const profile = await account(env, user.id).profile(user);
+  try {
+    await account(env, `avatar:${profile.publicId}`).setAvatarSource({ telegramId: user.id,
+      ...(native || user.photo_url !== undefined ? { photoUrl: user.photo_url || null } : {}) });
+  } catch { /* Optional picture metadata never blocks authentication. */ }
+  if (profile.stats.played > 0) {
+    try { await ranking(env).update(profile); } catch { /* A later refresh retries the public index. */ }
+  }
+  return { ...user, avatarUrl: absoluteAvatar(profile.avatarUrl, requestUrl) };
+}
 function randomHex(size = 24) { return Array.from(crypto.getRandomValues(new Uint8Array(size)), byte => byte.toString(16).padStart(2, '0')).join(''); }
 async function identity(request, env, required = false) {
   const raw = request.headers.get('X-Telegram-Init-Data');
@@ -116,12 +130,13 @@ async function identity(request, env, required = false) {
   else if (!required) return null;
   if (!user) throw fault('TELEGRAM_AUTH', 'Увійдіть ще раз, щоб відновити свій профіль.', 401);
   if (required && user.kind === 'guest') throw fault('TELEGRAM_REQUIRED', 'Для покупки увійдіть через Telegram.', 401);
-  if (user.kind !== 'guest') await account(env, user.id).profile(user);
+  if (user.kind !== 'guest') user = await telegramProfile(user, env, request.url, Boolean(raw));
   else await account(env, identityKey(user)).profile();
   return user;
 }
-async function accountPayload(user, env) {
+async function accountPayload(user, env, requestUrl) {
   const profile = user ? await account(env, identityKey(user)).profile() : null;
+  if (profile) profile.avatarUrl = absoluteAvatar(profile.avatarUrl, requestUrl);
   return {
     telegramAvailable: Boolean(env.HVYLIA_BOT_TOKEN && env.HVYLIA_BOT_USERNAME),
     botUsername: env.HVYLIA_BOT_USERNAME || '', paymentReady: paymentReady(env), profile,
@@ -217,7 +232,7 @@ export class WaveRoom extends DurableObject {
 
   async initialize(code, rawName, user = null, packId = 'standard') {
     if (this.ctx.storage.sql.exec('SELECT id FROM room WHERE id = 1').toArray().length) return { collision: true };
-    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: identityKey(user) } : {}) };
+    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: identityKey(user), avatarUrl: user.avatarUrl || null } : {}) };
     const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
     const tokenHash = await hash(token);
     // Another creation may have finished while digesting the token.
@@ -234,13 +249,18 @@ export class WaveRoom extends DurableObject {
   }
 
   async join(rawName, user = null) {
-    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: identityKey(user) } : {}) };
+    const player = { id: crypto.randomUUID(), name: nickname(rawName), connected: false, ...(user ? { _accountId: identityKey(user), avatarUrl: user.avatarUrl || null } : {}) };
     const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
     const tokenHash = await hash(token);
     const { state } = this.read();
     const existing = user && state.players.find(item => item._accountId === identityKey(user));
     if (existing) {
-      this.ctx.storage.sql.exec('INSERT INTO sessions VALUES (?, ?)', tokenHash, existing.id);
+      const avatarChanged = (existing.avatarUrl || null) !== (user.avatarUrl || null);
+      this.ctx.storage.transactionSync(() => {
+        this.ctx.storage.sql.exec('INSERT INTO sessions VALUES (?, ?)', tokenHash, existing.id);
+        if (avatarChanged) { existing.avatarUrl = user.avatarUrl || null; state.revision += 1; this.write(state); }
+      });
+      if (avatarChanged) this.broadcast(state);
       return { code: state.code, playerId: existing.id, token, state: viewFor(state, existing.id) };
     }
     if (state.players.length >= GAME_CONFIG.maxPlayers) throw fault('FULL', 'У кімнаті вже 24 гравці.');
@@ -266,6 +286,7 @@ export class WaveRoom extends DurableObject {
     const { playerId } = await this.authenticate(token);
     const { state } = this.read();
     const player = state.players.find(item => item.id === playerId);
+    let metadataChanged = false;
     if (user) {
       const id = identityKey(user);
       const upgradingGuest = player._accountId?.startsWith('g:') && user.kind !== 'guest';
@@ -273,11 +294,11 @@ export class WaveRoom extends DurableObject {
       if ((!player._accountId || upgradingGuest) && state.phase === 'LOBBY') {
         if (state.players.some(item => item.id !== playerId && item._accountId === id)) throw fault('PLAYER_EXISTS', 'Ви вже є в цій кімнаті.');
         player._accountId = id;
-        state.revision += 1;
-        this.write(state);
-        this.broadcast(state);
+        metadataChanged = true;
       }
+      if (player._accountId === id && (player.avatarUrl || null) !== (user.avatarUrl || null)) { player.avatarUrl = user.avatarUrl || null; metadataChanged = true; }
     }
+    if (metadataChanged) { state.revision += 1; this.write(state); this.broadcast(state); }
     return { code: state.code, playerId, token, state: viewFor(state, playerId) };
   }
 
@@ -547,13 +568,23 @@ export default {
       if (request.method === 'OPTIONS') return json(null, 204, origin);
       if (url.pathname === '/api/health' && request.method === 'GET') return json({ ok: true, game: 'Довжина хвилі' }, 200, origin);
       if (url.pathname === '/api/hvylia/telegram-webhook' && request.method === 'POST') return json(await webhook(request, env));
-      if (url.pathname === '/api/hvylia/leaderboard' && request.method === 'GET') return json(await ranking(env).list(50), 200, origin);
-      if (url.pathname === '/api/hvylia/account' && request.method === 'GET') return json(await accountPayload(await identity(request, env), env), 200, origin);
+      const avatarId = url.pathname.match(/^\/api\/hvylia\/avatar\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/u)?.[1];
+      if (avatarId && request.method === 'GET') {
+        const image = await account(env, `avatar:${avatarId}`).avatar();
+        return new Response(image?.bytes || null, { status: image ? 200 : 404,
+          headers: { 'Content-Type': image?.type || 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=60', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Access-Control-Allow-Origin': '*' } });
+      }
+      if (url.pathname === '/api/hvylia/leaderboard' && request.method === 'GET') {
+        const leaders = await ranking(env).list(50);
+        leaders.entries = leaders.entries.map(entry => ({ ...entry, avatarUrl: absoluteAvatar(entry.avatarUrl, request.url) }));
+        return json(leaders, 200, origin);
+      }
+      if (url.pathname === '/api/hvylia/account' && request.method === 'GET') return json(await accountPayload(await identity(request, env), env, request.url), 200, origin);
       if (url.pathname === '/api/hvylia/auth/guest' && request.method === 'POST') {
         const { name: rawName } = await readJson(request);
         const name = nickname(rawName);
         const current = await identity(request, env);
-        if (current && current.kind !== 'guest') return json({ ...(await accountPayload(current, env)), unchanged: true }, 200, origin);
+        if (current && current.kind !== 'guest') return json({ ...(await accountPayload(current, env, request.url)), unchanged: true }, 200, origin);
         const user = { kind: 'guest', id: current?.id || crypto.randomUUID(), name };
         const profile = await account(env, identityKey(user)).guestProfile(user);
         if (profile.stats.played > 0) await ranking(env).update(profile);
@@ -570,9 +601,9 @@ export default {
         const { loginId, secret, code } = await readJson(request);
         if (!/^[a-f0-9]{48}$/u.test(loginId || '')) throw fault('LOGIN_INVALID', 'Почніть вхід ще раз.');
         const user = await env.HVYLIA_LOGINS.getByName(loginId).finish({ secret, code });
-        await account(env, user.id).profile(user);
+        await telegramProfile(user, env, request.url);
         const session = await createBrowserSession({ ...user, kind: 'telegram' }, authSecret(env));
-        return json({ ...session, ...(await accountPayload({ ...user, kind: 'telegram' }, env)) }, 200, origin);
+        return json({ ...session, ...(await accountPayload({ ...user, kind: 'telegram' }, env, request.url)) }, 200, origin);
       }
       if (url.pathname === '/api/hvylia/invoice' && request.method === 'POST') {
         if (!paymentReady(env)) throw fault('PAYMENT_SETUP', 'Оплата стане доступною після підключення Telegram-бота.', 503);

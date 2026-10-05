@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { constantTimeEqual } from './hvylia-telegram.js';
+import { constantTimeEqual, telegramUser } from './hvylia-telegram.js';
 
 const LIFETIME = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -16,15 +16,12 @@ async function hash(value) {
 }
 
 function verifiedUser(value) {
-  if (!value || !Number.isSafeInteger(value.id) || value.id <= 0 || value.id > 4503599627370495 || value.is_bot === true
-    || typeof value.first_name !== 'string' || !value.first_name.trim() || value.first_name.length > 256
-    || (value.last_name !== undefined && (typeof value.last_name !== 'string' || value.last_name.length > 256))
-    || (value.username !== undefined && (typeof value.username !== 'string' || value.username.length > 64))) {
+  // Bot API User has no photo_url. Pictures are resolved server-side after login.
+  const user = telegramUser(value ? { ...value, photo_url: undefined } : value);
+  if (!user) {
     fault('LOGIN_USER', 'Не вдалося підтвердити Telegram-профіль.');
   }
-  return { id: value.id, first_name: value.first_name,
-    ...(value.last_name !== undefined ? { last_name: value.last_name } : {}),
-    ...(value.username !== undefined ? { username: value.username } : {}) };
+  return user;
 }
 
 function randomCode() {

@@ -9,36 +9,45 @@ function sector(start, end) {
   const a = point(clamp(start), 280), b = point(clamp(end), 280);
   return `M360 330 L${a[0]} ${a[1]} A280 280 0 0 1 ${b[0]} ${b[1]} Z`;
 }
+// Cubic segments follow a polar wave, leaving one continuous, smooth wheel edge.
+function waveRim() {
+  const lobes = 36, radius = 323, amplitude = 6;
+  const step = Math.PI * 2 / (lobes * 4);
+  const sample = angle => {
+    const r = radius + amplitude * Math.cos(lobes * angle);
+    const dr = -amplitude * lobes * Math.sin(lobes * angle);
+    return {
+      x: 360 + r * Math.cos(angle), y: 330 + r * Math.sin(angle),
+      dx: dr * Math.cos(angle) - r * Math.sin(angle),
+      dy: dr * Math.sin(angle) + r * Math.cos(angle)
+    };
+  };
+  const f = value => value.toFixed(2);
+  let a = sample(0), path = `M${f(a.x)} ${f(a.y)}`;
+  for (let i = 1; i <= lobes * 4; i++) {
+    const b = sample(i * step);
+    path += ` C${f(a.x + a.dx * step / 3)} ${f(a.y + a.dy * step / 3)} ${f(b.x - b.dx * step / 3)} ${f(b.y - b.dy * step / 3)} ${f(b.x)} ${f(b.y)}`;
+    a = b;
+  }
+  return path + ' Z';
+}
 export function dialMarkup(id = 'dial') {
-  const ticks = Array.from({ length: 21 }, (_, i) => {
-    const a = point(i * 5, 287), b = point(i * 5, i % 5 === 0 ? 300 : 293);
-    return `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" class="dial-tick${i % 5 === 0 ? ' major' : ''}"/>`;
-  }).join('');
-  const ridges = Array.from({ length: 48 }, (_, i) => {
-    const angle = i * Math.PI / 24;
-    const a = [360 + Math.cos(angle) * 315, 330 + Math.sin(angle) * 315];
-    const b = [360 + Math.cos(angle) * 322, 330 + Math.sin(angle) * 322];
-    return `<line class="dial-ridge" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
-  }).join('');
-  return `<div id="${id}" class="dial" data-shutter="closed" role="group" aria-label="${t.position}" tabindex="-1">
+  return `<div id="${id}" class="dial" data-shutter="closed" data-wheel="still" role="group" aria-label="${t.position}" tabindex="-1">
     <svg viewBox="0 0 720 680" class="dial-svg" role="group">
       <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="M80 330 A280 280 0 0 1 640 330 Z"/></clipPath></defs>
-      <circle class="dial-shell-edge" cx="360" cy="330" r="323"/>
-      <g>${ridges}</g>
+      <g class="dial-wheel" aria-hidden="true" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)"><path class="dial-wave-rim" d="${waveRim()}"/></g>
       <circle class="dial-shell" cx="360" cy="330" r="310"/>
       <path class="dial-face" d="M80 330 A280 280 0 0 1 640 330 Z"/>
       <g id="${id}-target" class="dial-target" clip-path="url(#${id}-window)" visibility="hidden" aria-hidden="true">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
       <g clip-path="url(#${id}-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
         <path class="shutter-plate" d="M80 330 A280 280 0 0 1 640 330 Z"/>
       </g></g>
-      <path class="dial-rim" d="M80 330 A280 280 0 0 1 640 330"/>
-      <g>${ticks}</g>
-      <line x1="80" y1="330" x2="640" y2="330" class="dial-baseline"/>
+      <path class="dial-front-lip" d="M80 330 L100 330 Q118 330 120 313 L121 307 L360 330 L599 307 L600 313 Q602 330 620 330 L640 330 L640 350 L80 350 Z"/>
       <g class="dial-shutter-control" role="button" aria-label="${t.shutterOpen}" aria-controls="${id}-target" aria-expanded="false" aria-disabled="true" aria-hidden="true" tabindex="-1" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
-        <rect class="shutter-hitarea" x="606" y="294" width="110" height="72" rx="20"/>
-        <rect class="shutter-handle" x="622" y="318" width="82" height="24" rx="12"/>
+        <rect class="shutter-hitarea" x="4" y="292" width="144" height="76" rx="24"/>
+        <rect class="shutter-handle" x="14" y="314" width="112" height="32" rx="16"/>
       </g>
-      <g class="dial-needle" style="transform-origin:360px 330px;transform-box:view-box"><path class="needle-shaft" d="M356 330 L356 89 Q360 81 364 89 L364 330 Z"/><circle class="needle-hub" cx="360" cy="330" r="42"/><circle class="needle-pin" cx="360" cy="330" r="30"/></g>
+      <g class="dial-needle" style="transform-origin:360px 330px;transform-box:view-box"><path class="needle-shaft" d="M356.5 330 L356.5 91 Q360 84 363.5 91 L363.5 330 Z"/><circle class="needle-hub" cx="360" cy="330" r="60"/><circle class="needle-pin" cx="360" cy="330" r="46"/></g>
     </svg>
     <span class="dial-caption">${t.targetHidden}</span>
   </div>`;
@@ -51,6 +60,10 @@ export class Dial {
     this.onMove = onMove;
     this.position = 50;
     this.roundId = null;
+    this.wheel = element.querySelector('.dial-wheel');
+    this.wheelAngle = 0;
+    this.wheelAnimation = null;
+    this.wheelSerial = 0;
     this.showNeedle = true;
     this.editable = false;
     this.canPeek = false;
@@ -89,7 +102,7 @@ export class Dial {
       // The lower half holds the card. Include the thin baseline rim because
       // touch coordinates can round a point on the edge a few SVG units down.
       const distance = Math.hypot(p.x - 360, p.y - 330);
-      if (distance > 302 || (p.y > 336 && distance > 44)) return;
+      if (distance > 302 || (p.y > 336 && distance > 64)) return;
       event.preventDefault();
       element.focus({ preventScroll: true });
       this.dragging = true;
@@ -307,8 +320,8 @@ export class Dial {
       if (transform !== 'none') {
         const matrix = new window.DOMMatrixReadOnly(transform);
         from = Math.atan2(matrix.b, matrix.a) * 180 / Math.PI;
-        if (from > 179.9) from -= 360;
-        from = Math.max(-180, Math.min(0, from));
+        if (from < -0.1) from += 360;
+        from = Math.max(0, Math.min(180, from));
       }
       this.shutterAnimations.forEach(animation => animation.cancel());
       this.shutterAnimations = [];
@@ -316,7 +329,7 @@ export class Dial {
     }
     this.shutterAngle = from;
     this.shutterElements.forEach(element => { element.style.transform = `rotate(${from}deg)`; });
-    this.element.dataset.shutter = angle === -180 ? 'opening' : 'closing';
+    this.element.dataset.shutter = angle === 180 ? 'opening' : 'closing';
     this.syncPeekControl();
     this.element.dispatchEvent(new window.CustomEvent('shutterchange'));
     const finish = () => {
@@ -326,8 +339,8 @@ export class Dial {
       this.shutterAnimations.forEach(animation => animation.cancel());
       this.shutterAnimations = [];
       this.shutterAnimation = null;
-      this.element.dataset.shutter = angle === -180 ? 'open' : 'closed';
-      if (angle === -180 && this.availableTarget) this.hasViewedTarget = true;
+      this.element.dataset.shutter = angle === 180 ? 'open' : 'closed';
+      if (angle === 180 && this.availableTarget) this.hasViewedTarget = true;
       complete?.();
       this.syncPeekControl();
       this.element.dispatchEvent(new window.CustomEvent('shutterchange'));
@@ -348,6 +361,46 @@ export class Dial {
     this.shutterAnimation = this.shutterAnimations[0];
     this.shutterAnimation.onfinish = finish;
   }
+  turnWheel(roundId) {
+    const serial = ++this.wheelSerial;
+    // This is a decorative mechanical turn driven only by the public round ID.
+    // Never derive its angle from the target: opponents see the same animation.
+    let hash = 0;
+    for (const character of String(roundId)) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
+    let from = this.wheelAngle;
+    if (this.wheelAnimation) {
+      const transform = window.getComputedStyle(this.wheel).transform;
+      if (transform !== 'none') {
+        const matrix = new window.DOMMatrixReadOnly(transform);
+        const measured = Math.atan2(matrix.b, matrix.a) * 180 / Math.PI;
+        from = measured + 360 * Math.ceil((this.wheelFrom - measured - .001) / 360);
+      }
+    }
+    const angle = from + 135 + hash % 90;
+    this.wheelFrom = from;
+    this.wheelAnimation?.cancel();
+    this.wheelAnimation = null;
+    this.wheelAngle = angle;
+    this.wheel.style.transform = `rotate(${angle}deg)`;
+    const finish = () => {
+      if (serial !== this.wheelSerial || this.destroyed) return;
+      this.wheelAnimation?.cancel();
+      this.wheelAnimation = null;
+      this.wheelAngle = angle % 360;
+      this.wheel.style.transform = `rotate(${this.wheelAngle}deg)`;
+      this.element.dataset.wheel = 'still';
+    };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || typeof this.wheel.animate !== 'function') {
+      finish();
+      return;
+    }
+    this.element.dataset.wheel = 'turning';
+    this.wheelAnimation = this.wheel.animate([
+      { transform: `rotate(${from}deg)` },
+      { transform: `rotate(${angle}deg)` }
+    ], { duration: 980, easing: 'cubic-bezier(.18,.72,.24,1)', fill: 'forwards' });
+    this.wheelAnimation.onfinish = finish;
+  }
   closeShutter() {
     if (this.element.dataset.shutter === 'closing') return;
     this.rotateShutter(0, () => {
@@ -356,7 +409,7 @@ export class Dial {
       this.clearTarget();
       if (this.desiredTarget) {
         this.paintTarget(this.desiredTarget);
-        this.rotateShutter(-180);
+        this.rotateShutter(180);
       }
     });
   }
@@ -373,11 +426,12 @@ export class Dial {
       return;
     }
     this.paintTarget(snapshot);
-    if (this.element.dataset.shutter !== 'open' && this.element.dataset.shutter !== 'opening') this.rotateShutter(-180);
+    if (this.element.dataset.shutter !== 'open' && this.element.dataset.shutter !== 'opening') this.rotateShutter(180);
   }
   update({ position = 50, target, editable = false, revealed = false, psychic = false, canPeek = false, result = null, showNeedle = true, roundId = null }) {
     if (this.destroyed) return;
     const newRound = roundId !== null && roundId !== this.roundId;
+    if (newRound && this.roundId !== null) this.turnWheel(roundId);
     const privateTarget = psychic && !revealed && Number.isFinite(target);
     // Public previews may close their disclosed example locally. Live matches
     // retain the stricter private-psychic condition, including after revelation.
@@ -430,8 +484,8 @@ export class Dial {
     this.caption.textContent = visible && !this.peekClosed ? (psychic && !revealed ? t.targetSecret : t.revealInstruction) : t.targetHidden;
     if (this.preview && !this.previewInitialized && this.availableTarget) {
       this.previewInitialized = true;
-      this.shutterAngle = -180;
-      this.shutterElements.forEach(element => { element.style.transform = 'rotate(-180deg)'; });
+      this.shutterAngle = 180;
+      this.shutterElements.forEach(element => { element.style.transform = 'rotate(180deg)'; });
       this.element.dataset.shutter = 'open';
       this.hasViewedTarget = true;
     }
@@ -446,6 +500,10 @@ export class Dial {
     this.desiredTarget = null;
     this.syncPeekControl();
     ++this.shutterSerial;
+    ++this.wheelSerial;
+    this.wheelAnimation?.cancel();
+    this.wheelAnimation = null;
+    this.element.dataset.wheel = 'still';
     window.clearTimeout(this.timer);
     window.clearTimeout(this.reconcileTimer);
     this.shutterAnimations.forEach(animation => animation.cancel());

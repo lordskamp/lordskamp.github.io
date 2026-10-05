@@ -9,6 +9,14 @@ import { getPack } from '../../content/hvylia/packs.js';
 export { WaveRoom, WaveLeaderboardDO, WaveLoginDO };
 
 export class FeatureRoomDO extends WaveRoom {
+  clearAvatar(playerId) {
+    const { state } = this.read();
+    delete state.players.find(player => player.id === playerId).avatarUrl;
+    state.revision += 1;
+    this.write(state);
+    this.broadcast(state);
+    return { ok: true };
+  }
   connectionStatus(playerId) {
     const { state } = this.read();
     const player = state.players.find(item => item.id === playerId);
@@ -79,6 +87,13 @@ export class FeatureLeaderboardDO extends WaveLeaderboardDO {
 }
 
 export class FeatureAccountDO extends WaveAccountDO {
+  seedAvatar(userId) {
+    this.setAvatarSource({ telegramId: userId });
+    const version = this.ctx.storage.sql.exec('SELECT version FROM avatar_source WHERE id = 1').one().version;
+    const bytes = Uint8Array.from([255, 216, 255, 224, 0, 0, 255, 217]);
+    this.ctx.storage.sql.exec('INSERT INTO avatar_cache VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes, mime=excluded.mime, expires_at=excluded.expires_at, version=excluded.version', bytes.buffer, 'image/jpeg', Date.now() + 60000, version);
+    return { ok: true };
+  }
   seedInvoice(packId) {
     this.row();
     const pack = getPack(packId);
@@ -133,6 +148,10 @@ export default {
       try { return Response.json(await env.HVYLIA_LOGINS.getByName(loginId).attachTelegram(user)); }
       catch (error) { return Response.json({ code: error.code }, { status: error.status || 400 }); }
     }
+    if (url.pathname === '/__test/avatar/cache' && request.method === 'POST') {
+      const { publicId, userId } = await request.json();
+      return Response.json(await env.HVYLIA_ACCOUNTS.getByName(`avatar:${publicId}`).seedAvatar(userId));
+    }
     if (url.pathname.startsWith('/__test/connection/') && request.method === 'POST') {
       const { code, playerId, connectionId } = await request.json();
       const room = env.ROOMS.getByName(code);
@@ -141,6 +160,7 @@ export default {
       if (operation === 'false') return Response.json(await room.falsePresence(playerId));
       if (operation === 'stale-close') return Response.json(await room.staleClose(playerId, connectionId));
       if (operation === 'expired') return Response.json(await room.expiredOldSocket(playerId));
+      if (operation === 'no-avatar') return Response.json(await room.clearAvatar(playerId));
     }
     return worker.fetch(request, env, ctx);
   }

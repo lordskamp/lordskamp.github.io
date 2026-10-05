@@ -5,6 +5,31 @@ const AUTH_LIFETIME_SECONDS = 12 * 60 * 60;
 const GUEST_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
 const SESSION_PURPOSE = 'hvylia-browser-v1';
+const MAX_AVATAR_BYTES = 512 * 1024;
+
+export function telegramPhotoUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048 || /[\p{Cc}\p{Cf}]/u.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return null;
+    const host = url.hostname;
+    if (!(host === 't.me' && url.pathname.startsWith('/i/userpic/')) && host !== 'telegram.org'
+      && !/^cdn\d*\.(?:telesco\.pe|telegram\.org)$/u.test(host)) return null;
+    return url.href.length <= 2048 ? url.href : null;
+  } catch { return null; }
+}
+
+/** Metadata is trusted only after Mini App HMAC, browser HMAC or bot-webhook validation. */
+export function telegramUser(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !Number.isSafeInteger(value.id) || value.id <= 0 || value.id > 4503599627370495
+    || typeof value.first_name !== 'string' || !value.first_name.trim() || value.first_name.length > 256
+    || (value.last_name !== undefined && (typeof value.last_name !== 'string' || value.last_name.length > 256))
+    || (value.username !== undefined && value.username !== '' && (typeof value.username !== 'string' || !/^[A-Za-z0-9_]{1,32}$/u.test(value.username))) || value.is_bot === true) return null;
+  return { id: value.id, first_name: value.first_name,
+    ...(value.last_name !== undefined ? { last_name: value.last_name } : {}),
+    ...(value.username ? { username: value.username } : {}),
+    ...(telegramPhotoUrl(value.photo_url) ? { photo_url: telegramPhotoUrl(value.photo_url) } : {}) };
+}
 
 function telegramFault(code, message, status = 400) {
   return Object.assign(new Error(message), { code, status });
@@ -25,13 +50,8 @@ function browserIdentity(value) {
     if (!name || Array.from(name).length > 64) return null;
     return { kind: 'guest', id: value.id.toLowerCase(), name };
   }
-  if (value.kind !== 'telegram' || !Number.isSafeInteger(value.id) || value.id <= 0 || value.id > 4503599627370495
-    || typeof value.first_name !== 'string' || !value.first_name.trim() || value.first_name.length > 256
-    || (value.last_name !== undefined && (typeof value.last_name !== 'string' || value.last_name.length > 256))
-    || (value.username !== undefined && (typeof value.username !== 'string' || value.username.length > 64)) || value.is_bot === true) return null;
-  return { kind: 'telegram', id: value.id, first_name: value.first_name,
-    ...(value.last_name !== undefined ? { last_name: value.last_name } : {}),
-    ...(value.username !== undefined ? { username: value.username } : {}) };
+  const user = value.kind === 'telegram' ? telegramUser(value) : null;
+  return user ? { ...user, kind: 'telegram' } : null;
 }
 
 function base64url(bytes) {
@@ -65,7 +85,7 @@ export async function createBrowserSession(identity, secret, now = Date.now()) {
 
 /** Expiry, signature and bounded identity shape are checked before exposing an account. */
 export async function verifyBrowserSession(token, secret, now = Date.now()) {
-  if (typeof token !== 'string' || !token || token.length > 4096 || !Number.isFinite(now) || now < 0) return null;
+  if (typeof token !== 'string' || !token || token.length > 8192 || !Number.isFinite(now) || now < 0) return null;
   try {
     const segments = token.split('.');
     if (segments.length !== 2) return null;
@@ -111,11 +131,7 @@ export async function verifyTelegramInitData(raw, token, now = Date.now()) {
     const signature = new Uint8Array(hash.match(/../gu).map(byte => Number.parseInt(byte, 16)));
     // Native cryptographic verification avoids a data-dependent JavaScript string comparison.
     if (!await crypto.subtle.verify('HMAC', signingKey, signature, encoder.encode(check))) return null;
-    const user = JSON.parse(params.get('user') || 'null');
-    if (!user || !Number.isSafeInteger(user.id) || user.id <= 0 || user.id > 4503599627370495
-      || typeof user.first_name !== 'string' || !user.first_name.trim() || user.first_name.length > 256
-      || (user.last_name !== undefined && typeof user.last_name !== 'string') || user.is_bot === true) return null;
-    return user;
+    return telegramUser(JSON.parse(params.get('user') || 'null'));
   } catch { return null; }
 }
 
@@ -129,6 +145,7 @@ export async function telegramCall(env, method, params) {
   try {
     const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
       signal: AbortSignal.timeout(8000)
@@ -139,4 +156,57 @@ export async function telegramCall(env, method, params) {
   } catch {
     throw telegramFault('TELEGRAM_UNAVAILABLE', 'Telegram зараз недоступний. Спробуйте ще раз.', 503);
   }
+}
+
+async function rasterImage(url) {
+  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(8000) });
+  const type = response.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase();
+  if (!response.ok || !['image/jpeg', 'image/png', 'image/webp'].includes(type)
+    || Number(response.headers.get('Content-Length')) > MAX_AVATAR_BYTES || !response.body) {
+    await response.body?.cancel();
+    return null;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > MAX_AVATAR_BYTES) { await reader.cancel(); return null; }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  // Reject active content even if an upstream responds with a misleading image MIME.
+  const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+  const png = bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte);
+  const webp = bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP';
+  if (!(type === 'image/jpeg' && jpeg || type === 'image/png' && png || type === 'image/webp' && webp)) return null;
+  return { bytes, type };
+}
+
+/** Return only bounded raster bytes. Bot token, file paths and Telegram IDs never reach clients. */
+export async function telegramAvatar(env, userId, photoUrl = null) {
+  try {
+    const source = telegramPhotoUrl(photoUrl);
+    if (source) {
+      try { const image = await rasterImage(source); if (image) return image; }
+      catch { /* An unsupported/private CDN image can fall back to Bot API raster photos. */ }
+    }
+    if (!Number.isSafeInteger(userId) || userId <= 0 || userId > 4503599627370495) return null;
+    const photos = await telegramCall(env, 'getUserProfilePhotos', { user_id: userId, limit: 1 });
+    const sizes = Array.isArray(photos?.photos?.[0]) ? photos.photos[0] : [];
+    const usable = sizes.filter(photo => typeof photo?.file_id === 'string' && /^[A-Za-z0-9_-]{1,512}$/u.test(photo.file_id)
+      && Number.isSafeInteger(photo.width) && Number.isSafeInteger(photo.height)
+      && photo.width > 0 && photo.height > 0 && (!photo.file_size || Number.isSafeInteger(photo.file_size) && photo.file_size <= MAX_AVATAR_BYTES));
+    const photo = usable.filter(item => item.width >= 160).sort((a, b) => a.width - b.width)[0] || usable.sort((a, b) => b.width - a.width)[0];
+    if (!photo) return null;
+    const file = await telegramCall(env, 'getFile', { file_id: photo.file_id });
+    if (typeof file?.file_path !== 'string' || !/^[A-Za-z0-9_/-]+\.(?:jpe?g|png|webp)$/iu.test(file.file_path)
+      || file.file_path.split('/').some(part => !part || part === '.' || part === '..')
+      || file.file_path.length > 512 || (file.file_size && (!Number.isSafeInteger(file.file_size) || file.file_size > MAX_AVATAR_BYTES))) return null;
+    return await rasterImage(`https://api.telegram.org/file/bot${env.HVYLIA_BOT_TOKEN}/${file.file_path}`);
+  } catch { return null; }
 }
