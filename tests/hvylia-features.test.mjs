@@ -258,7 +258,7 @@ async function playPerfectMatch(players, packId, userIds = []) {
     await sync(players, state => state.phase === 'PSYCHIC_VIEW' && state.round.number === round);
     assertPrivate(players, userIds);
     assert.equal(host.state.config.packId, packId);
-    if (packId !== 'standard') assert.match(host.state.round.spectrum.id, new RegExp(`^${packId}-`, 'u'));
+    assert.match(host.state.round.spectrum.id, /^community-/u);
     const psychic = players.find(player => player.state.you.role === 'psychic');
     const guesser = players.find(player => player.state.you.role === 'guesser');
     const opponent = players.find(player => player.state.you.role === 'opponent');
@@ -282,12 +282,13 @@ async function playPerfectMatch(players, packId, userIds = []) {
   return host.state.winner;
 }
 
-test('verified Telegram profiles expose the 150-Star catalogue without accepting forged identities or purchases', async () => {
+test('verified Telegram profiles expose only the community catalogue and reject inactive pack sales', async () => {
   const guest = await request('/api/hvylia/account', { method: 'GET' });
   assert.equal(guest.status, 200);
   assert.equal(guest.data.profile, null);
   assert.equal(guest.data.paymentReady, true);
-  assert.deepEqual(guest.data.packs.map(pack => [pack.id, pack.priceStars, pack.owned]), [['standard', 0, true], ['anime', 150, false], ['games', 150, false]]);
+  assert.deepEqual(guest.data.packs.map(pack => [pack.id, pack.priceStars, pack.owned]), [['standard', 0, true]]);
+  assert.equal(guest.data.packs[0].count, 678);
   const userId = 910001;
   const signed = initData(userId, 'Гравець із Telegram');
   const verified = await request('/api/hvylia/account', { method: 'GET', telegram: signed });
@@ -305,15 +306,18 @@ test('verified Telegram profiles expose the 150-Star catalogue without accepting
   }
   for (const telegram of [undefined, signed]) {
     const locked = await request('/api/rooms', { telegram, body: { name: 'Платний ведучий', packId: 'anime', ownedPacks: ['anime'], accountId: userId } });
-    assert.equal(locked.status, 403);
-    assert.equal(locked.data.code, 'PACK_LOCKED');
+    assert.equal(locked.status, 400);
+    assert.equal(locked.data.code, 'INVALID');
   }
   const invoice = await request('/api/hvylia/invoice', { body: { packId: 'anime' } });
   assert.equal(invoice.status, 401);
   assert.equal(invoice.data.code, 'TELEGRAM_AUTH');
+  const unavailable = await request('/api/hvylia/invoice', { telegram: signed, body: { packId: 'anime' } });
+  assert.equal(unavailable.status, 400);
+  assert.equal(unavailable.data.code, 'PACK');
 });
 
-test('a confirmed Stars receipt unlocks the host pack, admits guests, and remains idempotent', { timeout: 25000 }, async () => {
+test('historical Stars receipts retain entitlement and idempotency while hosts play only community cards', { timeout: 25000 }, async () => {
   const userId = 910001;
   const telegram = initData(userId, 'Гравець із Telegram');
   const seeded = await request('/__test/seed', { body: { userId, packId: 'anime' } });
@@ -344,7 +348,7 @@ test('a confirmed Stars receipt unlocks the host pack, admits guests, and remain
   assert.equal(accepted.data.ok, true);
   const purchased = await request('/api/hvylia/account', { method: 'GET', telegram });
   assert.deepEqual(purchased.data.profile.ownedPacks, ['anime']);
-  assert.equal(purchased.data.packs.find(pack => pack.id === 'anime').owned, true);
+  assert.equal(purchased.data.packs.some(pack => pack.id === 'anime'), false);
   const replay = await request('/api/hvylia/telegram-webhook', { secret: WEBHOOK_SECRET, body: update });
   assert.equal(replay.status, 200);
   const duplicate = await request('/api/hvylia/account', { method: 'GET', telegram });
@@ -352,7 +356,10 @@ test('a confirmed Stars receipt unlocks the host pack, admits guests, and remain
   const history = await request('/__test/history', { body: { userId } });
   assert.equal(history.data.purchases.length, 1);
   assert.equal(history.data.purchases[0].status, 'paid');
-  const created = await request('/api/rooms', { telegram, body: { name: 'Аніме ведучий', packId: 'anime' } });
+  const inactive = await request('/api/rooms', { telegram, body: { name: 'Ведучий з історією покупки', packId: 'anime' } });
+  assert.equal(inactive.status, 400);
+  assert.equal(inactive.data.code, 'INVALID');
+  const created = await request('/api/rooms', { telegram, body: { name: 'Ведучий з історією покупки', packId: 'standard' } });
   assert.equal(created.status, 201);
   const sessions = [created.data];
   for (const name of ['Аніме друг', 'Аніме суперник', 'Аніме напарник']) {
@@ -364,15 +371,71 @@ test('a confirmed Stars receipt unlocks the host pack, admits guests, and remain
   for (const session of sessions) players.push(await connect(session));
   await sync(players, state => state.players.length === 4 && state.players.every(player => player.connected));
   const locked = await players[0].action({ type: 'settings', packId: 'games' });
-  assert.equal(locked.code, 'PACK_LOCKED');
-  assert.equal(players[0].state.config.packId, 'anime');
+  assert.equal(locked.code, 'INVALID');
+  assert.equal(players[0].state.config.packId, 'standard');
   await formMatch(players, false);
-  await playPerfectMatch(players, 'anime', [userId]);
+  await playPerfectMatch(players, 'standard', [userId]);
   await request('/__test/flush', { body: { code: created.data.code } });
   const finalProfile = await request('/api/hvylia/account', { method: 'GET', telegram });
   assert.equal(finalProfile.data.profile.stats.played, 0, 'A match with anonymous guests is friendly');
   const leaders = await request('/api/hvylia/leaderboard', { method: 'GET' });
   assert.equal(leaders.data.entries.length, 0);
+  for (const player of players) player.close();
+});
+
+test('legacy rooms restart only unscored removed cards, preserve turns and keep completed scoring snapshots', async () => {
+  const created = await request('/api/rooms', { body: { name: 'Ведучий старої кімнати' } });
+  const sessions = [created.data];
+  for (const name of ['Друг', 'Суперник', 'Напарник']) {
+    sessions.push((await request(`/api/rooms/${created.data.code}/join`, { body: { name } })).data);
+  }
+  const players = [];
+  for (const session of sessions) players.push(await connect(session));
+  await sync(players, state => state.players.length === 4 && state.players.every(player => player.connected));
+  await formMatch(players, false);
+  for (const phase of ['PSYCHIC_VIEW', 'TEAM_GUESS', 'OPPONENT_BET', 'REVEAL', 'SCORE', 'GAME_OVER']) {
+    // An ID may survive an editor replacement while its poles have changed.
+    const migrated = await request('/__test/legacy-round', { body: { code: created.data.code, phase,
+      ...(phase === 'TEAM_GUESS' ? { spectrumId: 'community-01' } : {}) } });
+    assert.equal(migrated.status, 200);
+    const { before, after, repeated } = migrated.data;
+    assert.equal(after.config.packId, 'standard');
+    assert.deepEqual(after.teams, before.teams);
+    assert.deepEqual(after._rotation, before._rotation);
+    assert.equal(after.round.psychicId, before.round.psychicId);
+    assert.equal(after.round.activeTeam, before.round.activeTeam);
+    assert.equal(after.round.number, before.round.number);
+    assert.deepEqual(repeated, after, 'Catalogue migration is persisted exactly once');
+    if (['SCORE', 'GAME_OVER'].includes(phase)) {
+      assert.equal(after.phase, phase);
+      assert.deepEqual(after.round, before.round, 'Completed results retain their actual original card');
+    } else {
+      assert.equal(after.phase, 'PSYCHIC_VIEW');
+      assert.notEqual(after.round.id, before.round.id);
+      assert.match(after.round.spectrum.id, /^community-/u);
+      assert.equal(after.round.clue, '');
+      assert.equal(after.round.guess, 50);
+      assert.equal(after.round.bet, null);
+      assert.equal(after.round.result, null);
+      assert.equal(after.round.revealed, false);
+      assert.equal(Object.hasOwn(after.round, 'revealAt'), false);
+      assert.equal(after.round.catalogUpdated, true);
+      const resumed = await request(`/api/rooms/${created.data.code}/resume`, { token: created.data.token });
+      assert.equal(resumed.data.state.round.catalogUpdated, true);
+      assertPrivate([{ session: created.data, state: resumed.data.state }]);
+      await sync(players, state => state.round.id === after.round.id);
+      const psychic = players.find(player => player.session.playerId === after.round.psychicId);
+      const stale = await psychic.action({ type: 'clue', roundId: before.round.id, text: 'Застаріла підказка' });
+      assert.equal(stale.code, 'STALE');
+    }
+  }
+  await request('/__test/legacy-round', { body: { code: created.data.code, phase: 'SCORE' } });
+  const resumed = await request(`/api/rooms/${created.data.code}/resume`, { token: created.data.token });
+  await players[0].accept({ type: 'next', roundId: resumed.data.state.round.id });
+  await sync(players, state => state.phase === 'PSYCHIC_VIEW' && state.round.number === 2);
+  assert.match(players[0].state.round.spectrum.id, /^community-/u);
+  assert.equal(players[0].state.config.packId, 'standard');
+  assert.equal(Object.hasOwn(players[0].state.round, 'catalogUpdated'), false);
   for (const player of players) player.close();
 });
 
@@ -516,8 +579,8 @@ test('nickname credentials persist independent stats, allow renaming, enforce ac
   assert.equal(invoice.status, 401);
   assert.equal(invoice.data.code, 'TELEGRAM_REQUIRED');
   const locked = await request('/api/rooms', { profile: renamed.token, body: { name: 'Платний нік', packId: 'anime', ownedPacks: ['anime'] } });
-  assert.equal(locked.status, 403);
-  assert.equal(locked.data.code, 'PACK_LOCKED');
+  assert.equal(locked.status, 400);
+  assert.equal(locked.data.code, 'INVALID');
   const forged = await request('/api/hvylia/account', { method: 'GET', profile: `${renamed.token}tampered` });
   assert.equal(forged.status, 401);
   assert.equal(forged.data.code, 'TELEGRAM_AUTH');

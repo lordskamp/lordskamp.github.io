@@ -179,7 +179,9 @@ export class WaveAccountDO extends DurableObject {
     if (!id || telegramId(message?.from?.id) !== account.telegram_id || !chargeId(payment?.telegram_payment_charge_id)) fail('PAYMENT', 'Не вдалося підтвердити платіж.');
     return this.ctx.storage.transactionSync(() => {
       const purchase = this.ctx.storage.sql.exec('SELECT * FROM purchases WHERE id = ?', id).toArray()[0];
-      if (!purchase || payment.currency !== 'XTR' || payment.currency !== purchase.currency || payment.total_amount !== purchase.amount || payment.total_amount !== product(purchase.pack_id).priceStars) fail('PAYMENT', 'Сума або набір у платежі не збігаються.');
+      // Reconcile deliveries against the durable invoice, even after its pack
+      // leaves the live catalogue. New invoices/checkouts still require product().
+      if (!purchase || payment.currency !== 'XTR' || payment.currency !== purchase.currency || !Number.isSafeInteger(purchase.amount) || purchase.amount <= 0 || payment.total_amount !== purchase.amount) fail('PAYMENT', 'Сума або набір у платежі не збігаються.');
       if (purchase.charge_id) {
         if (purchase.charge_id !== payment.telegram_payment_charge_id) fail('PAYMENT', 'Цей рахунок уже оплачено іншим платежем.');
         return { ok: true, duplicate: true, purchaseId: id, packId: purchase.pack_id, profile: this.profile() };
@@ -213,7 +215,7 @@ export class WaveAccountDO extends DurableObject {
     const owner = message?.chat?.type === 'private' ? message.chat.id : message?.from?.id;
     if (!id || telegramId(owner) !== row.telegram_id || !chargeId(payment?.telegram_payment_charge_id)) fail('PAYMENT', 'Не вдалося підтвердити повернення.');
     const purchase = this.ctx.storage.sql.exec('SELECT * FROM purchases WHERE id = ?', id).toArray()[0];
-    if (!purchase || payment.currency !== 'XTR' || payment.total_amount !== purchase.amount || payment.total_amount !== product(purchase.pack_id).priceStars) fail('PAYMENT', 'Сума повернення не збігається.');
+    if (!purchase || purchase.currency !== 'XTR' || payment.currency !== purchase.currency || !Number.isSafeInteger(purchase.amount) || purchase.amount <= 0 || payment.total_amount !== purchase.amount) fail('PAYMENT', 'Сума повернення не збігається.');
     return this.applyRefund(id, payment.telegram_payment_charge_id);
   }
 

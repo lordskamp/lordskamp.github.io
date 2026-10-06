@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ANIME_SPECTRA, GAMES_SPECTRA } from '../api/hvylia-premium-cards.js';
 
 import {
   GAME_CONFIG,
@@ -56,7 +55,7 @@ function throwsCode(code, fn) {
   assert.throws(fn, error => error.code === code && /[А-Яа-яІіЇїЄєҐґ]/u.test(error.message));
 }
 
-test('original Ukrainian content has at least 150 unique, complete spectra', () => {
+test('the active Ukrainian community deck has at least 150 unique, complete spectra', () => {
   assert.ok(SPECTRA.length >= 150);
   assert.equal(new Set(SPECTRA.map(spectrum => spectrum.id)).size, SPECTRA.length);
   assert.equal(new Set(SPECTRA.map(spectrum => `${spectrum.left}|${spectrum.right}`)).size, SPECTRA.length);
@@ -652,7 +651,7 @@ test('host goals use multiples of five and invalid pack settings are atomic', ()
 });
 
 test('server supplies the selected deck for first, next and recovered rounds', () => {
-  for (const [packId, cards] of [['anime', ANIME_SPECTRA], ['games', GAMES_SPECTRA]]) {
+  for (const [packId, cards] of [['standard', SPECTRA.slice(0, 20)], ['standard', SPECTRA.slice(20, 40)]]) {
     let state = applyAction(lobby(), 'host', { type: 'settings', packId });
     state = applyAction(state, 'host', { type: 'start' }, randomSequence(0, 0, .5), cards);
     assert.ok(cards.some(card => card.id === state.round.spectrum.id));
@@ -743,8 +742,8 @@ test('replacement invalidates queued commands for the previous card without chan
   assert.deepEqual(guessing.teams, initial.teams);
 });
 
-test('replacement draws unused cards from the supplied paid deck and avoids consecutive repeats after exhaustion', () => {
-  for (const [packId, cards] of [['anime', ANIME_SPECTRA], ['games', GAMES_SPECTRA]]) {
+test('replacement draws unused cards from the supplied community subset and avoids consecutive repeats after exhaustion', () => {
+  for (const [packId, cards] of [['standard', SPECTRA.slice(0, 20)], ['standard', SPECTRA.slice(20, 40)]]) {
     let state = applyAction(lobby(), 'host', { type: 'settings', packId });
     state = applyAction(state, 'host', { type: 'start' }, randomSequence(0, 0, 0.5), cards);
     const seen = new Set([state.round.spectrum.id]);
@@ -753,7 +752,7 @@ test('replacement draws unused cards from the supplied paid deck and avoids cons
       state = applyAction(state, state.round.psychicId, { type: 'replace-spectrum', roundId: state.round.id }, () => 0, cards);
       assert.equal(seen.has(state.round.spectrum.id), false);
       assert.ok(cards.some(card => card.id === state.round.spectrum.id));
-      assert.equal(SPECTRA.some(card => card.id === state.round.spectrum.id), false);
+      assert.equal(SPECTRA.some(card => card.id === state.round.spectrum.id), true);
       seen.add(state.round.spectrum.id);
     }
     assert.equal(seen.size, cards.length);

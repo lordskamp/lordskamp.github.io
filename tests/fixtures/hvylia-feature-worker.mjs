@@ -4,11 +4,27 @@ import worker, { WaveRoom, WaveLeaderboardDO } from '../../api/hvylia-worker.js'
 import { WaveAccountDO } from '../../api/hvylia-accounts.js';
 import { WaveLoginDO } from '../../api/hvylia-login.js';
 import { setConnection } from '../../api/hvylia-core.js';
-import { getPack } from '../../content/hvylia/packs.js';
 
 export { WaveRoom, WaveLeaderboardDO, WaveLoginDO };
 
 export class FeatureRoomDO extends WaveRoom {
+  seedLegacyRound(phase, spectrumId = 'anime-removed-01') {
+    const { state } = this.read();
+    state.config.packId = 'anime';
+    state._usedSpectra = [spectrumId];
+    state.round.spectrum = { id: spectrumId, left: 'Вилучена стара картка', right: 'Інший старий полюс' };
+    state.round.clue = 'Підказка до вилученої картки';
+    state.round.bet = 'left';
+    state.round.revealed = ['SCORE', 'GAME_OVER'].includes(phase);
+    state.round.revealAt = Date.now() + 600000;
+    state.round.result = state.round.revealed ? { activePoints: 2, opponentPoints: 1, correctSide: 'left', catchUp: false } : null;
+    state.phase = phase;
+    delete state.round.catalogUpdated;
+    const before = structuredClone(state);
+    this.write(state, false);
+    const after = this.read().state;
+    return { before, after, repeated: this.read().state };
+  }
   clearAvatar(playerId) {
     const { state } = this.read();
     delete state.players.find(player => player.id === playerId).avatarUrl;
@@ -96,11 +112,10 @@ export class FeatureAccountDO extends WaveAccountDO {
   }
   seedInvoice(packId) {
     this.row();
-    const pack = getPack(packId);
-    if (!pack || pack.free) throw new Error('A premium pack is required');
+    if (!['anime', 'games'].includes(packId)) throw new Error('A historical premium pack is required');
     const id = crypto.randomUUID();
-    this.ctx.storage.sql.exec('INSERT INTO purchases (id, pack_id, amount, currency, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', id, packId, pack.priceStars, 'XTR', 'pending', Date.now());
-    return { id, payload: `hvylia:v1:${id}`, amount: pack.priceStars, currency: 'XTR' };
+    this.ctx.storage.sql.exec('INSERT INTO purchases (id, pack_id, amount, currency, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', id, packId, 150, 'XTR', 'pending', Date.now());
+    return { id, payload: `hvylia:v1:${id}`, amount: 150, currency: 'XTR' };
   }
 
   testHistory() {
@@ -114,6 +129,10 @@ export class FeatureAccountDO extends WaveAccountDO {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === '/__test/legacy-round' && request.method === 'POST') {
+      const { code, phase, spectrumId } = await request.json();
+      return Response.json(await env.ROOMS.getByName(code).seedLegacyRound(phase, spectrumId));
+    }
     if (url.pathname === '/__test/seed' && request.method === 'POST') {
       const { userId, packId } = await request.json();
       return Response.json(await env.HVYLIA_ACCOUNTS.getByName(String(userId)).seedInvoice(packId));

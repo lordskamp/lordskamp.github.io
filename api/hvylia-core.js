@@ -509,6 +509,7 @@ export function viewFor(state, playerId) {
     bet: state.round.bet,
     result: state.round.result ? { ...state.round.result } : null,
     revealed: state.round.revealed,
+    ...(state.round.catalogUpdated ? { catalogUpdated: true } : {}),
     ...(state.round.revealAt === undefined ? {} : { revealAt: state.round.revealAt })
   } : null;
   if (round && (state.round.revealed || player?.id === state.round.psychicId)) round.target = state.round.target;

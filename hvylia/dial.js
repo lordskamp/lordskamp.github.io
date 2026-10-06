@@ -1,5 +1,5 @@
 import { t } from './locale.js';
-import { DIAL_GEOMETRY, DIAL_WINDOW_PATH, DIAL_SHUTTER_PATH, angleForPosition, positionForAngle, dialPoint as point } from './dial-geometry.js';
+import { DIAL_GEOMETRY, DIAL_WINDOW_PATH, DIAL_TARGET_WINDOW_PATH, DIAL_SHUTTER_PATH, angleForPosition, positionForAngle, dialPoint as point } from './dial-geometry.js';
 
 const clamp = n => Math.max(0, Math.min(100, n));
 function sector(start, end) {
@@ -32,14 +32,15 @@ function waveRim() {
 export function dialMarkup(id = 'dial') {
   // The shoulders are sharp; each end of the window returns in a 16px U,
   // matching the diameter of the shutter handle instead of flattening at its base.
+  // Scoring sectors stop at the sloped body, leaving the handle recesses uncolored.
   const windowPath = DIAL_WINDOW_PATH;
   return `<div id="${id}" class="dial" data-shutter="closed" data-wheel="still" role="group" aria-label="${t.position}" tabindex="-1">
     <svg viewBox="0 0 720 680" class="dial-svg" role="group">
-      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="${windowPath}"/></clipPath><clipPath id="${id}-shutter-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_SHUTTER_PATH}"/></clipPath></defs>
+      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="${windowPath}"/></clipPath><clipPath id="${id}-target-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_TARGET_WINDOW_PATH}"/></clipPath><clipPath id="${id}-shutter-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_SHUTTER_PATH}"/></clipPath></defs>
       <g class="dial-wheel" aria-hidden="true" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)"><path class="dial-wave-rim" d="${waveRim()}"/></g>
       <circle class="dial-shell" cx="360" cy="330" r="310"/>
       <path class="dial-face" d="${windowPath}"/>
-      <g id="${id}-target" class="dial-target" clip-path="url(#${id}-window)" visibility="hidden" aria-hidden="true">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
+      <g id="${id}-target" class="dial-target" clip-path="url(#${id}-window)" visibility="hidden" aria-hidden="true"><g clip-path="url(#${id}-target-window)">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g></g>
       <g clip-path="url(#${id}-window)"><g clip-path="url(#${id}-shutter-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
         <path class="shutter-plate" d="${DIAL_SHUTTER_PATH}"/>
       </g></g>

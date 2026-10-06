@@ -1,29 +1,15 @@
-// Public catalogue only. Premium cards are selected on the server after checking
-// the host's permanent purchase; guests can join the host's selected pack.
+import { SPECTRA } from './spectra.js';
+
+// Only the editor's community cards are active. Historical paid entitlements are
+// kept in account storage; unavailable packs are neither offered nor sold.
 export const PACKS = Object.freeze([
   Object.freeze({
     id: 'standard',
     title: 'Звичайний',
-    description: 'Повсякденні речі, культура й несподівані суперечки. Для будь-якої компанії.',
+    description: 'Українські спектри для будь-якої компанії.',
     priceStars: 0,
-    count: 200,
+    count: SPECTRA.length,
     free: true
-  }),
-  Object.freeze({
-    id: 'anime',
-    title: 'Аніме',
-    description: 'Герої, арки, магічні світи й фанатські суперечки. Для тих, хто не пропускає опенінги.',
-    priceStars: 150,
-    count: 100,
-    free: false
-  }),
-  Object.freeze({
-    id: 'games',
-    title: 'Ігри',
-    description: 'Боси, квести, ігрові світи й командні пригоди. Від затишного вечора до фінального рейду.',
-    priceStars: 150,
-    count: 100,
-    free: false
   })
 ]);
 

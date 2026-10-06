@@ -7,16 +7,22 @@ import {
 
 const close = (actual, expected, label) => assert.ok(Math.abs(actual - expected) < 1e-9, `${label}: ${actual} != ${expected}`);
 
-test('the complete scoring fan stays above the physical window lip at every possible target', () => {
-  const { centerX, centerY, faceRadius, shoulderOffsetX, shoulderOffsetY, sectorHalfWidth, clearanceDegrees } = DIAL_GEOMETRY;
+test('the four-point wedge stays exposed at every target while outer wedges may hide behind the body', () => {
+  const { centerX, centerY, faceRadius, shoulderOffsetX, shoulderOffsetY, sectorHalfWidth, centerSectorHalfWidth, clearanceDegrees } = DIAL_GEOMETRY;
   const lip = Math.atan2(shoulderOffsetY, shoulderOffsetX) * 180 / Math.PI;
   close(DIAL_ARC.lipDegrees, lip, 'lip angle');
-  assert.ok(angleForPosition(-sectorHalfWidth) >= lip + clearanceDegrees);
-  assert.ok(angleForPosition(100 + sectorHalfWidth) <= 180 - lip - clearanceDegrees);
+  assert.ok(angleForPosition(-centerSectorHalfWidth) >= lip + clearanceDegrees);
+  assert.ok(angleForPosition(100 + centerSectorHalfWidth) <= 180 - lip - clearanceDegrees);
+  // Do not compress the range to expose the entire five-sector fan: the
+  // original game permits the outer 3/2 wedges to be covered at either edge.
+  assert.ok(angleForPosition(-sectorHalfWidth) < lip);
+  assert.ok(angleForPosition(100 + sectorHalfWidth) > 180 - lip);
+  assert.ok(angleForPosition(-8) < 0, 'left outer two-point wedge is behind the body');
+  assert.ok(angleForPosition(108) > 180, 'right outer two-point wedge is behind the body');
 
   for (let step = 0; step <= 1000; step += 1) {
     const target = step / 10;
-    for (const offset of [-10, -6, -2, 2, 6, 10]) {
+    for (const offset of [-centerSectorHalfWidth, 0, centerSectorHalfWidth]) {
       const [x, y] = dialPoint(target + offset, faceRadius);
       close(Math.hypot(x - centerX, y - centerY), faceRadius, `target ${target}, sector ${offset} radius`);
       // An independent half-plane check also covers the diagonal shoulders,
@@ -27,18 +33,16 @@ test('the complete scoring fan stays above the physical window lip at every poss
   }
 });
 
-test('all five score labels clear the lip and shutter handle even at the extreme targets', () => {
+test('the four-point label clears the lip and shutter handle even at the extreme targets', () => {
   const { centerX, centerY, shoulderOffsetX, shoulderOffsetY } = DIAL_GEOMETRY;
   for (let step = 0; step <= 1000; step += 1) {
-    for (const offset of [-8, -4, 0, 4, 8]) {
-      const [x, y] = dialPoint(step / 10 + offset, 243);
-      // Allow a 20px-wide numeral and a 6px descent below its y+5 baseline.
-      // This is deliberately larger than the visible digit at the mobile 23px font size.
-      const farthestX = Math.abs(x - centerX) + 10;
-      const windowBottom = centerY - farthestX * shoulderOffsetY / shoulderOffsetX;
-      assert.ok(y + 11 < windowBottom, `label ${offset} at target ${step / 10} crosses the lip`);
-      assert.ok(y + 11 < 314, `label ${offset} at target ${step / 10} overlaps the handle`);
-    }
+    const [x, y] = dialPoint(step / 10, 243);
+    // Allow a 20px-wide numeral and a 6px descent below its y+5 baseline.
+    // This exceeds the actual four-point digit at the mobile 23px font size.
+    const farthestX = Math.abs(x - centerX) + 10;
+    const windowBottom = centerY - farthestX * shoulderOffsetY / shoulderOffsetX;
+    assert.ok(y + 11 < windowBottom, `four-point label at target ${step / 10} crosses the lip`);
+    assert.ok(y + 11 < 314, `four-point label at target ${step / 10} overlaps the handle`);
   }
 });
 

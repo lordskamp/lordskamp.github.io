@@ -2,7 +2,6 @@ import { DurableObject } from 'cloudflare:workers';
 import { createRoom, addPlayer, applyAction, viewFor, setConnection, recoverDisconnected, GAME_CONFIG } from './hvylia-core.js';
 import { SPECTRA } from '../content/hvylia/spectra.js';
 import { PACKS } from '../content/hvylia/packs.js';
-import { getPremiumSpectra } from './hvylia-premium-cards.js';
 import { verifyTelegramInitData, telegramCall, constantTimeEqual, createBrowserSession, verifyBrowserSession } from './hvylia-telegram.js';
 export { WaveAccountDO, WaveLeaderboardDO } from './hvylia-accounts.js';
 export { WaveLoginDO } from './hvylia-login.js';
@@ -93,12 +92,41 @@ function bearer(request) {
   return token;
 }
 
-function deck(state) {
-  const id = state.config.packId || 'standard';
-  if (id === 'standard') return SPECTRA;
-  const cards = getPremiumSpectra(id);
-  if (!cards?.length) throw fault('CONTENT', 'Цей пак тимчасово недоступний.', 503);
-  return cards;
+function deck() { return SPECTRA; }
+
+const currentSpectra = new Map(SPECTRA.map(card => [card.id, card]));
+const unscoredPhases = new Set(['PSYCHIC_VIEW', 'TEAM_GUESS', 'OPPONENT_BET', 'REVEAL']);
+
+function migrateCatalogue(state) {
+  let changed = false;
+  if (state.config.packId !== 'standard') {
+    state.config.packId = 'standard';
+    changed = true;
+  }
+  const allowed = state._usedSpectra.filter(id => currentSpectra.has(id));
+  if (allowed.length !== state._usedSpectra.length) {
+    state._usedSpectra = allowed;
+    changed = true;
+  }
+  const previous = state.round?.spectrum;
+  const current = previous && currentSpectra.get(previous.id);
+  if (previous && unscoredPhases.has(state.phase) && (!current || current.left !== previous.left || current.right !== previous.right)) {
+    const unused = SPECTRA.filter(card => !state._usedSpectra.includes(card.id));
+    const available = unused.length ? unused : SPECTRA;
+    if (!unused.length) state._usedSpectra = [];
+    const card = available[Math.floor(random() * available.length)];
+    state._usedSpectra.push(card.id);
+    state._roundSerial += 1;
+    state.round = { id: `${state.code}-${state._roundSerial}`, number: state.round.number,
+      activeTeam: state.round.activeTeam, psychicId: state.round.psychicId,
+      spectrum: { id: card.id, left: card.left, right: card.right },
+      target: Math.floor(random() * 1001) / 10, guess: 50, clue: '', bet: null,
+      result: null, revealed: false, catalogUpdated: true };
+    state.phase = 'PSYCHIC_VIEW';
+    changed = true;
+  }
+  if (changed) { state.revision += 1; state.updatedAt = Date.now(); }
+  return changed;
 }
 
 function account(env, id) { return env.HVYLIA_ACCOUNTS.getByName(String(id), { locationHint: 'eeur' }); }
@@ -216,7 +244,14 @@ export class WaveRoom extends DurableObject {
     const row = this.ctx.storage.sql.exec('SELECT state, last_activity FROM room WHERE id = 1').toArray()[0];
     if (!row) throw fault('NOT_FOUND', 'Кімнати вже немає. Створіть нову.', 404);
     if (Date.now() - row.last_activity >= this.ttl()) throw fault('NOT_FOUND', 'Час цієї кімнати минув. Створіть нову.', 404);
-    return { state: JSON.parse(row.state), lastActivity: row.last_activity };
+    const state = JSON.parse(row.state);
+    // A live card replacement restarts only the unscored turn. Completed rounds
+    // remain historical snapshots; their points and receipts must not be changed.
+    if (migrateCatalogue(state)) {
+      this.write(state, false);
+      this.broadcast(state);
+    }
+    return { state, lastActivity: row.last_activity };
   }
 
   ttl() { return Number(this.env.ROOM_TTL_MS) || 86400000; }

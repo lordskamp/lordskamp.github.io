@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { getPack } from '../content/hvylia/packs.js';
 
 // Exercise the production classes against real SQLite. Only the Cloudflare base
 // class is adapted for Node; SQL, transactions and ledger methods are unchanged.
@@ -45,6 +44,14 @@ function fakeBot(t, handler) {
   const previous = globalThis.fetch;
   t.after(() => { globalThis.fetch = previous; });
   globalThis.fetch = async (url, options) => new Response(JSON.stringify({ ok: true, result: await handler(url, JSON.parse(options.body)) }), { status: 200 });
+}
+
+// These invoices were persisted before the catalogue was disabled. Payment and
+// refund webhooks must still reconcile them without offering new sales.
+function historicalInvoice(instance, packId) {
+  const purchaseId = crypto.randomUUID();
+  instance.ctx.storage.sql.exec('INSERT INTO purchases (id, pack_id, amount, currency, status, created_at, invoice_link) VALUES (?, ?, ?, ?, ?, ?, ?)', purchaseId, packId, 150, 'XTR', 'pending', Date.now(), 'https://t.me/$historical-invoice');
+  return { purchaseId, invoiceLink: 'https://t.me/$historical-invoice' };
 }
 
 function payment(purchase, overrides = {}) {
@@ -101,59 +108,35 @@ test('nickname accounts keep opaque owners and receipt-based rankings without gr
   assert.equal(first.preCheckout({ from: USER, currency: 'XTR', total_amount: 150, invoice_payload: 'hvylia:v1:00000000-0000-4000-8000-000000000001' }), false);
 });
 
-test('Stars invoices persist before Bot API I/O, use server pricing and reuse an unpaid invoice', async t => {
+test('inactive paid packs cannot create new or reuse existing Stars invoices', async t => {
   const instance = account(t);
   let requests = 0;
-  fakeBot(t, (_url, params) => {
-    requests += 1;
-    assert.equal(params.currency, 'XTR');
-    assert.equal(params.provider_token, '');
-    assert.deepEqual(params.prices, [{ label: getPack('anime').title, amount: getPack('anime').priceStars }]);
-    assert.ok(params.description.startsWith(`${getPack('anime').count} оригінальних`));
-    assert.equal(Object.hasOwn(params, 'subscription_period'), false);
-    assert.equal(instance.preCheckout({ from: USER, invoice_payload: params.payload, currency: 'XTR', total_amount: 150 }), true);
-    return 'https://t.me/$test-anime-invoice';
-  });
-  const invoice = await instance.createInvoice('anime');
-  assert.equal(invoice.invoiceLink, 'https://t.me/$test-anime-invoice');
-  assert.deepEqual(await instance.createInvoice('anime'), invoice);
-  assert.equal(requests, 1);
-  await assert.rejects(instance.createInvoice('unknown'), error => error.code === 'PACK');
+  fakeBot(t, () => { requests += 1; return 'https://t.me/$unexpected-invoice'; });
+  historicalInvoice(instance, 'anime');
+  for (const packId of ['anime', 'games', 'standard', 'unknown']) {
+    await assert.rejects(instance.createInvoice(packId), error => error.code === 'PACK');
+  }
+  assert.equal(requests, 0);
+  assert.deepEqual(instance.profile().ownedPacks, []);
 });
 
-test('pre-checkout rejects wrong owners, currency, amount and forged payload', async t => {
+test('pre-checkout rejects historical invoices after their paid pack leaves the catalogue', t => {
   const instance = account(t);
-  fakeBot(t, () => 'https://t.me/$valid-invoice');
-  const invoice = await instance.createInvoice('games');
-  const valid = { from: USER, currency: 'XTR', total_amount: 150, invoice_payload: `hvylia:v1:${invoice.purchaseId}` };
-  assert.equal(instance.preCheckout(valid), true);
+  const invoice = historicalInvoice(instance, 'games');
+  const query = { from: USER, currency: 'XTR', total_amount: 150, invoice_payload: `hvylia:v1:${invoice.purchaseId}` };
+  assert.equal(instance.preCheckout(query), false);
   for (const overrides of [{ from: { id: USER.id + 1 } }, { currency: 'USD' }, { total_amount: 149 }, { total_amount: '150' }, { invoice_payload: 'hvylia:v1:00000000-0000-0000-0000-000000000000' }]) {
-    assert.equal(instance.preCheckout({ ...valid, ...overrides }), false);
+    assert.equal(instance.preCheckout({ ...query, ...overrides }), false);
   }
 });
 
-test('concurrent invoice requests produce one Bot API request without blocking profile reads', async t => {
-  const instance = account(t);
-  let finish;
-  let started;
-  const active = new Promise(resolve => { started = resolve; });
-  fakeBot(t, async () => {
-    started();
-    return new Promise(resolve => { finish = resolve; });
-  });
-  const creating = instance.createInvoice('anime');
-  await active;
-  assert.equal(instance.profile().name, 'Олена Коваль');
-  await assert.rejects(instance.createInvoice('anime'), error => error.code === 'INVOICE_PENDING');
-  finish('https://t.me/$concurrent-invoice');
-  assert.equal((await creating).invoiceLink, 'https://t.me/$concurrent-invoice');
-});
+
 
 test('successful payments unlock a permanent pack once and reject conflicting or reused charges', async t => {
   const instance = account(t);
   fakeBot(t, () => 'https://t.me/$valid-invoice');
-  const anime = await instance.createInvoice('anime');
-  const games = await instance.createInvoice('games');
+  const anime = historicalInvoice(instance, 'anime');
+  const games = historicalInvoice(instance, 'games');
   const original = payment(anime);
   for (const changed of [payment(anime, { currency: 'EUR' }), payment(anime, { total_amount: 151 }), { ...original, from: { id: USER.id + 1 } }]) {
     assert.throws(() => instance.successfulPayment(changed), error => ['PAYMENT', 'ACCOUNT'].includes(error.code));
@@ -169,23 +152,15 @@ test('successful payments unlock a permanent pack once and reject conflicting or
   assert.throws(() => instance.successfulPayment(payment(games, { telegram_payment_charge_id: original.successful_payment.telegram_payment_charge_id })), error => error.code === 'PAYMENT');
   assert.deepEqual(instance.profile().ownedPacks, ['anime']);
   assert.equal(instance.preCheckout({ from: USER, currency: 'XTR', total_amount: 150, invoice_payload: `hvylia:v1:${anime.purchaseId}` }), false);
-  await assert.rejects(instance.createInvoice('anime'), error => error.code === 'OWNED');
+  await assert.rejects(instance.createInvoice('anime'), error => error.code === 'PACK');
 });
 
-test('invoice failure leaves no entitlement and a retry can create a fresh invoice', async t => {
-  const instance = account(t);
-  fakeBot(t, () => { throw new Error('simulated Bot API outage'); });
-  await assert.rejects(instance.createInvoice('anime'), error => error.code === 'TELEGRAM_UNAVAILABLE');
-  assert.deepEqual(instance.profile().ownedPacks, []);
-  globalThis.fetch = async () => new Response(JSON.stringify({ ok: true, result: 'https://t.me/$retry-invoice' }), { status: 200 });
-  const invoice = await instance.createInvoice('anime');
-  assert.equal(invoice.invoiceLink, 'https://t.me/$retry-invoice');
-});
+
 
 test('refunds validate the owner and amount, revoke access, and repeated payment delivery cannot regrant it', async t => {
   const instance = account(t);
   fakeBot(t, () => 'https://t.me/$valid-invoice');
-  const invoice = await instance.createInvoice('anime');
+  const invoice = historicalInvoice(instance, 'anime');
   const original = payment(invoice);
   instance.successfulPayment(original);
   const message = {
@@ -213,7 +188,7 @@ test('secured refund RPC uses the recorded owner and charge and calls Bot API on
     assert.ok(params.telegram_payment_charge_id.startsWith('charge-'));
     return true;
   });
-  const invoice = await instance.createInvoice('games');
+  const invoice = historicalInvoice(instance, 'games');
   instance.successfulPayment(payment(invoice));
   assert.equal((await instance.refund(invoice.purchaseId)).ok, true);
   assert.deepEqual(instance.profile().ownedPacks, []);
@@ -229,7 +204,7 @@ test('an uncertain refund retains access until the confirmed webhook and avoids 
     refundCalls += 1;
     throw new Error('response lost after refund request');
   });
-  const invoice = await instance.createInvoice('anime');
+  const invoice = historicalInvoice(instance, 'anime');
   const original = payment(invoice);
   instance.successfulPayment(original);
   await assert.rejects(instance.refund(invoice.purchaseId), error => error.code === 'TELEGRAM_UNAVAILABLE');
@@ -260,7 +235,7 @@ test('match receipts update wins and losses exactly once while preserving the si
 test('refunding one charge keeps a pack owned when another paid purchase still grants it', async t => {
   const instance = account(t);
   fakeBot(t, () => 'https://t.me/$valid-invoice');
-  const invoice = await instance.createInvoice('anime');
+  const invoice = historicalInvoice(instance, 'anime');
   const original = payment(invoice);
   instance.successfulPayment(original);
   const otherId = '00000000-0000-4000-8000-000000000001';
