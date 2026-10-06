@@ -31,6 +31,7 @@ let appMenu = null;
 let loginDialog = null;
 let collectionDialog = null;
 let haptics = null;
+let disposeDialFeedback = null;
 try { lastPurchaseId = window.localStorage.getItem('hvylia.lastPurchase') || ''; } catch { /* Live receipts still work without storage. */ }
 const busy = new Set();
 const failedAvatars = new Set();
@@ -91,6 +92,42 @@ function setText(selector, value) { const element = $(selector); if (element && 
 function setHidden(selector, hidden) { const element = $(selector); if (element) element.hidden = hidden; }
 function setDisabled(selector, disabled) { const element = $(selector); if (element) element.disabled = disabled; }
 
+function bindDialFeedback(element) {
+  const motions = new Map();
+  const stop = mechanism => {
+    const motion = motions.get(mechanism);
+    if (!motion) return;
+    motion.cancelSound?.(); motion.cancelHaptics?.();
+    motions.delete(mechanism);
+  };
+  const stopAll = () => { for (const mechanism of motions.keys()) stop(mechanism); };
+  const onMotion = event => {
+    const detail = event.detail;
+    if (!detail || !['wheel', 'shutter'].includes(detail.mechanism) || !Number.isSafeInteger(detail.serial)) return;
+    if (detail.phase === 'start') {
+      stop(detail.mechanism);
+      if (document.hidden || !Number.isFinite(detail.duration) || detail.duration <= 0) return;
+      motions.set(detail.mechanism, {
+        serial: detail.serial,
+        cancelSound: sound.mechanical?.(detail),
+        cancelHaptics: haptics?.mechanical?.(detail)
+      });
+    } else if (detail.phase === 'cancel' && motions.get(detail.mechanism)?.serial === detail.serial) stop(detail.mechanism);
+    // A natural finish lets the final detent fade. Its bounded callbacks remain
+    // owned here until the next motion, page hide, or removal of the instrument.
+  };
+  const onVisibility = () => { if (document.hidden) stopAll(); };
+  element.addEventListener('dialmotion', onMotion);
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', stopAll);
+  return () => {
+    stopAll();
+    element.removeEventListener('dialmotion', onMotion);
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pagehide', stopAll);
+  };
+}
+
 function receiveState(nextState, training = false) {
   if (!nextState) return;
   if (!training && state && nextState.code === state.code && nextState.revision < state.revision) return;
@@ -142,7 +179,12 @@ async function act(action, key = action.type) {
   if (busy.has(key)) return false;
   if (['clue', 'replace-spectrum'].includes(action.type) && (busy.has('clue') || busy.has('replace-spectrum'))) return false;
   busy.add(key); render();
-  try { await activeSession().action(action); if (action.type !== 'move') haptics?.impact(['clue', 'lock', 'bet'].includes(action.type) ? 'medium' : 'light'); return true; }
+  try {
+    await activeSession().action(action);
+    const wheelFeedback = ['replace-spectrum', 'next'].includes(action.type) && dial?.element.dataset.wheel === 'turning';
+    if (action.type !== 'move' && !wheelFeedback) haptics?.impact(['clue', 'lock', 'bet'].includes(action.type) ? 'medium' : 'light');
+    return true;
+  }
   catch (error) { haptics?.error(); notice(errorText(error)); return false; }
   finally { busy.delete(key); render(); }
 }
@@ -151,7 +193,7 @@ function roundAction(type, extra = {}) { return act({ type, roundId: state.round
 function render() {
   const desired = !state ? 'entry' : state.phase === 'LOBBY' ? 'lobby' : 'game';
   if (screen !== desired) {
-    dial?.destroy(); dial = null; screen = desired;
+    dial?.destroy(); disposeDialFeedback?.(); disposeDialFeedback = null; dial = null; screen = desired;
     app.className = `${screen}-screen`;
     if (screen === 'entry') mountEntry();
     if (screen === 'lobby') mountLobby();
@@ -282,8 +324,11 @@ function mountEntry() {
   const previewTarget = Math.round(18 + Math.random() * 64);
   const previewPosition = Math.round(previewTarget + (previewTarget < 50 ? 1 : -1) * (16 + Math.random() * 18));
   dial = new Dial($('#preview-dial'), () => {}, { preview: true });
+  disposeDialFeedback = bindDialFeedback($('#preview-dial'));
   dial.update({ position: previewPosition, target: previewTarget, revealed: true, canPeek: true, editable: false, showNeedle: true });
-  $('#preview-dial').addEventListener('click', event => { if (event.target.closest('.dial-shutter-control')) haptics?.impact(); });
+  $('#preview-dial').addEventListener('click', event => {
+    if (event.target.closest('.dial-shutter-control') && !['opening', 'closing'].includes($('#preview-dial').dataset.shutter)) haptics?.impact();
+  });
   const choose = mode => {
     entryMode = mode;
     const joining = mode === 'join';
@@ -463,8 +508,11 @@ function mountGame() {
     sound.play('move'); haptics?.selection();
     activeSession().action({ type: 'move', position, roundId: state.round.id }).catch(error => { if (online) notice(errorText(error)); });
   }, { nudgeControls: [$('#nudge-left'), $('#nudge-right')] });
+  disposeDialFeedback = bindDialFeedback($('#dial'));
   $('#dial').addEventListener('shutterchange', updateClueControl);
-  $('#dial').addEventListener('click', event => { if (event.target.closest('.dial-shutter-control') && dial.canPeek) haptics?.impact(); });
+  $('#dial').addEventListener('click', event => {
+    if (event.target.closest('.dial-shutter-control') && dial.canPeek && !['opening', 'closing'].includes($('#dial').dataset.shutter)) haptics?.impact();
+  });
   $('#clue-form').addEventListener('submit', event => {
     event.preventDefault();
     if (!dial.clueReady || busy.has('clue') || busy.has('replace-spectrum')) return;

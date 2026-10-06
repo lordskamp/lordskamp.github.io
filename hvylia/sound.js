@@ -1,4 +1,5 @@
 import { t } from './locale.js';
+import { mechanicalSchedule } from './mechanics.js';
 
 // A small, entirely synthesized palette: felt clicks, radio air, and warm bells.
 // Every voice runs through its own envelope and the shared soft limiter.
@@ -11,6 +12,7 @@ export class Sound {
     this.context = null;
     this.master = null;
     this.active = new Set();
+    this.mechanicalCancels = new Set();
     this.lastMove = -Infinity;
     this.unlockListening = false;
     this.onInteraction = event => {
@@ -19,12 +21,21 @@ export class Sound {
     try { this.muted = window.localStorage.getItem('hvylia.muted') !== 'false'; } catch { this.muted = true; }
     this.update();
     this.listenForUnlock();
+    this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    this.reducedMotion.addEventListener?.('change', () => {
+      if (this.reducedMotion.matches) this.cancelMechanical();
+    });
     button.addEventListener('click', () => {
       this.muted = !this.muted;
       try { window.localStorage.setItem('hvylia.muted', String(this.muted)); } catch { /* Preference stays in memory. */ }
       this.update();
       if (this.muted) this.silence();
       else this.unlock().then(unlocked => { if (unlocked) this.play('lock'); });
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        this.silence(); this.listenForUnlock();
+      } else if (!this.muted && this.context?.state === 'running') this.unlock();
     });
   }
 
@@ -93,11 +104,12 @@ export class Sound {
     }
     context.onstatechange = () => {
       if (context.state === 'running') this.stopListeningForUnlock();
-      else this.listenForUnlock();
+      else { this.silence(); this.listenForUnlock(); }
     };
   }
 
   silence() {
+    this.cancelMechanical();
     if (!this.context || !this.master) return;
     const at = this.context.currentTime;
     this.master.gain.cancelScheduledValues(at);
@@ -106,16 +118,77 @@ export class Sound {
   }
 
   stopCue(cue) {
-    const at = this.context.currentTime;
+    if (cue.stopping || cue.closed) return;
+    cue.stopping = true;
+    cue.onStop?.();
+    const context = cue.context || this.context;
+    const at = context.currentTime;
     cue.bus.gain.cancelScheduledValues(at);
     cue.bus.gain.setTargetAtTime(0, at, 0.004);
     for (const source of cue.sources) {
       try { source.stop(at + 0.018); } catch { /* The voice may already have ended. */ }
     }
+    if (context.state !== 'running') this.cleanupCue(cue);
+    else cue.cleanupTimer = window.setTimeout(() => this.cleanupCue(cue), 30);
+  }
+
+  cleanupCue(cue) {
+    if (cue.closed) return;
+    cue.closed = true;
+    cue.onStop?.();
+    window.clearTimeout(cue.cleanupTimer);
+    for (const source of cue.sources) source.onended = null;
+    for (const node of cue.nodes) { try { node.disconnect(); } catch { /* Already disconnected by its ended event. */ } }
+    cue.sources.clear();
+    this.active.delete(cue);
+  }
+
+  cancelMechanical(mechanism) {
+    for (const cancel of this.mechanicalCancels) if (!mechanism || cancel.mechanism === mechanism) cancel();
+  }
+
+  mechanical(options = {}) {
+    const schedule = mechanicalSchedule(options);
+    if (schedule) this.cancelMechanical(schedule.mechanism);
+    if (!schedule || this.muted || !this.context || this.context.state !== 'running'
+      || document.visibilityState === 'hidden' || this.reducedMotion.matches) return () => {};
+    const context = this.context;
+    if (this.active.size >= MAX_CUES) {
+      const oldest = this.active.values().next().value;
+      this.stopCue(oldest); this.active.delete(oldest);
+    }
+    const cue = { context, nodes: [], sources: new Set(), bus: context.createGain(), at: context.currentTime + 0.003 };
+    let cancelled = false;
+    const cancel = () => {
+      if (cancelled) return;
+      cancelled = true; this.mechanicalCancels.delete(cancel); this.stopCue(cue);
+    };
+    cancel.mechanism = schedule.mechanism;
+    cue.onStop = () => { cancelled = true; this.mechanicalCancels.delete(cancel); };
+    cue.bus.connect(this.master); cue.nodes.push(cue.bus);
+    this.active.add(cue); this.mechanicalCancels.add(cancel);
+    try {
+      const length = schedule.duration / 1000;
+      if (schedule.mechanism === 'wheel') {
+        this.air(cue, 0, length, 0.035, 940, 390, 0.65, Math.min(0.045, length / 4));
+        for (const [index, at] of schedule.teeth.entries()) {
+          const delay = at / 1000;
+          this.air(cue, delay, 0.008, 0.034, index % 2 ? 2250 : 2750, 1300, 0.8, 0.0008);
+          this.tone(cue, delay, 0.014, index % 2 ? 740 : 820, 0.009, 'triangle', 430, 0, 0.0008);
+        }
+      } else {
+        this.air(cue, 0, length, 0.047, 1180, 480, 0.55, Math.min(0.05, length / 4));
+        this.tone(cue, 0, length, 135, 0.009, 'sine', 82, 0, Math.min(0.035, length / 4));
+      }
+      const end = schedule.detentAt / 1000;
+      this.air(cue, end, 0.014, 0.048, 2450, 1500, 0.8, 0.001);
+      this.tone(cue, end, 0.025, schedule.mechanism === 'wheel' ? 210 : 170, 0.068, 'sine', 95, 0, 0.001);
+      return cancel;
+    } catch { cancel(); return () => {}; }
   }
 
   play(kind, options = {}) {
-    if (this.muted || !this.context || this.context.state !== 'running') return false;
+    if (this.muted || !this.context || this.context.state !== 'running' || document.visibilityState === 'hidden') return false;
     const now = this.context.currentTime;
     if (kind === 'move') {
       if (now - this.lastMove < MOVE_INTERVAL || this.active.size >= 3) return false;
@@ -130,7 +203,7 @@ export class Sound {
       lead = 0.025;
     }
     try {
-      const cue = { nodes: [], sources: new Set(), bus: this.context.createGain(), at: now + lead };
+      const cue = { context: this.context, nodes: [], sources: new Set(), bus: this.context.createGain(), at: now + lead };
       cue.bus.connect(this.master);
       cue.nodes.push(cue.bus);
       this.active.add(cue);
@@ -199,6 +272,7 @@ export class Sound {
   air(cue, delay, duration, volume, frequency, endFrequency, resonance, attack = 0.002) {
     const source = this.context.createBufferSource();
     source.buffer = this.noise;
+    source.loop = duration > this.noise.duration;
     const filter = this.context.createBiquadFilter();
     const at = cue.at + delay;
     filter.type = 'bandpass';
@@ -229,8 +303,7 @@ export class Sound {
       source.onended = null;
       cue.sources.delete(source);
       if (cue.sources.size) return;
-      for (const node of cue.nodes) node.disconnect();
-      this.active.delete(cue);
+      this.cleanupCue(cue);
     };
     source.start(at);
     source.stop(at + duration + 0.005);

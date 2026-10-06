@@ -32,17 +32,22 @@ function waveRim() {
   return path + ' Z';
 }
 export function dialMarkup(id = 'dial') {
+  // The shoulders are sharp; each end of the window returns in a 16px U,
+  // matching the diameter of the shutter handle instead of flattening at its base.
+  const windowPath = 'M80 330 A280 280 0 0 1 640 330 A16 16 0 0 1 608 330 L606 307 L360 330 L114 307 L112 330 A16 16 0 0 1 80 330 Z';
   return `<div id="${id}" class="dial" data-shutter="closed" data-wheel="still" role="group" aria-label="${t.position}" tabindex="-1">
     <svg viewBox="0 0 720 680" class="dial-svg" role="group">
-      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="M80 330 A280 280 0 0 1 640 330 Z"/></clipPath></defs>
+      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="${windowPath}"/></clipPath><clipPath id="${id}-shutter-window" clipPathUnits="userSpaceOnUse"><path d="M80 330 A280 280 0 0 1 640 330 Z"/></clipPath></defs>
       <g class="dial-wheel" aria-hidden="true" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)"><path class="dial-wave-rim" d="${waveRim()}"/></g>
       <circle class="dial-shell" cx="360" cy="330" r="310"/>
-      <path class="dial-face" d="M80 330 A280 280 0 0 1 640 330 Z"/>
+      <path class="dial-face" d="${windowPath}"/>
       <g id="${id}-target" class="dial-target" clip-path="url(#${id}-window)" visibility="hidden" aria-hidden="true">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
-      <g clip-path="url(#${id}-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
+      <g clip-path="url(#${id}-window)"><g clip-path="url(#${id}-shutter-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
         <path class="shutter-plate" d="M80 330 A280 280 0 0 1 640 330 Z"/>
       </g></g>
-      <path class="dial-front-lip" d="M80 330 L100 330 Q118 330 120 313 L121 307 L360 330 L599 307 L600 313 Q602 330 620 330 L640 330 L640 350 L80 350 Z"/>
+        <path class="shutter-plate shutter-cap" data-cap="left" d="M80 330 H112 A16 16 0 0 1 80 330 Z"/>
+        <path class="shutter-plate shutter-cap" data-cap="right" d="M608 330 H640 A16 16 0 0 1 608 330 Z"/>
+      </g>
       <g class="dial-shutter-control" role="button" aria-label="${t.shutterOpen}" aria-controls="${id}-target" aria-expanded="false" aria-disabled="true" aria-hidden="true" tabindex="-1" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
         <rect class="shutter-hitarea" x="4" y="292" width="144" height="76" rx="24"/>
         <rect class="shutter-handle" x="14" y="314" width="112" height="32" rx="16"/>
@@ -64,6 +69,7 @@ export class Dial {
     this.wheelAngle = 0;
     this.wheelAnimation = null;
     this.wheelSerial = 0;
+    this.wheelMotion = null;
     this.showNeedle = true;
     this.editable = false;
     this.canPeek = false;
@@ -92,6 +98,8 @@ export class Dial {
     this.shutterAnimation = null;
     this.shutterAnimations = [];
     this.shutterSerial = 0;
+    this.shutterMotion = null;
+    this.shutterCaps = [...element.querySelectorAll('.shutter-cap')];
     this.targetSnapshot = null;
     this.desiredTarget = null;
     this.destroyed = false;
@@ -312,6 +320,32 @@ export class Dial {
     const center = this.targetElement.querySelector('.target-center');
     ['x1', 'y1', 'x2', 'y2'].forEach(name => center.removeAttribute(name));
   }
+  motionEvent(mechanism, phase, motion) {
+    this.element.dispatchEvent(new window.CustomEvent('dialmotion', {
+      detail: { mechanism, phase, duration: motion.duration, distance: motion.distance, serial: motion.serial }
+    }));
+  }
+  startMotion(mechanism, motion) {
+    this[mechanism + 'Motion'] = motion;
+    this.motionEvent(mechanism, 'start', motion);
+  }
+  endMotion(mechanism, phase, serial) {
+    const motion = this[mechanism + 'Motion'];
+    if (!motion || (serial !== undefined && serial !== motion.serial)) return;
+    this[mechanism + 'Motion'] = null;
+    this.motionEvent(mechanism, phase, motion);
+  }
+  capOpacity(cap, angle) {
+    return cap.dataset.cap === 'left' ? Math.max(0, 1 - angle / 18) : Math.min(1, (180 - angle) / 18);
+  }
+  paintShutterCaps(angle) {
+    this.shutterCaps.forEach(cap => { cap.style.opacity = String(this.capOpacity(cap, angle)); });
+  }
+  capFrames(cap, from, angle) {
+    const angles = [from, ...[18, 162].filter(a => a > Math.min(from, angle) && a < Math.max(from, angle)), angle];
+    angles.sort((a, b) => angle > from ? a - b : b - a);
+    return angles.map(a => ({ offset: (a - from) / (angle - from), opacity: this.capOpacity(cap, a) }));
+  }
   rotateShutter(angle, complete) {
     const serial = ++this.shutterSerial;
     let from = this.shutterAngle;
@@ -323,11 +357,13 @@ export class Dial {
         if (from < -0.1) from += 360;
         from = Math.max(0, Math.min(180, from));
       }
+      this.endMotion('shutter', 'cancel');
       this.shutterAnimations.forEach(animation => animation.cancel());
       this.shutterAnimations = [];
       this.shutterAnimation = null;
     }
     this.shutterAngle = from;
+    this.paintShutterCaps(from);
     this.shutterElements.forEach(element => { element.style.transform = `rotate(${from}deg)`; });
     this.element.dataset.shutter = angle === 180 ? 'opening' : 'closing';
     this.syncPeekControl();
@@ -335,10 +371,12 @@ export class Dial {
     const finish = () => {
       if (serial !== this.shutterSerial || this.destroyed) return;
       this.shutterAngle = angle;
+      this.paintShutterCaps(angle);
       this.shutterElements.forEach(element => { element.style.transform = `rotate(${angle}deg)`; });
       this.shutterAnimations.forEach(animation => animation.cancel());
       this.shutterAnimations = [];
       this.shutterAnimation = null;
+      this.endMotion('shutter', 'finish', serial);
       this.element.dataset.shutter = angle === 180 ? 'open' : 'closed';
       if (angle === 180 && this.availableTarget) this.hasViewedTarget = true;
       complete?.();
@@ -357,9 +395,14 @@ export class Dial {
       easing: 'cubic-bezier(.22,.75,.25,1)',
       fill: 'forwards'
     };
-    this.shutterAnimations = this.shutterElements.map(element => element.animate(frames, options));
+    this.shutterAnimations = [
+      ...this.shutterElements.map(element => element.animate(frames, options)),
+      ...this.shutterCaps.map(cap => cap.animate(this.capFrames(cap, from, angle), options))
+    ];
     this.shutterAnimation = this.shutterAnimations[0];
     this.shutterAnimation.onfinish = finish;
+    this.shutterAnimation.oncancel = () => this.endMotion('shutter', 'cancel', serial);
+    this.startMotion('shutter', { serial, duration: options.duration, distance: Math.abs(angle - from) });
   }
   turnWheel(roundId) {
     const serial = ++this.wheelSerial;
@@ -378,6 +421,7 @@ export class Dial {
     }
     const angle = from + 135 + hash % 90;
     this.wheelFrom = from;
+    this.endMotion('wheel', 'cancel');
     this.wheelAnimation?.cancel();
     this.wheelAnimation = null;
     this.wheelAngle = angle;
@@ -389,6 +433,7 @@ export class Dial {
       this.wheelAngle = angle % 360;
       this.wheel.style.transform = `rotate(${this.wheelAngle}deg)`;
       this.element.dataset.wheel = 'still';
+      this.endMotion('wheel', 'finish', serial);
     };
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || typeof this.wheel.animate !== 'function') {
       finish();
@@ -400,6 +445,8 @@ export class Dial {
       { transform: `rotate(${angle}deg)` }
     ], { duration: 980, easing: 'cubic-bezier(.18,.72,.24,1)', fill: 'forwards' });
     this.wheelAnimation.onfinish = finish;
+    this.wheelAnimation.oncancel = () => this.endMotion('wheel', 'cancel', serial);
+    this.startMotion('wheel', { serial, duration: 980, distance: angle - from });
   }
   closeShutter() {
     if (this.element.dataset.shutter === 'closing') return;
@@ -485,6 +532,7 @@ export class Dial {
     if (this.preview && !this.previewInitialized && this.availableTarget) {
       this.previewInitialized = true;
       this.shutterAngle = 180;
+      this.paintShutterCaps(180);
       this.shutterElements.forEach(element => { element.style.transform = 'rotate(180deg)'; });
       this.element.dataset.shutter = 'open';
       this.hasViewedTarget = true;
@@ -501,6 +549,8 @@ export class Dial {
     this.syncPeekControl();
     ++this.shutterSerial;
     ++this.wheelSerial;
+    this.endMotion('wheel', 'cancel');
+    this.endMotion('shutter', 'cancel');
     this.wheelAnimation?.cancel();
     this.wheelAnimation = null;
     this.element.dataset.wheel = 'still';
