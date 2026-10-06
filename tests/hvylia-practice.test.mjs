@@ -102,6 +102,22 @@ test('practice completes a short match with the second-team starting point and r
   run.session.close();
 });
 
+test('practice awards the same widened sectors used by network scoring', async t => {
+  for (const [distance, points] of [[2.3, 4], [7, 3], [11, 2]]) {
+    await t.test(`distance ${distance} earns ${points} points`, async t => {
+      const run = practice(t);
+      const target = run.state.round.target;
+      await run.action('clue', { text: 'Підказка біля межі сектора' });
+      await run.action('lock', { position: target + distance });
+      await run.action('bet', { side: 'left' });
+      run.tick(GAME_CONFIG.revealDelayMs + GAME_CONFIG.scoreDelayMs);
+      assert.equal(run.state.round.result.activePoints, points);
+      assert.equal(run.state.round.result.opponentPoints, points === 4 ? 0 : 1);
+      run.session.close();
+    });
+  }
+});
+
 test('practice draws fresh random cards and targets on subsequent rounds and visits', async t => {
   const draws = [.12, .23, .45, .87, .65, .01];
   const run = practice(t, () => draws.shift() ?? .5);

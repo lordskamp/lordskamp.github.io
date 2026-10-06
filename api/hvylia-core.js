@@ -6,7 +6,7 @@ export { SPECTRA };
 export const GAME_CONFIG = Object.freeze({
   defaultWinScore: 10,
   winScores: Object.freeze([5, 10, 15, 20, 25, 30]),
-  sectorHalfWidths: Object.freeze([2, 6, 10]),
+  sectorHalfWidths: Object.freeze([2.4, 7.2, 12]),
   presenceGraceMs: 30_000,
   revealDelayMs: 700,
   scoreDelayMs: 1_200,

@@ -1,3 +1,11 @@
+import { GAME_CONFIG } from '../api/hvylia-core.js';
+
+const [centerHalfWidth, middleHalfWidth, outerHalfWidth] = GAME_CONFIG.sectorHalfWidths;
+export const DIAL_SECTOR_BOUNDARIES = Object.freeze([
+  -outerHalfWidth, -middleHalfWidth, -centerHalfWidth,
+  centerHalfWidth, middleHalfWidth, outerHalfWidth
+]);
+
 export const DIAL_GEOMETRY = Object.freeze({
   centerX: 360,
   centerY: 330,
@@ -5,8 +13,8 @@ export const DIAL_GEOMETRY = Object.freeze({
   shoulderOffsetX: 246,
   shoulderOffsetY: 23,
   capRadius: 16,
-  sectorHalfWidth: 10,
-  centerSectorHalfWidth: 2,
+  sectorHalfWidth: outerHalfWidth,
+  centerSectorHalfWidth: centerHalfWidth,
   clearanceDegrees: 1
 });
 
@@ -16,8 +24,8 @@ const lipDegrees = Math.atan2(shoulderOffsetY, shoulderOffsetX) * 180 / Math.PI;
 // wedge is visible (English rulebook, Psychic phase, step 4). The 3/2 wedges
 // can disappear behind the body. Keep the entire 4-point wedge exposed in this
 // digital version so its numeral and the exact-center guess remain accessible.
-// Solve the physical lip clearance for its two-unit half-width:
-// start - (180 - 2 * start) * 2 / 100 >= lip + clearance.
+// Solve the physical lip clearance for the scoring config's central half-width:
+// start - (180 - 2 * start) * centerFraction >= lip + clearance.
 const centerFraction = centerSectorHalfWidth / 100;
 const startDegrees = Math.ceil((lipDegrees + clearanceDegrees + 180 * centerFraction) / (1 + 2 * centerFraction) * 10) / 10;
 export const DIAL_ARC = Object.freeze({
@@ -28,7 +36,7 @@ export const DIAL_ARC = Object.freeze({
 });
 
 // Network positions and scores stay normalized, including existing rooms.
-// The renderer also maps the outer fan at -10/110; only input is clamped.
+// The renderer also maps the outer fan beyond either endpoint; only input is clamped.
 export function angleForPosition(position) {
   return DIAL_ARC.startDegrees + position / 100 * DIAL_ARC.spanDegrees;
 }

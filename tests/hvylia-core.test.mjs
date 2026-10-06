@@ -64,7 +64,7 @@ test('the active Ukrainian community deck has at least 150 unique, complete spec
 
 test('score sectors include their exact boundaries on both sides of the center', () => {
   for (const direction of [-1, 1]) {
-    for (const [distance, points] of [[0, 4], [2, 4], [2.1, 3], [6, 3], [6.1, 2], [10, 2], [10.1, 0], [50, 0]]) {
+    for (const [distance, points] of [[0, 4], [2.4, 4], [2.5, 3], [7.2, 3], [7.3, 2], [12, 2], [12.1, 0], [50, 0]]) {
       assert.equal(scoreGuess(50, 50 + direction * distance, 'left').activePoints, points, `distance ${direction * distance}`);
     }
   }
@@ -86,7 +86,7 @@ test('opponents score a correct side only outside the four-point sector', () => 
 
 test('decimal dial positions score exactly at all sector boundaries without floating-point misses', () => {
   for (let center = 100; center <= 900; center += 1) {
-    for (const [distance, expected] of [[20, 4], [60, 3], [100, 2]]) {
+    for (const [distance, expected] of [[24, 4], [72, 3], [120, 2]]) {
       for (const sign of [-1, 1]) {
         assert.equal(scoreGuess(center / 10, (center + sign * distance) / 10, 'left').activePoints, expected);
       }

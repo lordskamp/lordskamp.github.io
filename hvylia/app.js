@@ -7,6 +7,7 @@ import { PracticeSession } from './practice.js';
 import { scoreTrackMarkup, animateScoreTracks } from './score-track.js';
 import { PACKS } from '../content/hvylia/packs.js';
 import { SPECTRA } from '../content/hvylia/spectra.js';
+import { cardPresentation } from './card-presentation.js';
 import { telegramReady, inTelegram, setTelegramBack, telegramRoomCode, openTelegram, openStarInvoice } from './telegram.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -55,6 +56,27 @@ function avatarMarkup(person, style = '') {
   const initial = Array.from(String(person?.name || '?').trim().replace(/^@/u, ''))[0]?.toUpperCase() || '?';
   const url = avatarURL(person?.avatarUrl);
   return `<span class="avatar ${style}" aria-hidden="true"><span class="avatar-fallback">${esc(initial)}</span>${url && !failedAvatars.has(url) ? `<img class="avatar-image" data-avatar-image src="${esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ''}</span>`;
+}
+
+function spectrumCardMarkup(card, preview = false) {
+  const appearance = cardPresentation(card);
+  const colors = `--card-left:${appearance.left};--card-right:${appearance.right};--card-left-ink:${appearance.leftInk};--card-right-ink:${appearance.rightInk}`;
+  const label = (pole, side) => `<h2${preview ? '' : ` id="spectrum-${side}"`} class="spectrum-pole pole-${side}"><span class="spectrum-label-text">${esc(pole)}</span></h2>`;
+  const difficulty = `<span class="spectrum-difficulty" role="img" aria-label="${t.hardCard}"${appearance.difficult ? '' : ' hidden'}>${Array.from(t.cardDifficulty).map(letter => `<span aria-hidden="true">${letter}</span>`).join('')}</span>`;
+  const controls = preview ? '' : `<button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button>`;
+  return `<div class="${preview ? 'preview-poles' : 'spectrum-poles'} spectrum-card" data-difficulty="${appearance.difficult ? 'hard' : 'regular'}" style="${colors}">${label(card.left, 'left')}${label(card.right, 'right')}${difficulty}${controls}</div>`;
+}
+
+function updateSpectrumCard(element, card) {
+  const appearance = cardPresentation(card);
+  element.querySelector('.pole-left .spectrum-label-text').textContent = card.left;
+  element.querySelector('.pole-right .spectrum-label-text').textContent = card.right;
+  element.style.setProperty('--card-left', appearance.left);
+  element.style.setProperty('--card-right', appearance.right);
+  element.style.setProperty('--card-left-ink', appearance.leftInk);
+  element.style.setProperty('--card-right-ink', appearance.rightInk);
+  element.dataset.difficulty = appearance.difficult ? 'hard' : 'regular';
+  element.querySelector('.spectrum-difficulty').hidden = !appearance.difficult;
 }
 
 document.addEventListener('error', event => {
@@ -355,8 +377,8 @@ async function purchasePack(packId) {
 
 function mountEntry() {
   if (inviteCode) entryMode = 'join';
-  const previewSpectrum = SPECTRA[Math.floor(Math.random() * SPECTRA.length)];
-  app.innerHTML = `<section class="entry-intro" aria-labelledby="entry-title"><p class="eyebrow">${t.entryEyebrow}</p><h1 id="entry-title">${t.entryTitle}</h1><p class="entry-description">${t.entryIntro}</p><div class="entry-dial">${dialMarkup('preview-dial')}<div class="preview-poles"><span>${esc(previewSpectrum.left)}</span><span>${esc(previewSpectrum.right)}</span></div></div><p class="entry-meta">${t.entryMeta}</p></section>
+  const previewSpectrum = SPECTRA[0];
+  app.innerHTML = `<section class="entry-intro" aria-labelledby="entry-title"><p class="eyebrow">${t.entryEyebrow}</p><h1 id="entry-title">${t.entryTitle}</h1><p class="entry-description">${t.entryIntro}</p><div class="entry-dial">${dialMarkup('preview-dial')}${spectrumCardMarkup(previewSpectrum, true)}</div><p class="entry-meta">${t.entryMeta}</p></section>
     <section class="entry-panel" aria-label="${t.joiningLabel}"><div class="entry-tabs" role="tablist" aria-label="${t.actionLabel}"><button type="button" id="create-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.createShort}</button><button type="button" id="join-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.join}</button></div>
     <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><h2 id="entry-form-title" class="sr-only"></h2><div id="nickname-field"><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="33" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"></div><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><div class="entry-secondary"><button id="practice-button" class="quiet-button" type="button">${t.practiceStart} →</button><button class="quiet-button" type="button" data-open-rules>${t.helpShort} ?</button></div><div class="entry-identity" data-identity></div><details id="entry-pack-picker" class="entry-pack-picker"><summary><span>${t.packsShort}</span><strong id="entry-pack-name"></strong><span class="disclosure-icon" aria-hidden="true">⌄</span></summary>${packCatalogMarkup('entry')}</details></section>`;
   const previewTarget = Math.round(18 + Math.random() * 64);
@@ -555,7 +577,7 @@ function bindRoomTools() {
 }
 
 function mountGame() {
-  app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><details class="phase-help"><summary>${t.phaseHelp}<span aria-hidden="true">⌄</span></summary><p class="phase-description" id="phase-description"></p></details><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}<div class="spectrum-poles"><h2 id="spectrum-left"></h2><span aria-hidden="true">↔</span><h2 id="spectrum-right"></h2><button id="nudge-left" class="nudge-control" type="button" data-direction="-1" aria-label="${t.nudgeLeft}" hidden disabled></button><button id="nudge-right" class="nudge-control" type="button" data-direction="1" aria-label="${t.nudgeRight}" hidden disabled></button></div></div><div id="spectrum-tools" class="spectrum-tools" hidden><button id="replace-spectrum" class="spectrum-swap" type="button"><span class="spectrum-swap-icon" aria-hidden="true">↻</span><span id="replace-spectrum-label">${t.replaceCard}</span></button><p>${t.replaceCardHint}</p></div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessCompact}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
+  app.innerHTML = `${roomHeading()}<div class="game-layout"><div id="scoreboard" class="scoreboard" aria-label="${t.scoreboardLabel}"></div><section class="game-stage" aria-labelledby="phase-title"><div class="round-meta"><span id="round-number"></span><span id="active-team"></span></div><div id="pause-banner" class="pause-banner" role="status" hidden><strong>${t.pause}</strong><p id="pause-reason"></p><button id="return-lobby" class="text-link" type="button">${t.returnLobby} →</button></div><header class="phase-heading"><p class="eyebrow" id="role-label"></p><h1 id="phase-title"></h1><details class="phase-help"><summary>${t.phaseHelp}<span aria-hidden="true">⌄</span></summary><p class="phase-description" id="phase-description"></p></details><p class="psychic-banner"><span id="psychic-label"></span><strong id="psychic-name"></strong></p></header><p id="spectator-note" class="spectator-note" hidden>${t.spectatorNote}</p><div class="game-dial">${dialMarkup()}${spectrumCardMarkup(SPECTRA[0])}</div><div id="spectrum-tools" class="spectrum-tools" hidden><button id="replace-spectrum" class="spectrum-swap" type="button"><span class="spectrum-swap-icon" aria-hidden="true">↻</span><span id="replace-spectrum-label">${t.replaceCard}</span></button><p>${t.replaceCardHint}</p></div><div class="round-content"><p id="clue-display" class="clue-display" hidden><span>${t.clue}</span><strong id="clue-text"></strong></p><form id="clue-form" class="clue-form" hidden><label class="sr-only" for="clue-input">${t.clueLabel}</label><input id="clue-input" name="clue" maxlength="120" required placeholder="${t.cluePlaceholder}" autocomplete="off"><button class="button" type="submit" id="send-clue">${t.sendClue} →</button><p class="field-note">${t.clueNote}</p></form><div id="guess-controls" class="guess-controls" hidden><p class="field-note">${t.guessCompact}</p><button id="lock-button" class="button" type="button">${t.lock} →</button></div><div id="bet-controls" class="bet-controls" hidden><button id="bet-left" class="button button-outline" type="button">← ${t.left}</button><button id="bet-right" class="button button-outline" type="button">${t.right} →</button></div><div id="round-result" class="round-result" hidden><div class="result-points"><strong id="active-points"></strong><span id="points-description"></span></div><p id="opponent-points"></p><p id="catch-up" class="catch-up" hidden>${t.catchUp}</p><p id="overtime-note" hidden>${t.overtime}</p><button id="next-button" class="button" type="button">${t.next} →</button><p id="next-waiting" class="field-note" hidden>${t.nextWaiting}</p></div><div id="game-over-controls" class="game-over-controls" hidden><button id="rematch-button" class="button" type="button">${t.rematch} →</button><p id="rematch-waiting" class="field-note" hidden>${t.rematchWaiting}</p></div></div></section></div>`;
   $('#psychic-name').insertAdjacentHTML('beforebegin', '<span id="psychic-avatar" class="psychic-avatar" aria-hidden="true"></span>');
   $('.phase-heading').insertAdjacentHTML('beforeend', `<p id="catalog-updated-note" class="field-note" role="status" hidden>${t.catalogUpdated}</p>`);
   bindRoomTools();
@@ -647,9 +669,8 @@ function updateGame() {
   setText('#psychic-label', state.phase === 'PSYCHIC_VIEW' ? t.clueGiver : t.roundPsychic);
   setText('#psychic-name', practice ? t.practicePsychic : psychicName);
   if ($('#psychic-avatar')) { setHidden('#psychic-avatar', Boolean(practice)); replacePreservingFocus($('#psychic-avatar'), practice ? '' : avatarMarkup(psychicPlayer, 'avatar-psychic')); }
-  setText('#spectrum-left', round.spectrum.left); setText('#spectrum-right', round.spectrum.right);
+  updateSpectrumCard($('.spectrum-poles'), round.spectrum);
   setHidden('#catalog-updated-note', state.phase !== 'PSYCHIC_VIEW' || !round.catalogUpdated);
-  $('.spectrum-poles').classList.toggle('is-long', Math.max(round.spectrum.left.length, round.spectrum.right.length) > 22);
   setHidden('#spectator-note', !spectator);
   updateSpectatorJoin(spectator);
   setHidden('#pause-banner', !state.paused); setText('#pause-reason', state.pauseReason || t.defaultPauseReason);
@@ -675,7 +696,7 @@ function updateGame() {
   setHidden('#next-waiting', !scorePhase || canNext);
   setHidden('#game-over-controls', !ended); setHidden('#rematch-button', !isHost()); setDisabled('#rematch-button', !online || busy.has('rematch'));
   setHidden('#rematch-waiting', isHost());
-  dial.update({ position: round.guess, target: state.phase === 'PSYCHIC_VIEW' || revealed ? round.target : undefined, editable: canGuess && online && !busy.has('lock'), canPeek: canClue && online && !busy.has('clue') && !busy.has('replace-spectrum'), psychic, revealed, result: round.result, showNeedle: state.phase !== 'PSYCHIC_VIEW', roundId: round.id });
+  dial.update({ position: state.phase === 'PSYCHIC_VIEW' ? 50 : round.guess, target: state.phase === 'PSYCHIC_VIEW' || revealed ? round.target : undefined, editable: canGuess && online && !busy.has('lock'), canPeek: canClue && online && !busy.has('clue') && !busy.has('replace-spectrum'), psychic, revealed, result: round.result, showNeedle: true, roundId: round.id });
   updateClueControl();
   app.classList.toggle('is-revealed', revealed); app.classList.toggle('is-game-over', ended);
   const previousScores = $('#scoreboard').dataset.scores?.split(',').map(Number);

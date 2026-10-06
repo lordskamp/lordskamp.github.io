@@ -1,5 +1,5 @@
 import { t } from './locale.js';
-import { DIAL_GEOMETRY, DIAL_WINDOW_PATH, DIAL_TARGET_WINDOW_PATH, DIAL_SHUTTER_PATH, angleForPosition, positionForAngle, dialPoint as point } from './dial-geometry.js';
+import { DIAL_GEOMETRY, DIAL_SECTOR_BOUNDARIES, DIAL_WINDOW_PATH, DIAL_TARGET_WINDOW_PATH, DIAL_SHUTTER_PATH, angleForPosition, positionForAngle, dialPoint as point } from './dial-geometry.js';
 
 const clamp = n => Math.max(0, Math.min(100, n));
 function sector(start, end) {
@@ -29,6 +29,19 @@ function waveRim() {
   }
   return path + ' Z';
 }
+function cosmicSpeckles() {
+  // A fixed seed keeps the printed shell texture still across rounds and clients.
+  let seed = 2026;
+  const sample = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const colors = ['#ecf4ec', '#c2d9d6', '#87b3c4'];
+  return Array.from({ length: 105 }, () => {
+    const x = (sample() * 256).toFixed(2), y = (sample() * 256).toFixed(2);
+    const radius = (.3 + sample() ** 2 * .85).toFixed(2);
+    const opacity = (.28 + sample() * .42).toFixed(2);
+    const color = colors[Math.floor(sample() * colors.length)];
+    return `<circle cx="${x}" cy="${y}" r="${radius}" fill="${color}" opacity="${opacity}"/>`;
+  }).join('');
+}
 export function dialMarkup(id = 'dial') {
   // The shoulders are sharp; each end of the window returns in a 16px U,
   // matching the diameter of the shutter handle instead of flattening at its base.
@@ -36,9 +49,10 @@ export function dialMarkup(id = 'dial') {
   const windowPath = DIAL_WINDOW_PATH;
   return `<div id="${id}" class="dial" data-shutter="closed" data-wheel="still" role="group" aria-label="${t.position}" tabindex="-1">
     <svg viewBox="0 0 720 680" class="dial-svg" role="group">
-      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="${windowPath}"/></clipPath><clipPath id="${id}-target-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_TARGET_WINDOW_PATH}"/></clipPath><clipPath id="${id}-shutter-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_SHUTTER_PATH}"/></clipPath></defs>
+      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="${windowPath}"/></clipPath><clipPath id="${id}-target-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_TARGET_WINDOW_PATH}"/></clipPath><clipPath id="${id}-shutter-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_SHUTTER_PATH}"/></clipPath><pattern id="${id}-cosmic-shell" width="256" height="256" patternUnits="userSpaceOnUse">${cosmicSpeckles()}</pattern></defs>
       <g class="dial-wheel" aria-hidden="true" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)"><path class="dial-wave-rim" d="${waveRim()}"/></g>
       <circle class="dial-shell" cx="360" cy="330" r="310"/>
+      <circle class="dial-cosmic-texture" cx="360" cy="330" r="309" fill="url(#${id}-cosmic-shell)" aria-hidden="true" pointer-events="none"/>
       <path class="dial-face" d="${windowPath}"/>
       <g id="${id}-target" class="dial-target" clip-path="url(#${id}-window)" visibility="hidden" aria-hidden="true"><g clip-path="url(#${id}-target-window)">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g></g>
       <g clip-path="url(#${id}-window)"><g clip-path="url(#${id}-shutter-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
@@ -51,7 +65,7 @@ export function dialMarkup(id = 'dial') {
         <rect class="shutter-hitarea" x="4" y="292" width="144" height="76" rx="24"/>
         <rect class="shutter-handle" x="14" y="314" width="112" height="32" rx="16"/>
       </g>
-      <g class="dial-needle" style="transform-origin:360px 330px;transform-box:view-box"><path class="needle-shaft" d="M356.5 330 L356.5 91 Q360 84 363.5 91 L363.5 330 Z"/><circle class="needle-hub" cx="360" cy="330" r="60"/><circle class="needle-pin" cx="360" cy="330" r="46"/></g>
+      <g class="dial-needle" style="transform-origin:360px 330px;transform-box:view-box"><path class="needle-shaft" d="M356.5 330 L356.5 134 Q360 126 363.5 134 L363.5 330 Z"/><circle class="needle-hub" cx="360" cy="330" r="60"/><circle class="needle-pin" cx="360" cy="330" r="46"/></g>
     </svg>
     <span class="dial-caption">${t.targetHidden}</span>
   </div>`;
@@ -291,7 +305,7 @@ export class Dial {
     this.targetSnapshot = snapshot;
     this.targetElement.setAttribute('visibility', 'visible');
     const { target, position, revealed, result } = snapshot;
-    const boundaries = [-10, -6, -2, 2, 6, 10], scores = [2, 3, 4, 3, 2];
+    const boundaries = DIAL_SECTOR_BOUNDARIES, scores = [2, 3, 4, 3, 2];
     boundaries.slice(0, -1).forEach((offset, i) => {
       const path = this.element.querySelector(`[data-sector="${i}"]`);
       path.setAttribute('d', sector(target + offset, target + boundaries[i + 1]));
@@ -300,6 +314,7 @@ export class Dial {
       const middle = target + (offset + boundaries[i + 1]) / 2;
       const p = point(middle, 243);
       label.setAttribute('x', p[0]); label.setAttribute('y', p[1] + 5);
+      label.setAttribute('transform', `rotate(${angleForPosition(middle) - 90} ${p[0]} ${p[1]})`);
       label.style.display = '';
     });
     const a = point(target, 27), b = point(target, 283);
@@ -315,7 +330,7 @@ export class Dial {
       path.classList.remove('winning-sector');
     });
     this.targetElement.querySelectorAll('[data-sector-label]').forEach(label => {
-      label.removeAttribute('x'); label.removeAttribute('y');
+      label.removeAttribute('x'); label.removeAttribute('y'); label.removeAttribute('transform');
     });
     const center = this.targetElement.querySelector('.target-center');
     ['x1', 'y1', 'x2', 'y2'].forEach(name => center.removeAttribute(name));

@@ -47,6 +47,7 @@ export const uk = {
   cancel: 'Залишитися', kickTitle: 'Прибрати гравця?', kickDescription: name => `${name} втратить доступ до цієї кімнати.`,
   players: 'Учасники', showPlayers: 'Учасники кімнати', round: 'Раунд', to: 'до',
   previewLabel: 'Приклад ігрового спектра',
+  cardDifficulty: 'СКЛАДНИЙ', hardCard: 'Складний спектр',
   joiningLabel: 'Приєднання до гри', actionLabel: 'Дія', entryStart: 'ПОЧИНАЄМО ТУТ',
   firstTime: 'Вперше тут? Як грати ↗', inviteLabel: 'Посилання для друзів', beforeRound: 'ПЕРЕД ПЕРШОЮ ХВИЛЕЮ',
   practiceStart: 'Спробувати самому', practiceEntryHint: 'Без компанії та нікнейма. Відчуйте гру в усіх ролях.',

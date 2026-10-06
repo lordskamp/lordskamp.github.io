@@ -1,11 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scoreGuess } from '../api/hvylia-core.js';
+import { GAME_CONFIG, scoreGuess } from '../api/hvylia-core.js';
 import {
-  DIAL_ARC, DIAL_GEOMETRY, angleForPosition, dialPoint, positionForAngle
+  DIAL_ARC, DIAL_GEOMETRY, DIAL_SECTOR_BOUNDARIES, angleForPosition, dialPoint, positionForAngle
 } from '../hvylia/dial-geometry.js';
 
 const close = (actual, expected, label) => assert.ok(Math.abs(actual - expected) < 1e-9, `${label}: ${actual} != ${expected}`);
+
+test('rendered five sectors share the authoritative scoring boundaries and retain their proportions', () => {
+  assert.deepEqual(GAME_CONFIG.sectorHalfWidths, [2.4, 7.2, 12]);
+  assert.deepEqual(DIAL_SECTOR_BOUNDARIES, [-12, -7.2, -2.4, 2.4, 7.2, 12]);
+  assert.ok(Object.isFrozen(DIAL_SECTOR_BOUNDARIES));
+  assert.equal(DIAL_GEOMETRY.sectorHalfWidth, GAME_CONFIG.sectorHalfWidths[2]);
+  assert.equal(DIAL_GEOMETRY.centerSectorHalfWidth, GAME_CONFIG.sectorHalfWidths[0]);
+  for (let index = 0; index < 5; index += 1) {
+    close(DIAL_SECTOR_BOUNDARIES[index + 1] - DIAL_SECTOR_BOUNDARIES[index], 4.8, `sector ${index} width`);
+  }
+});
 
 test('the four-point wedge stays exposed at every target while outer wedges may hide behind the body', () => {
   const { centerX, centerY, faceRadius, shoulderOffsetX, shoulderOffsetY, sectorHalfWidth, centerSectorHalfWidth, clearanceDegrees } = DIAL_GEOMETRY;
@@ -17,8 +28,9 @@ test('the four-point wedge stays exposed at every target while outer wedges may 
   // original game permits the outer 3/2 wedges to be covered at either edge.
   assert.ok(angleForPosition(-sectorHalfWidth) < lip);
   assert.ok(angleForPosition(100 + sectorHalfWidth) > 180 - lip);
-  assert.ok(angleForPosition(-8) < 0, 'left outer two-point wedge is behind the body');
-  assert.ok(angleForPosition(108) > 180, 'right outer two-point wedge is behind the body');
+  const outerLabelOffset = (GAME_CONFIG.sectorHalfWidths[1] + sectorHalfWidth) / 2;
+  assert.ok(angleForPosition(-outerLabelOffset) < 0, 'left outer two-point wedge is behind the body');
+  assert.ok(angleForPosition(100 + outerLabelOffset) > 180, 'right outer two-point wedge is behind the body');
 
   for (let step = 0; step <= 1000; step += 1) {
     const target = step / 10;
@@ -37,12 +49,16 @@ test('the four-point label clears the lip and shutter handle even at the extreme
   const { centerX, centerY, shoulderOffsetX, shoulderOffsetY } = DIAL_GEOMETRY;
   for (let step = 0; step <= 1000; step += 1) {
     const [x, y] = dialPoint(step / 10, 243);
-    // Allow a 20px-wide numeral and a 6px descent below its y+5 baseline.
-    // This exceeds the actual four-point digit at the mobile 23px font size.
-    const farthestX = Math.abs(x - centerX) + 10;
-    const windowBottom = centerY - farthestX * shoulderOffsetY / shoulderOffsetX;
-    assert.ok(y + 11 < windowBottom, `four-point label at target ${step / 10} crosses the lip`);
-    assert.ok(y + 11 < 314, `four-point label at target ${step / 10} overlaps the handle`);
+    // Bound the 23px numeral around its y+5 baseline, then rotate each corner
+    // exactly as the tangential label does. This covers either extreme angle.
+    const rotation = (angleForPosition(step / 10) - 90) * Math.PI / 180;
+    for (const offsetX of [-10, 10]) for (const offsetY of [-18, 11]) {
+      const cornerX = x + offsetX * Math.cos(rotation) - offsetY * Math.sin(rotation);
+      const cornerY = y + offsetX * Math.sin(rotation) + offsetY * Math.cos(rotation);
+      const windowBottom = centerY - Math.abs(cornerX - centerX) * shoulderOffsetY / shoulderOffsetX;
+      assert.ok(cornerY < windowBottom, `four-point label at target ${step / 10} crosses the lip`);
+      assert.ok(cornerY < 314, `four-point label at target ${step / 10} overlaps the handle`);
+    }
   }
 });
 
@@ -65,12 +81,12 @@ test('every normalized dial position is reachable and round-trips through its ph
   assert.equal(positionForAngle(0), 0);
   assert.equal(positionForAngle(180), 100);
   assert.equal(positionForAngle(360), 100);
-  assert.ok(angleForPosition(-10) < angleForPosition(0), 'the outer fan must extend past the selectable center range');
-  assert.ok(angleForPosition(110) > angleForPosition(100));
+  assert.ok(angleForPosition(-DIAL_GEOMETRY.sectorHalfWidth) < angleForPosition(0), 'the outer fan must extend past the selectable center range');
+  assert.ok(angleForPosition(100 + DIAL_GEOMETRY.sectorHalfWidth) > angleForPosition(100));
 });
 
-test('pointer-angle conversion preserves existing decimal score boundaries and opponent sides', () => {
-  const samples = [[0, 4], [2, 4], [2.1, 3], [6, 3], [6.1, 2], [10, 2], [10.1, 0]];
+test('pointer-angle conversion preserves shared decimal score boundaries and opponent sides', () => {
+  const samples = [[0, 4], [2.4, 4], [2.5, 3], [7.2, 3], [7.3, 2], [12, 2], [12.1, 0]];
   for (let step = 0; step <= 1000; step += 1) {
     const target = step / 10;
     for (const direction of [-1, 1]) {
