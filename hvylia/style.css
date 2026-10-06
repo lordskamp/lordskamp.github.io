@@ -448,6 +448,8 @@ label{font-size:11px;margin-bottom:7px}
 .entry-form h2.sr-only{margin:0}
 .entry-form .button{width:100%;margin-top:15px;min-height:48px}
 .entry-form #room-code-field{margin-top:14px}
+.entry-form:is([data-entry-identity=account],[data-entry-identity=loading]) #room-code-field{margin-top:0}
+.entry-form:is([data-entry-identity=account],[data-entry-identity=loading]) #room-code-field[hidden]~.button{margin-top:0}
 #room-code{font-size:21px;min-height:48px;letter-spacing:.19em}
 .entry-secondary{display:flex;align-items:center;justify-content:space-between;gap:5px 12px;flex-wrap:wrap;margin-top:8px}
 .entry-secondary>.quiet-button{font-size:10px;min-height:40px;padding:7px 0}

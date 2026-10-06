@@ -23,6 +23,8 @@ let noticeTimer;
 let settingsDirty = false;
 let account = null;
 let accountLoading = false;
+let accountRequest = null;
+let accountChecked = false;
 let entryPackId = 'standard';
 let purchasePackId = null;
 let rankingDialog = null;
@@ -66,11 +68,30 @@ document.addEventListener('load', event => {
   if (image instanceof window.HTMLImageElement && image.hasAttribute('data-avatar-image')) image.parentElement?.classList.add('avatar-image-loaded');
 }, true);
 
-function prefillNickname() {
+function hasAccountCredentials() {
+  if (inTelegram()) return true;
+  if (transport.profileSession?.token && transport.profileSession.expiresAt > Date.now()) return true;
+  const launch = new URLSearchParams(window.location.hash.slice(1));
+  const query = new URLSearchParams(window.location.search);
+  return launch.has('tgWebAppData') || query.has('tgWebAppData') || launch.has('tgWebAppPlatform');
+}
+
+function entryIdentityPending() { return !account?.profile && !accountChecked && hasAccountCredentials(); }
+
+function syncEntryIdentity() {
   const nickname = $('#nickname');
   const profile = account?.profile;
-  if (!nickname || !profile?.name || nickname.dataset.edited === 'true') return;
-  if (!nickname.value || telegramIdentity()) nickname.value = Array.from(profile.name).slice(0, 33).join('');
+  if (!nickname) return;
+  const pending = entryIdentityPending();
+  const hidden = Boolean(profile) || pending;
+  setHidden('#nickname-field', hidden);
+  nickname.disabled = hidden;
+  nickname.required = !hidden;
+  if (profile) nickname.value = profile.name;
+  $('#entry-form').dataset.entryIdentity = profile ? 'account' : pending ? 'loading' : 'guest';
+  const button = $('#enter-button');
+  if (pending || button.dataset.identityPending === 'true') button.disabled = pending || button.dataset.submitting === 'true';
+  button.dataset.identityPending = String(pending);
 }
 
 function announce(text) { $('#live').textContent = text; }
@@ -218,20 +239,34 @@ function updateTelegramBack() {
 }
 
 async function refreshAccount({ quiet = true } = {}) {
-  if (accountLoading) return account;
+  if (accountRequest) return accountRequest;
   accountLoading = true;
+  syncEntryIdentity();
   updatePackCards($('#entry-packs'), 'entry'); updatePackCards($('#lobby-packs'), 'lobby');
-  try {
-    account = await transport.get('/hvylia/account');
-    failedAvatars.delete(avatarURL(account.profile?.avatarUrl));
-    prefillNickname();
-  } catch (error) { if (!quiet) notice(errorText(error)); }
-  finally {
-    accountLoading = false;
-    updatePackCards($('#entry-packs'), 'entry'); updatePackCards($('#lobby-packs'), 'lobby');
-    updateIdentity();
-  }
-  return account;
+  accountRequest = (async () => {
+    try {
+      await telegramReady;
+      let credential, nextAccount;
+      do {
+        credential = transport.profileSession?.token;
+        nextAccount = await transport.get('/hvylia/account');
+        // A login can finish during a previous anonymous request. Refresh with
+        // the new credential before replacing its authenticated identity.
+      } while (credential !== transport.profileSession?.token);
+      account = nextAccount;
+      failedAvatars.delete(avatarURL(account.profile?.avatarUrl));
+    } catch (error) { if (!quiet) notice(errorText(error)); }
+    finally {
+      accountChecked = true;
+      accountLoading = false;
+      syncEntryIdentity();
+      updatePackCards($('#entry-packs'), 'entry'); updatePackCards($('#lobby-packs'), 'lobby');
+      updateIdentity();
+      accountRequest = null;
+    }
+    return account;
+  })();
+  return accountRequest;
 }
 
 function ownedPack(pack) { return Boolean(pack.free || pack.priceStars === 0 || account?.packs?.find(item => item.id === pack.id)?.owned); }
@@ -283,7 +318,7 @@ function bindPackCards(element, context) {
   element.addEventListener('click', async event => {
     const select = event.target.closest('[data-pack-select]');
     if (select) {
-      if (context === 'entry') { entryPackId = select.dataset.packSelect; updatePackCards(element, context); setText('#entry-pack-name', PACKS.find(pack => pack.id === entryPackId)?.title || PACKS[0].title); $('#entry-pack-picker').open = false; $('#nickname').focus(); }
+      if (context === 'entry') { entryPackId = select.dataset.packSelect; updatePackCards(element, context); setText('#entry-pack-name', PACKS.find(pack => pack.id === entryPackId)?.title || PACKS[0].title); $('#entry-pack-picker').open = false; ($('#nickname').disabled ? $('#entry-pack-picker > summary') : $('#nickname')).focus(); }
       else await act({ type: 'settings', packId: select.dataset.packSelect });
     }
     const buy = event.target.closest('[data-pack-buy]');
@@ -320,7 +355,7 @@ function mountEntry() {
   if (inviteCode) entryMode = 'join';
   app.innerHTML = `<section class="entry-intro" aria-labelledby="entry-title"><p class="eyebrow">${t.entryEyebrow}</p><h1 id="entry-title">${t.entryTitle}</h1><p class="entry-description">${t.entryIntro}</p><div class="entry-dial">${dialMarkup('preview-dial')}<div class="preview-poles"><span>${t.previewLeft}</span><span>${t.previewRight}</span></div></div><p class="entry-meta">${t.entryMeta}</p></section>
     <section class="entry-panel" aria-label="${t.joiningLabel}"><div class="entry-tabs" role="tablist" aria-label="${t.actionLabel}"><button type="button" id="create-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.createShort}</button><button type="button" id="join-tab" role="tab" aria-controls="entry-form" class="entry-tab">${t.join}</button></div>
-    <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><h2 id="entry-form-title" class="sr-only"></h2><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="33" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><div class="entry-secondary"><button id="practice-button" class="quiet-button" type="button">${t.practiceStart} →</button><button class="quiet-button" type="button" data-open-rules>${t.helpShort} ?</button></div><div class="entry-identity" data-identity></div><details id="entry-pack-picker" class="entry-pack-picker"><summary><span>${t.packsShort}</span><strong id="entry-pack-name"></strong><span class="disclosure-icon" aria-hidden="true">⌄</span></summary>${packCatalogMarkup('entry')}</details></section>`;
+    <form id="entry-form" class="entry-form" role="tabpanel" aria-labelledby="entry-form-title"><h2 id="entry-form-title" class="sr-only"></h2><div id="nickname-field"><label for="nickname">${t.nickname}</label><input id="nickname" name="name" minlength="2" maxlength="33" required autocomplete="nickname" placeholder="${t.nicknamePlaceholder}"></div><div id="room-code-field"><label for="room-code">${t.code}</label><input id="room-code" name="code" maxlength="4" minlength="4" pattern="[A-Za-z0-9]{4}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7FM" value="${esc(inviteCode)}"></div><p id="entry-error" class="form-error" role="alert" hidden></p><button id="enter-button" type="submit" class="button"></button></form><div class="entry-secondary"><button id="practice-button" class="quiet-button" type="button">${t.practiceStart} →</button><button class="quiet-button" type="button" data-open-rules>${t.helpShort} ?</button></div><div class="entry-identity" data-identity></div><details id="entry-pack-picker" class="entry-pack-picker"><summary><span>${t.packsShort}</span><strong id="entry-pack-name"></strong><span class="disclosure-icon" aria-hidden="true">⌄</span></summary>${packCatalogMarkup('entry')}</details></section>`;
   const previewTarget = Math.round(18 + Math.random() * 64);
   const previewPosition = Math.round(previewTarget + (previewTarget < 50 ? 1 : -1) * (16 + Math.random() * 18));
   dial = new Dial($('#preview-dial'), () => {}, { preview: true });
@@ -342,6 +377,7 @@ function mountEntry() {
     setHidden('#entry-pack-picker', joining);
     $('#room-code').required = joining;
     setHidden('#entry-error', true);
+    syncEntryIdentity();
   };
   $('#create-tab').addEventListener('click', () => choose('create'));
   $('#join-tab').addEventListener('click', () => choose('join'));
@@ -351,19 +387,36 @@ function mountEntry() {
     $(entryMode === 'create' ? '#create-tab' : '#join-tab').focus();
   });
   $('#room-code').addEventListener('input', event => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
-  $('#nickname').addEventListener('input', event => { event.target.dataset.edited = 'true'; });
   $('#entry-form').addEventListener('submit', async event => {
     event.preventDefault();
-    const name = $('#nickname').value.trim();
+    const form = event.currentTarget;
+    if (form.querySelector('#enter-button').dataset.submitting === 'true') return;
     const code = entryMode === 'join' ? $('#room-code').value.toUpperCase().trim() : null;
     const button = $('#enter-button');
+    button.dataset.submitting = 'true';
     button.disabled = true; button.textContent = code ? t.joinBusy : t.createBusy;
     setHidden('#entry-error', true);
-    try { await transport.enter(name, code, entryPackId); try { window.localStorage.setItem('hvylia.nickname', name); } catch { /* The room itself remembers the nickname. */ } refreshAccount(); haptics?.impact('medium'); }
+    try {
+      await telegramReady;
+      if (accountRequest) await accountRequest;
+      else if (hasAccountCredentials() && !accountChecked) await refreshAccount();
+      if (!form.isConnected || state || practice) return;
+      const authenticated = Boolean(account?.profile);
+      const name = account?.profile?.name || $('#nickname').value.trim();
+      await transport.enter(name, code, entryPackId);
+      if (!authenticated) {
+        try { window.localStorage.setItem('hvylia.nickname', name); } catch { /* The room itself remembers the nickname. */ }
+      }
+      refreshAccount(); haptics?.impact('medium');
+    }
     catch (error) {
       if (!$('#entry-error')) return;
       setText('#entry-error', errorText(error)); setHidden('#entry-error', false);
-      button.disabled = false; button.textContent = `${code ? t.join : t.create} →`;
+      button.textContent = `${code ? t.join : t.create} →`;
+    } finally {
+      button.dataset.submitting = 'false';
+      button.disabled = false;
+      syncEntryIdentity();
     }
   });
   $('#practice-button').addEventListener('click', startPractice);
@@ -378,7 +431,7 @@ function mountEntry() {
   $('[data-open-rules]').addEventListener('click', openRules);
   bindPackCards($('#entry-packs'), 'entry');
   try { $('#nickname').value = window.localStorage.getItem('hvylia.nickname') || ''; } catch { /* Nicknames can still be entered manually. */ }
-  prefillNickname();
+  syncEntryIdentity();
   updateIdentity();
   choose(entryMode);
 }
@@ -651,8 +704,8 @@ function updateIdentity() {
     button.classList.toggle('has-profile', Boolean(profile));
   }
   document.querySelectorAll('[data-identity]').forEach(element => {
-    const content = telegramIdentity() && profile
-      ? `<button class="identity-linked" type="button" data-open-profile>${avatarMarkup(profile, 'avatar-identity')}${esc(profile.name)}<small>Telegram ✓</small></button>`
+    const content = profile
+      ? `<button class="identity-linked" type="button" data-open-profile>${avatarMarkup(profile, 'avatar-identity')}${esc(profile.name)}${telegramIdentity() ? '<small>Telegram ✓</small>' : ''}</button>`
       : `<button class="telegram-login" type="button" data-telegram-login><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="m3 10 17-7c1-.4 1.5.2 1.3 1.2l-3 15c-.2 1-.8 1.2-1.6.6l-5-3.7-2.4 2.3c-.3.3-.5.4-.7.4l.4-5.1 9.3-8.4c.4-.3-.1-.6-.6-.3L6.2 11.4l-3.1-1c-.8-.3-.8-.8-.1-1.1Z"/></svg>${t.telegramLogin}</button>`;
     replacePreservingFocus(element, content);
   });
@@ -721,7 +774,9 @@ async function openTelegramLogin() {
     $('#telegram-login-submit', dialog).disabled = true;
     $('#login-error', dialog).hidden = true;
     try {
-      await transport.loginTelegram({ loginId: challenge.loginId, secret: challenge.secret, code: $('#telegram-login-code', dialog).value });
+      const signedIn = await transport.loginTelegram({ loginId: challenge.loginId, secret: challenge.secret, code: $('#telegram-login-code', dialog).value });
+      account = { ...account, identityType: signedIn.identityType, profile: signedIn.profile };
+      syncEntryIdentity(); updateIdentity();
       const visible = dialog.isConnected;
       challenge = null; if (visible) dialog.close();
       await refreshAccount({ quiet: false });

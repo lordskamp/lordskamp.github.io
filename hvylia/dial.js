@@ -1,13 +1,11 @@
 import { t } from './locale.js';
+import { DIAL_GEOMETRY, DIAL_WINDOW_PATH, DIAL_SHUTTER_PATH, angleForPosition, positionForAngle, dialPoint as point } from './dial-geometry.js';
 
 const clamp = n => Math.max(0, Math.min(100, n));
-const point = (position, radius) => {
-  const angle = Math.PI * (1 - position / 100);
-  return [360 + Math.cos(angle) * radius, 330 - Math.sin(angle) * radius];
-};
 function sector(start, end) {
-  const a = point(clamp(start), 280), b = point(clamp(end), 280);
-  return `M360 330 L${a[0]} ${a[1]} A280 280 0 0 1 ${b[0]} ${b[1]} Z`;
+  const { centerX, centerY, faceRadius } = DIAL_GEOMETRY;
+  const a = point(start, faceRadius), b = point(end, faceRadius);
+  return `M${centerX} ${centerY} L${a[0]} ${a[1]} A${faceRadius} ${faceRadius} 0 0 1 ${b[0]} ${b[1]} Z`;
 }
 // Cubic segments follow a polar wave, leaving one continuous, smooth wheel edge.
 function waveRim() {
@@ -34,16 +32,16 @@ function waveRim() {
 export function dialMarkup(id = 'dial') {
   // The shoulders are sharp; each end of the window returns in a 16px U,
   // matching the diameter of the shutter handle instead of flattening at its base.
-  const windowPath = 'M80 330 A280 280 0 0 1 640 330 A16 16 0 0 1 608 330 L606 307 L360 330 L114 307 L112 330 A16 16 0 0 1 80 330 Z';
+  const windowPath = DIAL_WINDOW_PATH;
   return `<div id="${id}" class="dial" data-shutter="closed" data-wheel="still" role="group" aria-label="${t.position}" tabindex="-1">
     <svg viewBox="0 0 720 680" class="dial-svg" role="group">
-      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="${windowPath}"/></clipPath><clipPath id="${id}-shutter-window" clipPathUnits="userSpaceOnUse"><path d="M80 330 A280 280 0 0 1 640 330 Z"/></clipPath></defs>
+      <defs><clipPath id="${id}-window" clipPathUnits="userSpaceOnUse"><path d="${windowPath}"/></clipPath><clipPath id="${id}-shutter-window" clipPathUnits="userSpaceOnUse"><path d="${DIAL_SHUTTER_PATH}"/></clipPath></defs>
       <g class="dial-wheel" aria-hidden="true" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)"><path class="dial-wave-rim" d="${waveRim()}"/></g>
       <circle class="dial-shell" cx="360" cy="330" r="310"/>
       <path class="dial-face" d="${windowPath}"/>
       <g id="${id}-target" class="dial-target" clip-path="url(#${id}-window)" visibility="hidden" aria-hidden="true">${[2, 3, 4, 3, 2].map((score, i) => `<path data-sector="${i}" class="target-sector sector-${score}"/><text data-sector-label="${i}" class="sector-label">${score}</text>`).join('')}<line class="target-center"/></g>
       <g clip-path="url(#${id}-window)"><g clip-path="url(#${id}-shutter-window)"><g class="dial-shutter" style="transform-origin:360px 330px;transform-box:view-box;transform:rotate(0deg)">
-        <path class="shutter-plate" d="M80 330 A280 280 0 0 1 640 330 Z"/>
+        <path class="shutter-plate" d="${DIAL_SHUTTER_PATH}"/>
       </g></g>
         <path class="shutter-plate shutter-cap" data-cap="left" d="M80 330 H112 A16 16 0 0 1 80 330 Z"/>
         <path class="shutter-plate shutter-cap" data-cap="right" d="M608 330 H640 A16 16 0 0 1 608 330 Z"/>
@@ -257,10 +255,11 @@ export class Dial {
     };
   }
   fromPointer(event) {
-    const p = this.pointerPoint(event), x = p.x - 360, y = Math.max(0, 330 - p.y);
+    const { centerX, centerY } = DIAL_GEOMETRY;
+    const p = this.pointerPoint(event), x = p.x - centerX, y = Math.max(0, centerY - p.y);
     // Grabbing the hub should hold its angle until the pointer moves outward.
-    if (Math.hypot(x, p.y - 330) < 24) return this.position;
-    return Math.round(clamp(100 - Math.atan2(y, x) / Math.PI * 100) * 10) / 10;
+    if (Math.hypot(x, p.y - centerY) < 24) return this.position;
+    return Math.round(positionForAngle(180 - Math.atan2(y, x) * 180 / Math.PI) * 10) / 10;
   }
   setLocal(position) {
     this.lastLocalMove = Date.now();
@@ -279,7 +278,7 @@ export class Dial {
   }
   paint(position) {
     this.position = position;
-    this.needle.style.transform = `rotate(${(position - 50) * 1.8}deg)`;
+    this.needle.style.transform = `rotate(${angleForPosition(position) - 90}deg)`;
     if (this.showNeedle && this.editable) {
       this.element.setAttribute('aria-valuenow', String(Math.round(position)));
       this.element.setAttribute('aria-valuetext', t.positionValue(Math.round(position)));
@@ -298,9 +297,9 @@ export class Dial {
       path.classList.toggle('winning-sector', Boolean(revealed && result?.activePoints === scores[i] && position >= target + offset - 1e-8 && position <= target + boundaries[i + 1] + 1e-8));
       const label = this.element.querySelector(`[data-sector-label="${i}"]`);
       const middle = target + (offset + boundaries[i + 1]) / 2;
-      const p = point(clamp(middle), 243);
+      const p = point(middle, 243);
       label.setAttribute('x', p[0]); label.setAttribute('y', p[1] + 5);
-      label.style.display = middle < 0 || middle > 100 ? 'none' : '';
+      label.style.display = '';
     });
     const a = point(target, 27), b = point(target, 283);
     const center = this.element.querySelector('.target-center');

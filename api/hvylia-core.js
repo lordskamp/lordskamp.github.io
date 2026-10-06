@@ -86,7 +86,7 @@ function draw(random) {
 }
 
 function drawTarget(random, previousTarget = null) {
-  // Give every digital position the same chance, including the two extremes.
+  // Give every normalized position the same chance, including the two extremes.
   // On a card swap, skip the previous position so the target always changes.
   const previous = previousTarget === null ? null : Math.round(previousTarget * 10);
   let position = Math.floor(draw(random) * (previous === null ? 1001 : 1000));
@@ -137,8 +137,8 @@ function dealRound(state, team, random, { number, excludePsychic = null, readyOn
   const psychicId = choosePsychic(state, team, excludePsychic, readyOnly);
   if (!psychicId) return false;
   const spectrum = drawSpectrum(state, random, spectra);
-  // The original rules allow a partly visible four-point wedge at either extreme.
-  // Keep its center on the digital spectrum; the outer wedges can be clipped.
+  // The renderer maps normalized positions onto its accessible physical arc.
+  // Preserve these units so saved targets, guesses and scoring remain compatible.
   const target = drawTarget(random);
   state._roundSerial += 1;
   state._rotation[team] = psychicId;
