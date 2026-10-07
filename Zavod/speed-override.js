@@ -1,5 +1,5 @@
-import { number, positive, firstSpeed, secondSpeed } from './core.js?v=21';
-import { speedRpm } from './rpm.js?v=21';
+import { number, positive, firstSpeed, secondSpeed } from './core.js?v=23';
+import { speedRpm } from './rpm.js?v=23';
 
 export const SPEED_STORAGE = 'zavod-working-speeds-v1';
 

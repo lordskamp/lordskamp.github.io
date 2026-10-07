@@ -1,5 +1,5 @@
-import { REFERENCE_CARDS } from './reference-data.js?v=21';
-import { supportsSingleColorMode } from './pv3-modes.js?v=21';
+import { REFERENCE_CARDS } from './reference-data.js?v=23';
+import { supportsSingleColorMode } from './pv3-modes.js?v=23';
 
 // Names are the brands in the printed tables. A missing practicalCableId means
 // that no handwritten operating recipe has been established for this brand.
@@ -83,6 +83,11 @@ export const CATALOG_OPTIONS = [
   ...options('ysly-1000', [
     ['YSLY-JZ', 'ysly-jz'], ['YSLY-OZ', 'ysly-oz'], ['YSLY-JB', 'ysly-jb'], ['YSLY-OB', 'ysly-ob'],
   ], { suffix: '600/1000 В', mode: 'dual', modeHint: 'У довідковій карті є оберти обох екструдерів.' }),
+  {
+    id: 'thread-bundle', brand: 'Джгути', label: 'Джгути', cardId: 'thread-bundle', coreKind: 'thread',
+    specification: null, sections: [1], practicalCableId: null, mode: 'unknown',
+    modeHint: 'Режим роботи визначається за практичним заміром.',
+  },
 ].map(option => {
   // Colour requirements now establish the normal mode for all confirmed H*/ПВ*
   // families. Retain the original source mode: printed dual RPM cannot become

@@ -1,13 +1,13 @@
-import { CATALOG_OPTIONS } from './catalog-options.js?v=21';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=23';
 import { RECIPES } from './data.js';
-import { REFERENCE_CARDS } from './reference-data.js?v=21';
-import { hasPv3Modes, pv3Recipe, modeFor } from './pv3-modes.js?v=21';
+import { ALL_CARDS } from './reference-data.js?v=23';
+import { hasPv3Modes, pv3Recipe, modeFor } from './pv3-modes.js?v=23';
 
 export { CATALOG_OPTIONS };
 export const CATALOG_CABLES = CATALOG_OPTIONS;
 const canonical = { vvg: 'ВВГ', 'vvgng-p': 'ВВГнг-П', pv1: 'ПВ1', pv3: 'ПВ3', ysly: 'YSLY', 'h05vv-f': 'H05VV-F', 'pvs-shvvp': 'ПВС' };
 export const optionFor = id => CATALOG_OPTIONS.find(option => option.id === id) ?? CATALOG_OPTIONS.find(option => option.practicalCableId === id && option.brand === canonical[id]) ?? CATALOG_OPTIONS.find(option => option.practicalCableId === id);
-export const referenceCard = option => REFERENCE_CARDS.find(card => card.id === option.cardId);
+export const referenceCard = option => ALL_CARDS.find(card => card.id === option?.cardId);
 
 export function baseFor(optionId, section) {
   const option = optionFor(optionId);
@@ -56,7 +56,9 @@ export function practicalFor(optionId, section, catalog, mode, color = 'blue') {
     const merged = { ...latest, mode: ['single', 'dual'].includes(desiredMode) ? desiredMode : latest.mode, color: 'all', fieldSources: {} };
     for (const key of ['extruder1', 'extruder2', 'maxSpeed', 'dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'colorLead1', 'colorLead2']) {
       const geometry = ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter'].includes(key);
-      const source = (geometry ? geometryRows : candidates).find(row => (row.mode === merged.mode || geometry && row.mode === 'unknown') && typeof row[key] === 'number' && Number.isFinite(row[key]) && (key.startsWith('colorLead') ? row[key] >= 0 : row[key] > 0));
+      const source = (geometry ? geometryRows : candidates).find(row => (row.mode === merged.mode || geometry && row.mode === 'unknown')
+        && (option.coreKind !== 'thread' || geometry || ['single', 'dual'].includes(merged.mode))
+        && typeof row[key] === 'number' && Number.isFinite(row[key]) && (key.startsWith('colorLead') ? row[key] >= 0 : row[key] > 0));
       merged[key] = source?.[key] ?? null;
       if (source) merged.fieldSources[key] = { measurementId: source.measurementId ?? source.id, source: source.source, updatedAt: source.updatedAt };
     }

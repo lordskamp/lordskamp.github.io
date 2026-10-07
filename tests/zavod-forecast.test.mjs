@@ -425,8 +425,8 @@ test('partial operating data on a reference row without geometry still borrow a 
   assert(finitePositive(result.extruder2));
 });
 
-test('every catalog section has finite applicable estimates, including inferred mode and related-family fallback', () => {
-  for (const option of CATALOG_OPTIONS) for (const section of option.sections) {
+test('every metallic catalog section has finite applicable estimates, including inferred mode and related-family fallback', () => {
+  for (const option of CATALOG_OPTIONS.filter(option => option.coreKind !== 'thread')) for (const section of option.sections) {
     const reference = card(option.cardId), row = reference.rows.find(candidate => candidate.section === section);
     const result = forecastFor(reference, row, realRecords, { optionId: option.id });
     assert(['single', 'dual'].includes(result.mode), option.id);

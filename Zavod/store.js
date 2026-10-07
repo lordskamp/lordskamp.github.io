@@ -1,7 +1,8 @@
 import { CABLES, RECIPES } from './data.js';
-import { colorName } from './core.js?v=21';
+import { optionFor } from './catalog-base.js?v=23';
+import { colorName } from './core.js?v=23';
 import { API_URL } from './config.js?v=3';
-import { PUBLIC_CALIBRATIONS, CALIBRATION_SNAPSHOT } from './calibration-snapshot.js?v=21';
+import { PUBLIC_CALIBRATIONS, CALIBRATION_SNAPSHOT } from './calibration-snapshot.js?v=23';
 const CACHE = 'zavod-shared-table-v1';
 export const FIELDS = [['extruder1', 'Оберти №1, об/хв'], ['extruder2', 'Оберти №2, об/хв'], ['sikoraWire', 'SIKORA: діаметр жили, мм'], ['sikoraOuter', 'SIKORA: з ізоляцією, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Робоча швидкість, м/хв'], ['colorLead1', 'Зміна кольору №1 за, м'], ['colorLead2', 'Зміна кольору №2 за, м']];
 export function baseline() {
@@ -65,6 +66,9 @@ export function csv(catalog) {
     return '"' + text.replaceAll('"', '""') + '"';
   };
   const headers = ['Марка', 'Переріз, мм²', 'Колір', 'Режим', ...FIELDS.map(([, label]) => label), 'Джерело', 'Примітки', 'Дата', 'Версія'];
-  const rows = catalog.recipes.map(row => [catalog.cables.find(cable => cable.id === (row.optionId ?? row.cableId))?.label ?? CABLES.find(cable => cable.id === row.cableId)?.label, row.section, row.color === 'all' ? 'Усі кольори' : colorName(row.color), { single: 'Тільки №1', dual: '№1 і №2', unknown: 'Не уточнено' }[row.mode], ...FIELDS.map(([key]) => row[key]), row.source, [...(row.notes || []), ...(row.uncertain || [])].join(' | '), row.updatedAt, row.revision]);
+  const rows = catalog.recipes.map(row => {
+    const cable = catalog.cables.find(cable => cable.id === (row.optionId ?? row.cableId)) ?? optionFor(row.optionId ?? row.cableId);
+    return [cable?.label ?? CABLES.find(cable => cable.id === row.cableId)?.label, cable?.coreKind === 'thread' ? 'Нитка' : row.section, row.color === 'all' ? 'Усі кольори' : colorName(row.color), { single: 'Тільки №1', dual: '№1 і №2', unknown: 'Не уточнено' }[row.mode], ...FIELDS.map(([key]) => row[key]), row.source, [...(row.notes || []), ...(row.uncertain || [])].join(' | '), row.updatedAt, row.revision];
+  });
   return '\uFEFF' + [headers, ...rows].map(row => row.map(quote).join(';')).join('\r\n');
 }

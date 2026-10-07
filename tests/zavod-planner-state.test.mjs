@@ -4,6 +4,8 @@ import test from 'node:test';
 import { CATALOG_CABLES, optionFor } from '../Zavod/catalog-base.js';
 import { createPlannerUI, newJob, restorePlanner, syncPlannerSelection } from '../Zavod/plan-ui.js';
 import { DEFAULT_RULES } from '../Zavod/core.js';
+import { scheduleJobs } from '../Zavod/planner.js';
+import { setupFor } from '../Zavod/setup-data.js';
 
 const globalCable = optionFor('vvgng-p');
 const initialState = () => ({
@@ -51,6 +53,31 @@ test('the untouched initial planning task follows the main cable and section wit
   assert.equal(state.jobs[0].id, id);
   assert.deepEqual(state.drums, queue);
   assert.equal(syncPlannerSelection(state), false, 'repeated entry is idempotent');
+});
+
+test('thread jobs follow the main selection, generate and restore without displaying a fictitious section', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } }; restorePlanner(null, state);
+  state.cableId = 'thread-bundle'; state.section = 1;
+  assert.equal(syncPlannerSelection(state), true);
+  const job = state.jobs[0]; job.lengthsText = '15';
+  const planned = scheduleJobs(state.jobs);
+  assert.deepEqual(planned.errors, []);
+  state.drums = planned.drums; state.planJobs = structuredClone(state.jobs);
+  state.drums.forEach(drum => { drum.status = 'done'; });
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.render();
+    assert.equal(planner.drumTitle(state.drums[0]), 'Джгути');
+    assert.match(element('jobs').innerHTML, /<label hidden>Переріз жили/);
+    assert.match(element('jobs').innerHTML, /Кількість кольорів/);
+    assert.match(element('drums').innerHTML, /<label hidden>Переріз, мм²/);
+    assert.match(element('drums').innerHTML, /<b>Джгути<\/b>/);
+    assert.match(element('plan-summary').innerHTML, /15 км \(Джгути\)/);
+    assert.doesNotMatch(element('plan-summary').innerHTML, /1 мм²|3×1/);
+  }, (id, section, color) => setupFor(id, section, {}, color));
+  const restored = { ...initialState(), cableId: 'thread-bundle', section: 1 };
+  restorePlanner(structuredClone(state), restored);
+  assert.deepEqual(restored.drums, state.drums);
+  assert.deepEqual(restored.jobs, state.jobs);
 });
 
 test('multiplication notation updates while editing without moving the caret and survives reload', () => {

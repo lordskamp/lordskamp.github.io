@@ -1,4 +1,4 @@
-import { number } from './core.js?v=21';
+import { number } from './core.js?v=23';
 
 const NUMERIC_FIELDS = ['extruder1', 'extruder2', 'sikoraWire', 'sikoraOuter', 'dorn', 'matrix', 'maxSpeed', 'colorLead1', 'colorLead2'];
 const LABELS = { extruder1: 'Оберти №1', extruder2: 'Оберти №2', sikoraWire: 'Діаметр жили', sikoraOuter: 'Діаметр з ізоляцією', dorn: 'Дорн', matrix: 'Матриця', maxSpeed: 'Робоча швидкість', colorLead1: 'Зміна кольору №1', colorLead2: 'Зміна кольору №2' };

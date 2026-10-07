@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { baseline, cachedCatalog, loadCatalog, withOfflineCalibrations } from '../Zavod/store.js';
+import { baseline, cachedCatalog, loadCatalog, withOfflineCalibrations, csv } from '../Zavod/store.js';
 import { PUBLIC_CALIBRATIONS, CALIBRATION_SNAPSHOT } from '../Zavod/calibration-snapshot.js';
 import { setupFor } from '../Zavod/setup-data.js';
+import { CATALOG_OPTIONS, baseFor } from '../Zavod/catalog-base.js';
 
 const CACHE = 'zavod-shared-table-v1';
 const h07 = 'h07v-k--h07v-k';
@@ -17,6 +18,15 @@ function storage(initial) {
   const values = new Map(initial ? [[CACHE, JSON.stringify(initial)]] : []);
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
 }
+
+test('thread CSV exports the thread foundation instead of the internal numeric recipe slot', () => {
+  const row = { ...baseFor('thread-bundle', 1), optionId: 'thread-bundle', color: 'all', mode: 'single' };
+  for (const cables of [CATALOG_OPTIONS, baseline().cables]) {
+    const exported = csv({ cables, recipes: [row] }).split('\r\n')[1];
+    assert.match(exported, /^"Джгути";"Нитка";/);
+    assert.doesNotMatch(exported, /^"Джгути";"1";/);
+  }
+});
 
 test('a fresh offline installation carries real public numeric calibration and reproduces the live H07 curve', t => {
   globals(t, { localStorage: storage() });

@@ -120,4 +120,15 @@ export const SOURCE_ANNOTATIONS = [
   ['IMG_3843.JPG','ПВС / ШВВП',6,'Незавершений рядок','2,1 / 3,4 / 1,97','Повторює числа 2,5 мм²; не вважається перевіреним рецептом 6 мм².'],
 ];
 
+// Operator-defined products are independent of the photographed conductor
+// specifications. The numeric section is only an internal recipe slot; thread
+// has no confirmed metallic cross-section or operating settings.
+export const VIRTUAL_CARDS = [{
+  id: 'thread-bundle', label: 'Джгути', coreKind: 'thread', source: null, cableIds: [],
+  notes: ['Замість жили — нитка.'],
+  rows: rows([[1]]),
+}];
+
+export const ALL_CARDS = [...REFERENCE_CARDS, ...VIRTUAL_CARDS];
+
 export function referenceFor(cableId) { return REFERENCE_CARDS.filter(card => card.cableIds.includes(cableId)); }

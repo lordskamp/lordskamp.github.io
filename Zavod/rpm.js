@@ -1,4 +1,4 @@
-import { number, positive, limitPredictedExtruder2 } from './core.js?v=21';
+import { number, positive, limitPredictedExtruder2 } from './core.js?v=23';
 import { TRIAL_LIMIT, OPERATOR_REFERENCE, OPERATOR_HANDWRITTEN } from './operator-data.js';
 import { referenceFor } from './reference-data.js';
 

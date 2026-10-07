@@ -167,6 +167,61 @@ test('a cable present only in the printed catalogue can receive its first owner 
   assert.equal((await call('/admin/measurements', authenticated(measurement({ baseId: option.id + '-invalid' })))).status, 400);
   assert.equal((await call('/admin/measurements', authenticated(measurement({ optionId: option.id })))).status, 400);
 });
+test('thread bundles accept their own single and dual measurements without metallic dimensions or donors', async t => {
+  const { call, db } = fixture(); t.after(() => db.close());
+  const option = CATALOG_OPTIONS.find(row => row.id === 'thread-bundle'), base = baseFor(option.id, 1);
+  const initial = (await call('/catalog')).data;
+  const originalMetalRecipes = initial.recipes;
+  const originalMetalSetup = setupFor('h07v-k--h07v-k', 4, initial, 'blue').effective;
+  assert.equal(initial.cables.at(-1).id, option.id);
+  assert.equal(initial.cables.at(-1).coreKind, 'thread');
+  for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
+    const empty = setupFor(option.id, 1, initial, color);
+    assert.equal(empty.mode, 'unknown');
+    for (const key of ['extruder1', 'extruder2', 'workingSpeed', 'dorn', 'matrix', 'sikoraWire', 'sikoraOuter']) assert.equal(empty.effective[key], null);
+  }
+  const single = measurement({ baseId: base.id, optionId: option.id, color: 'all', mode: 'single', extruder1: 40, extruder2: null,
+    maxSpeed: 100, dorn: null, matrix: null, sikoraWire: null, sikoraOuter: null, note: 'THREAD_PRIVATE_NOTE' });
+  const savedSingle = await call('/admin/measurements', authenticated(single));
+  assert.equal(savedSingle.status, 200);
+  assert.equal(savedSingle.data.measurement.optionId, option.id);
+  assert.equal(savedSingle.data.measurement.cableId, option.id);
+  const appliedSingle = await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(single)), authenticated({ measurementId: single.id, expectedRevision: 0 }, 'PUT'));
+  assert.equal(appliedSingle.status, 200);
+  assert.equal(appliedSingle.data.recipe.source, null);
+  const singleCatalog = (await call('/catalog')).data;
+  for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
+    const info = setupFor(option.id, 1, singleCatalog, color);
+    assert.equal(info.mode, 'single');
+    assert.deepEqual([info.effective.extruder1, info.effective.extruder2, info.effective.workingSpeed], [40, null, 100]);
+    assert.equal(info.sources.extruder1, 'practical');
+    for (const key of ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter']) assert.equal(info.effective[key], null);
+  }
+  const dual = { ...single, id: randomUUID(), mode: 'dual', extruder1: 45, extruder2: 70, maxSpeed: 120 };
+  assert.equal((await call('/admin/measurements', authenticated(dual))).status, 200);
+  assert.equal((await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(dual)), authenticated({ measurementId: dual.id, expectedRevision: 0 }, 'PUT'))).status, 200);
+  const catalog = (await call('/catalog')).data;
+  assert.deepEqual(catalog.recipes.filter(row => row.optionId !== option.id), originalMetalRecipes);
+  assert.deepEqual(setupFor('h07v-k--h07v-k', 4, catalog, 'blue').effective, originalMetalSetup);
+  assert.equal(catalog.calibrations.filter(row => row.optionId === option.id).length, 2);
+  assert.equal(JSON.stringify(catalog).includes('THREAD_PRIVATE_NOTE'), false);
+  for (const [mode, expected] of [['single', [40, null, 100]], ['dual', [45, 70, 120]]]) {
+    const published = catalog.recipes.find(row => row.id === measurementRecipeId(mode === 'single' ? single : dual));
+    assert.equal(published.mode, mode);
+    assert.equal(published.origin, 'measurement');
+    assert.equal(published.optionId, option.id);
+    for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
+      const info = setupFor(option.id, 1, catalog, color, { mode });
+      assert.equal(info.mode, mode);
+      assert.deepEqual([info.effective.extruder1, info.effective.extruder2, info.effective.workingSpeed], expected);
+      assert.equal(info.sources.extruder1, 'practical');
+      assert.equal(info.forecast.borrowedFrom.length, 0);
+    }
+  }
+  const invalidSection = { ...single, id: randomUUID(), baseId: 'thread-bundle-2-5' };
+  assert.equal((await call('/admin/measurements', authenticated(invalidSection))).status, 400);
+});
+
 test('PV3 single and yellow-green measurements persist independently and retain unused original anchors', async t => {
   const { call, db } = fixture(); t.after(() => db.close());
   const option = CATALOG_OPTIONS.find(row => row.practicalCableId === 'pv3'), base = baseFor(option.id, .75);
@@ -302,9 +357,11 @@ test('Every saved calibration is public and newer partial measurements preserve 
   const recipeId = measurementRecipeId(first), path = '/admin/recipes/' + recipeId;
   for (const [row, revision] of [[first, 0], [partial, 1]]) {
     await call('/admin/measurements', authenticated(row));
+    db.prepare('UPDATE measurements SET created_at = ? WHERE id = ?').run(`2026-10-01T10:00:0${revision}.000Z`, row.id);
     await call(path, authenticated({ measurementId: row.id, expectedRevision: revision }, 'PUT'));
   }
   await call('/admin/measurements', authenticated(draft));
+  db.prepare('UPDATE measurements SET created_at = ? WHERE id = ?').run('2026-10-01T10:00:02.000Z', draft.id);
   let catalogue = (await call('/catalog')).data;
   assert.equal(catalogue.calibrations.length, 3);
   assert.equal(catalogue.calibrations.find(row => row.measurementId === first.id).maxSpeed, 800);

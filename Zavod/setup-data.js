@@ -1,9 +1,9 @@
-import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=21';
+import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=23';
 import { RECIPES } from './data.js';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=21';
-import { forecastFor } from './forecast.js?v=21';
-import { number, firstSpeed, secondSpeed, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=21';
-import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=21';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=23';
+import { forecastFor } from './forecast.js?v=23';
+import { number, firstSpeed, secondSpeed, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=23';
+import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=23';
 
 export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю' };
 const metric = row => ({

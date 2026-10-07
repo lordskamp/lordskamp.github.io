@@ -1,8 +1,8 @@
 import { RECIPES } from './data.js';
-import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=21';
-import { CATALOG_OPTIONS } from './catalog-options.js?v=21';
-import { REFERENCE_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=21';
-import { operatingRecords } from './pv3-modes.js?v=21';
+import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=23';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=23';
+import { ALL_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=23';
+import { operatingRecords } from './pv3-modes.js?v=23';
 
 const HANDWRITTEN = {
   'pvs-380': ['pvs-shvvp'], 'vvg-066': ['vvg'], 'vvg-p-066': ['vvgng-p'],
@@ -16,7 +16,7 @@ const positive = value => typeof value === 'number' && Number.isFinite(value) &&
 const valid = (key, value) => typeof value === 'number' && Number.isFinite(value) && (key.startsWith('colorLead') ? value >= 0 : value > 0);
 const valueFor = (record, key) => record[key === 'workingSpeed' ? 'maxSpeed' : key];
 const optionById = id => CATALOG_OPTIONS.find(option => option.id === id);
-const cardById = id => REFERENCE_CARDS.find(card => card.id === id);
+const cardById = id => ALL_CARDS.find(card => card.id === id);
 const defaultOption = card => CATALOG_OPTIONS.find(option => option.cardId === card.id && option.practicalCableId === HANDWRITTEN[card.id]?.[0])
   ?? CATALOG_OPTIONS.find(option => option.cardId === card.id && option.brand.toLowerCase() === card.id)
   ?? CATALOG_OPTIONS.find(option => option.cardId === card.id);
@@ -73,6 +73,7 @@ function recordCard(record) { return cardById(recordOption(record)?.cardId); }
 
 function similarity(target, source) {
   if (!source) return 0;
+  if ((target.coreKind ?? 'metal') !== (source.coreKind ?? 'metal')) return 0;
   if (flat(source)) return flat(target) ? 1.5 : 0;
   if (target.id === source.id) return 1.5;
   // The class/shape are documented in the manufacturer cards. ПВ3 has class
@@ -318,6 +319,34 @@ function empty(mode, reason) {
     confidence: 'low', fieldMethods: {}, fieldConfidence: {}, anchors: [], fieldAnchors: {}, borrowedFrom: [], speed1: null, speed2: null };
 }
 
+// A thread recipe has no cross-section feature or compatible metallic donor.
+// Only the operator's own, mode-matched values may establish its settings.
+function threadForecast(records, row, mode) {
+  const result = empty(mode, 'Додайте практичний замір для джгутів.');
+  const used = new Map();
+  for (const key of FIELDS) {
+    const geometry = GEOMETRY.includes(key);
+    if (key === 'extruder2' && mode === 'single') continue;
+    const candidates = records.filter(record => record.origin === 'measurement'
+      && (record.mode === mode && (geometry || ['single', 'dual'].includes(mode)) || geometry && record.mode === 'unknown'));
+    const record = fieldAnchors(candidates, key).find(record => record.section === row.section);
+    if (!record) continue;
+    result[key] = valueFor(record, key);
+    result.fieldMethods[key] = 'measured-value'; result.fieldConfidence[key] = 'high';
+    result.fieldAnchors[key] = [{ section: record.section, value: valueFor(record, key), source: record.source,
+      optionId: record.optionId ?? null, measurementId: record.measurementId ?? record.id }];
+    used.set(record.measurementId ?? record.id, record);
+  }
+  if (used.size) {
+    result.method = 'interpolation'; result.rpmMethod = 'measured-values';
+    result.confidence = 'high'; result.reason = null;
+    result.anchors = [...used.values()].map(record => ({ section: record.section, source: record.source,
+      optionId: record.optionId ?? null, extruder1: record.extruder1, extruder2: record.extruder2, workingSpeed: record.maxSpeed }));
+  }
+  result.speed1 = firstSpeed(result.workingSpeed); result.speed2 = secondSpeed(result.workingSpeed);
+  return result;
+}
+
 /**
  * Actual numeric measurements are the only operating training data. Interior
  * values interpolate per field; outside the measured range, main RPM follows
@@ -341,6 +370,7 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
   const ownRecords = records.filter(own);
   const latest = [...ownRecords].filter(record => ['single', 'dual'].includes(record.mode)).sort((a, b) => newer(a, b) ? -1 : newer(b, a) ? 1 : 0)[0];
   let mode = ['single', 'dual'].includes(options.mode) ? options.mode : latest?.mode ?? option?.mode ?? 'unknown';
+  if (card.coreKind === 'thread') return threadForecast(ownRecords, row, mode);
   let inferredMode = false;
   if (!['single', 'dual'].includes(mode)) {
     const nearestFamily = groupsFor(records, card, own).filter(group => ['single', 'dual'].includes(group.records[0]?.mode))

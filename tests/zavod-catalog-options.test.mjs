@@ -1,19 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CATALOG_OPTIONS, catalogOption } from '../Zavod/catalog-options.js';
-import { REFERENCE_CARDS } from '../Zavod/reference-data.js';
+import { REFERENCE_CARDS, VIRTUAL_CARDS } from '../Zavod/reference-data.js';
+import { baseFor, referenceCard } from '../Zavod/catalog-base.js';
 
 test('каталог містить усі довідкові карти й рядки, навіть без практичних записів', () => {
-  assert.equal(CATALOG_OPTIONS.length, 70);
-  assert.equal(new Set(CATALOG_OPTIONS.map(option => option.id)).size, 70);
-  assert.equal(new Set(CATALOG_OPTIONS.map(option => option.cardId)).size, 22);
-  const covered = new Set(CATALOG_OPTIONS.flatMap(option => option.sections.map(section => `${option.cardId}:${section}`)));
+  const printed = CATALOG_OPTIONS.filter(option => option.coreKind !== 'thread');
+  assert.equal(printed.length, 70);
+  assert.equal(new Set(CATALOG_OPTIONS.map(option => option.id)).size, 71);
+  assert.equal(new Set(printed.map(option => option.cardId)).size, 22);
+  const covered = new Set(printed.flatMap(option => option.sections.map(section => `${option.cardId}:${section}`)));
   assert.equal(covered.size, 122);
   for (const card of REFERENCE_CARDS) {
     for (const row of card.rows) assert(covered.has(`${card.id}:${row.section}`), `${card.label}: ${row.section}`);
   }
-  assert(CATALOG_OPTIONS.every(option => /^[a-z0-9-]+--[a-z0-9-]+$/.test(option.id)));
+  assert(printed.every(option => /^[a-z0-9-]+--[a-z0-9-]+$/.test(option.id)));
   assert.equal(catalogOption('missing-option'), null);
+});
+
+test('Джгути are last and retain a separate thread recipe without invented source or dimensions', () => {
+  const thread = catalogOption('thread-bundle');
+  assert.equal(CATALOG_OPTIONS.at(-1), thread);
+  assert.equal(thread.label, 'Джгути');
+  assert.equal(thread.coreKind, 'thread');
+  assert.equal(thread.mode, 'unknown');
+  assert.equal(thread.practicalCableId, null);
+  assert.deepEqual(referenceCard(thread), VIRTUAL_CARDS[0]);
+  assert.equal(referenceCard(thread).source, null);
+  assert.equal(REFERENCE_CARDS.flatMap(card => card.rows).length, 122);
+  const base = baseFor(thread.id, thread.sections[0]);
+  assert(base, 'the shared API catalog can validate a thread measurement');
+  for (const key of ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'extruder1', 'extruder2', 'maxSpeed']) assert.equal(base[key], null);
+  assert.equal(baseFor(thread.id, 2.5), null);
 });
 
 test('H05 і H07 мають окремі перерізи за довідковою картою', () => {

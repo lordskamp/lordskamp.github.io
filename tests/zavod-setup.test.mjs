@@ -284,7 +284,7 @@ test('table includes every reference row with one entry per extruder mode', () =
 
 test('every selectable cable, section and production color has sourced values for all applicable fields', () => {
   const records = catalog();
-  for (const option of CATALOG_OPTIONS) for (const section of option.sections) for (const color of ['blue','black','yellow-green']) {
+  for (const option of CATALOG_OPTIONS.filter(option => option.coreKind !== 'thread')) for (const section of option.sections) for (const color of ['blue','black','yellow-green']) {
     const result = setupFor(option.id,section,records,color);
     assert(['single','dual'].includes(result.mode),`${option.id} ${section}: mode`);
     for (const key of ['extruder1','extruder2','workingSpeed','sikoraWire','sikoraOuter','dorn','matrix']) {
