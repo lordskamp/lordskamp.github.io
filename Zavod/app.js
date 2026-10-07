@@ -225,7 +225,7 @@ async function syncCatalog(notify = false) {
     if (notify) toast('Немає зв’язку. Показано збережені значення.');
     return false;
   } finally {
-    syncing = false; renderSetup(); if (view === 'table') renderTable(); if (view === 'plan') renderPlan();
+    syncing = false; renderSetup(); if (view === 'table') renderTable(); if (view === 'plan') renderPlan(); if (formReady) updateMeasurementHints();
   }
 }
 
@@ -341,7 +341,7 @@ function fillMeasurement(row, revision) {
     const heading = key === 'colorLead1' && !isThread(option.id) ? '<div class="measurement-color-heading"><h3>Зміна барвника</h3></div>' : '';
     const rpm = key.startsWith('extruder');
     const title = rpm ? `№${key.at(-1)}` : lead ? `№${key.at(-1)} — за, м` : label;
-    return `${heading}<label${key === 'maxSpeed' ? ' class="measurement-speed"' : isThread(option.id) && key === 'extruder1' ? ' class="measurement-rpm-single"' : ''}${isThread(option.id) && (key.startsWith('sikora') || lead || key === 'extruder2') ? ' hidden' : ''}>${rpm ? `<span data-rpm-label="${key}">${esc(title)}</span>` : esc(title)}<input name="${key}" inputmode="${rpm ? 'text' : lead ? 'numeric' : 'decimal'}"${rpm ? ' aria-describedby="measurement-rpm-help"' : ''}${isThread(option.id) && ['extruder2','dorn','matrix'].includes(key) ? ' readonly' : ''} autocomplete="off" value="${row[key] == null ? key === 'extruder2' && row.mode === 'single' ? '0' : '' : esc(row[key])}" placeholder="${rpm ? key === 'extruder2' ? '0 або 53,7/72,2' : '75' : 'Не записано'}" maxlength="${rpm ? 25 : 12}"></label>`;
+    return `${heading}<label${key === 'maxSpeed' ? ' class="measurement-speed"' : isThread(option.id) && key === 'extruder1' ? ' class="measurement-rpm-single"' : ''}${isThread(option.id) && (key.startsWith('sikora') || lead || key === 'extruder2') ? ' hidden' : ''}>${rpm ? `<span data-rpm-label="${key}">${esc(title)}</span>` : esc(title)}<input name="${key}" inputmode="${rpm ? 'text' : lead ? 'numeric' : 'decimal'}"${rpm ? ' aria-describedby="measurement-rpm-help"' : ''}${isThread(option.id) && ['extruder2','dorn','matrix'].includes(key) ? ' readonly' : ''} autocomplete="off" value="${row[key] == null ? key === 'extruder2' && row.mode === 'single' ? '0' : '' : esc(row[key])}" maxlength="${rpm ? 25 : 12}"></label>`;
   }).join('');
   updateMeasurementControls();
   $('measure-note').value = row.note || '';
@@ -374,6 +374,22 @@ function updateMeasurementControls() {
   }
   const input = form.elements.namedItem('colorLead2');
   if (input) input.disabled = mode === 'single';
+  updateMeasurementHints();
+}
+function updateMeasurementHints() {
+  const base = selectedBase(), form = $('measurement-form');
+  if (!base || !form.elements.namedItem('extruder1')) return;
+  const optionId = $('measure-cable').value;
+  const mode = inferMeasurementMode({ optionId, extruder1: form.elements.namedItem('extruder1').value, extruder2: form.elements.namedItem('extruder2').value });
+  const info = setupFor(optionId, base.section, catalog, state.color, { mode, finalDiameter: $('measure-final-diameter').value });
+  for (const [key] of FIELDS) {
+    const input = form.elements.namedItem(key);
+    if (!input) continue;
+    const field = key === 'maxSpeed' ? 'workingSpeed' : key;
+    const off = info.mode === 'single' && ['extruder2', 'colorLead2'].includes(key);
+    const value = off ? key === 'extruder2' ? 0 : null : info.forecast[field] ?? info.effective[field];
+    input.placeholder = value == null || value === '' ? '' : value === 0 ? '0' : `≈ ${typeof value === 'number' ? fmt(value, 3) : value}`;
+  }
 }
 function loadSelectedMeasurement(mode, restoreDraft = false) {
   const optionId = $('measure-cable').value;
