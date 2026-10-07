@@ -1,5 +1,5 @@
-import { REFERENCE_CARDS } from './reference-data.js?v=23';
-import { supportsSingleColorMode } from './pv3-modes.js?v=23';
+import { REFERENCE_CARDS } from './reference-data.js?v=24';
+import { supportsSingleColorMode } from './pv3-modes.js?v=24';
 
 // Names are the brands in the printed tables. A missing practicalCableId means
 // that no handwritten operating recipe has been established for this brand.

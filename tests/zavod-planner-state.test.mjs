@@ -4,6 +4,7 @@ import test from 'node:test';
 import { CATALOG_CABLES, optionFor } from '../Zavod/catalog-base.js';
 import { createPlannerUI, newJob, restorePlanner, syncPlannerSelection } from '../Zavod/plan-ui.js';
 import { DEFAULT_RULES } from '../Zavod/core.js';
+import { number } from '../Zavod/core.js';
 import { scheduleJobs } from '../Zavod/planner.js';
 import { setupFor } from '../Zavod/setup-data.js';
 
@@ -78,6 +79,19 @@ test('thread jobs follow the main selection, generate and restore without displa
   restorePlanner(structuredClone(state), restored);
   assert.deepEqual(restored.drums, state.drums);
   assert.deepEqual(restored.jobs, state.jobs);
+});
+
+test('thread task target diameter survives planning and local queue restoration', () => {
+  const task = newJob('thread-bundle', 1, { id: 'thread-size', finalDiameter: '2,5', lengthsText: '15' });
+  const scheduled = scheduleJobs([task]);
+  const saved = { ...initialState(), cableId: 'thread-bundle', section: 1, jobs: [task], planJobs: [task], drums: scheduled.drums };
+  const restored = initialState(); restorePlanner(saved, restored);
+  assert.equal(number(restored.jobs[0].finalDiameter), 2.5);
+  assert.equal(number(restored.planJobs[0].finalDiameter), 2.5);
+  assert(restored.drums.every(drum => number(drum.finalDiameter) === 2.5));
+  const regenerated = scheduleJobs(restored.jobs, restored.drums);
+  assert.deepEqual(regenerated.errors, []);
+  assert(regenerated.drums.every(drum => drum.finalDiameter === 2.5));
 });
 
 test('multiplication notation updates while editing without moving the caret and survives reload', () => {

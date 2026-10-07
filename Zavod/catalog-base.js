@@ -1,7 +1,7 @@
-import { CATALOG_OPTIONS } from './catalog-options.js?v=23';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=24';
 import { RECIPES } from './data.js';
-import { ALL_CARDS } from './reference-data.js?v=23';
-import { hasPv3Modes, pv3Recipe, modeFor } from './pv3-modes.js?v=23';
+import { ALL_CARDS } from './reference-data.js?v=24';
+import { hasPv3Modes, pv3Recipe, modeFor } from './pv3-modes.js?v=24';
 
 export { CATALOG_OPTIONS };
 export const CATALOG_CABLES = CATALOG_OPTIONS;

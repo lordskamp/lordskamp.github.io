@@ -1,14 +1,14 @@
-import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=23';
-import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=23';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=23';
-import { drumStatus } from './planner.js?v=23';
+import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=24';
+import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=24';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=24';
+import { drumStatus } from './planner.js?v=24';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
-import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=23';
-import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=23';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=23';
-import { initSplicePlanner } from './splice-ui.js?v=23';
-import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=23';
-import { SPEED_STORAGE, speedKey, speedLimit, speedSetup } from './speed-override.js?v=23';
+import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=24';
+import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=24';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=24';
+import { initSplicePlanner } from './splice-ui.js?v=24';
+import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=24';
+import { SPEED_STORAGE, speedKey, speedLimit, speedSetup } from './speed-override.js?v=24';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -29,12 +29,13 @@ const colorOptions = selected => COLORS.map(row => `<option value="${row.id}" ${
 const sectionOptions = id => CABLES.find(row => row.id === id).sections.map(value => `<option value="${value}">${isThread(id) ? 'Нитка' : fmt(value)}</option>`).join('');
 
 function restore() {
-  const state = { version: 1, cableId: optionFor('vvgng-p').id, section: 1.5, color: 'blue', rules: { ...DEFAULT_RULES }, overrides: {}, currentTarget: '15000', drums: ['blue', 'brown', 'yellow-green'].map((color, i) => ({ id: `drum-${i}`, color, length: '15000', name: '', breakdowns: '' })) };
+  const state = { version: 1, cableId: optionFor('vvgng-p').id, section: 1.5, color: 'blue', finalDiameter: '', rules: { ...DEFAULT_RULES }, overrides: {}, currentTarget: '15000', drums: ['blue', 'brown', 'yellow-green'].map((color, i) => ({ id: `drum-${i}`, color, length: '15000', name: '', breakdowns: '' })) };
   const saved = read(STORAGE);
   if (saved?.version !== 1) { restorePlanner(null, state); return state; }
   const cable = optionFor(saved.cableId);
   if (cable) { state.cableId = cable.id; state.section = cable.sections.includes(saved.section) ? saved.section : cable.sections[0]; }
   if (COLORS.some(row => row.id === saved.color)) state.color = saved.color;
+  state.finalDiameter = String(saved.finalDiameter ?? '').slice(0, 12);
   for (const [key] of RULES) if (Number.isInteger(number(saved.rules?.[key])) && number(saved.rules[key]) >= 0) state.rules[key] = number(saved.rules[key]);
   if (saved.overrides && typeof saved.overrides === 'object') state.overrides = saved.overrides;
   if (typeof saved.currentTarget === 'string') state.currentTarget = saved.currentTarget.slice(0, 20);
@@ -65,6 +66,7 @@ function toast(message) { $('toast').textContent = message; $('toast').hidden = 
 initSplicePlanner({ toast, initialDraft: read(STORAGE)?.splicePlan });
 const planner = createPlannerUI({ state, getSetup: localSetup, persist, toast, haptic, onCableInfo: drum => {
   state.cableId = drum.cableId; state.section = drum.section; state.color = drum.color;
+  if (isThread(drum.cableId)) state.finalDiameter = String(drum.finalDiameter ?? '');
   setupFromPlan = true; persist(); renderSelectors(); showView('setup');
 } });
 
@@ -87,6 +89,8 @@ function renderSelectors() {
   $('cable').innerHTML = cableOptions(); $('cable').value = state.cableId;
   $('section').innerHTML = sectionOptions(state.cableId); $('section').value = String(state.section);
   $('section').closest('label').hidden = isThread(state.cableId);
+  $('thread-diameter-picker').hidden = !isThread(state.cableId);
+  $('thread-final-diameter').value = state.finalDiameter;
   $('color').innerHTML = colorOptions(state.color);
 }
 function renderSetup() {
@@ -103,14 +107,14 @@ function renderSetup() {
   const sikoraOffset = matrix !== null && outer !== null ? Math.round((outer - matrix) * 100) / 100 : null;
   const sikoraGuide = sikoraOffset !== null
     ? `${info.sources.sikoraOuter === 'practical' ? 'За заміром' : 'Орієнтир'}: матриця ${sikoraOffset < 0 ? '−' : '+'} ${fmt(Math.abs(sikoraOffset))} мм`
-    : thread ? 'Замість жили — нитка.' : typeof info.effective.matrix === 'string' ? 'Парні розміри наведено за довідкою.' : 'Середня поправка для 2,5 мм²: +0,15 мм; для тонших жил — менша.';
+    : typeof info.effective.matrix === 'string' ? 'Парні розміри наведено за довідкою.' : 'Середня поправка для 2,5 мм²: +0,15 мм; для тонших жил — менша.';
   $('values').innerHTML = `<section class="production"><h1>Оберти шнека <span>об/хв</span></h1>
       <div class="pair extruders">
         <div class="extruder ${r.mode === 'dual' ? dyes?.first === 'Біла основа' ? 'base-white' : dyes?.first === 'Жовтий' ? 'base-yellow' : '' : ''}"><span>Екструдер №1</span>${value('extruder1')}</div>
         <div class="extruder ${r.mode === 'single' ? 'is-off' : ''}"><span>Екструдер №2</span>${r.mode === 'single' ? `<span class="off-icon" aria-hidden="true">⏻</span><strong class="off">Вимкнено</strong>${extra({ label: VALUE_LABELS.reference, value: info.reference.extruder2 })}` : value('extruder2')}</div>
       </div>${info.forecast.reason && info.effective.extruder1 == null ? '<p class="rpm-help">Прогнозу ще немає — потрібен практичний замір.</p>' : ''}</section>
-    <section class="card readings"><h2>SIKORA <small>мм</small></h2><div class="pair"><div><span>1 · Діаметр ${thread ? 'нитки' : 'жили'}</span>${value('sikoraWire')}</div><div><span>2 · З ізоляцією</span>${value('sikoraOuter')}</div></div><p class="reference">${esc(sikoraGuide)}</p>
-      <details class="sikora-help"><summary>Які це діаметри?</summary>${thread ? '<p>Перше число — діаметр нитки, друге — діаметр з ізоляцією. Значення беруться з практичних замірів джгутів.</p>' : '<p>Перше число — фактичний діаметр жили. Друге у записах — діаметр з ізоляцією. Номінальний діаметр із довідки показано окремо; він не підставляється замість налаштування SIKORA.</p><p>На <a class="source-link" href="./Screen.JPG">фото головного екрана</a> є «Гор. Ø» і окреме поле «Допуск». Це інша пара полів. Допуск у записах не вказаний.</p><p>За твоїми замірами середня поправка до матриці для 2,5 мм² — близько +0,15 мм, для тоншої жили менша. Без практичного значення прогноз враховує вибрану матрицю, переріз і доступні заміри.</p>'}</details></section>
+    ${thread ? '' : `<section class="card readings"><h2>SIKORA <small>мм</small></h2><div class="pair"><div><span>1 · Діаметр жили</span>${value('sikoraWire')}</div><div><span>2 · З ізоляцією</span>${value('sikoraOuter')}</div></div><p class="reference">${esc(sikoraGuide)}</p>
+      <details class="sikora-help"><summary>Які це діаметри?</summary><p>Перше число — фактичний діаметр жили. Друге у записах — діаметр з ізоляцією. Номінальний діаметр із довідки показано окремо; він не підставляється замість налаштування SIKORA.</p><p>На <a class="source-link" href="./Screen.JPG">фото головного екрана</a> є «Гор. Ø» і окреме поле «Допуск». Це інша пара полів. Допуск у записах не вказаний.</p><p>За твоїми замірами середня поправка до матриці для 2,5 мм² — близько +0,15 мм, для тоншої жили менша. Без практичного значення прогноз враховує вибрану матрицю, переріз і доступні заміри.</p></details></section>`}
     <section class="card tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн</span><div class="tool-values">${value('dorn')}</div></div><div><img src="./MATRIX.svg" alt=""><span>Матриця</span><div class="tool-values">${value('matrix')}</div></div><small>мм</small></section>
     <section class="card speeds"><h2>Швидкості <small>м/хв</small></h2><div class="speed-stages"><div><span>1 · Запуск</span><strong>${fmt(speeds.first)}</strong><small>40 або 80</small></div><div><span>2 · Проміжна</span><strong>${fmt(speeds.second)}</strong><small>Між запуском і робочою</small></div><div><span>3 · Робоча</span><button type="button" id="edit-working-speed" class="speed-edit" aria-label="Змінити робочу швидкість"><strong>${fmt(speeds.working)}</strong><span aria-hidden="true">✎</span></button><small>${speeds.source === 'manual' ? 'Твоя швидкість' : VALUE_LABELS[speeds.source] ?? 'Ще не визначено'} · змінити</small></div></div>${info.manualSpeed ? '' : metricValues(info, 'workingSpeed').slice(1).filter(item => item.value != null).map(item => `<p class="speed-extra">${esc(item.label)}: <b>${item.confirmed ? 'підтверджено' : fmt(item.value) + ' м/хв'}</b></p>`).join('')}</section>
     ${r.mode === 'dual' ? '<p class="quiet forecast-note">Спільні налаштування для роботи двох екструдерів, незалежно від кольору.</p>' : ''}
@@ -164,7 +168,7 @@ function sourceContent(r) {
   const practicalDetails = [r.origin === 'measurement' ? 'адмінські заміри' : '', date(r.updatedAt), ...info.practicalSources.filter(Boolean).map(source => `<a class="source-link" href="./${esc(source)}">Фото запису</a>`)].filter(Boolean);
   const rpmConflict = info.rpmConflict ? `<p>У вихідних записах різниця обертів №2 і №1 — ${fmt(info.rpmConflict.difference)} об/хв, більше 40. Значення залишено за джерелом; варто уточнити цей запис.</p>` : '';
   const notes = r.origin === 'measurement' && !authorized ? [] : [...(r.notes || []), ...(r.uncertain || [])];
-  return `${info.card.source ? `<p>Довідкові · <a class="source-link" href="./${esc(info.card.source)}">Фото</a></p>` : '<p>Замість жили — нитка.</p>'}${Object.values(info.practical).some(value=>value!=null) ? `<p>Практичні${practicalDetails.length ? ' · ' + practicalDetails.join(' · ') : ''}</p>` : '<p>Практичні значення ще не визначено.</p>'}
+  return `${info.card.source ? `<p>Довідкові · <a class="source-link" href="./${esc(info.card.source)}">Фото</a></p>` : '<p>Замість жили — нитка. SIKORA не використовується; фінальний діаметр береться із завдання.</p>'}${Object.values(info.practical).some(value=>value!=null) ? `<p>Практичні${practicalDetails.length ? ' · ' + practicalDetails.join(' · ') : ''}</p>` : '<p>Практичні значення ще не визначено.</p>'}
     ${notes.map(note => `<p>${esc(note.replace(/максимальна швидкість/gi, 'робоча швидкість'))}</p>`).join('')}
     ${r.origin === 'measurement' && original && !thread ? `<details><summary>Початковий рукописний запис</summary>${numbersList(original)}${[...original.notes, ...original.uncertain].map(note => `<p>${esc(note)}</p>`).join('')}</details>` : ''}
     ${rpmConflict}${thread ? '' : forecastContent(info.forecast)}${annotations.length ? `<details><summary>Приписки на фото</summary>${annotations.map(([photo,brand,,label,value,note]) => `<p><b>${esc(brand)} · ${esc(label)}: ${display(value)}</b><br>${esc(note)} · <a class="source-link" href="./${esc(photo)}">Фото</a></p>`).join('')}</details>` : ''}${thread ? '' : `<details><summary>Примітки до довідкових карт</summary>${rowNotes.map(note => `<p>${esc(note)}</p>`).join('')}${references.map(card => `<p><b>${esc(info.option.label)}</b> · <a class="source-link" href="./${esc(card.source)}">Фото</a></p>${card.notes.map(note => `<p>${esc(note)}</p>`).join('')}`).join('')}</details>`}`;
@@ -227,7 +231,8 @@ function renderTable() {
   const rows = tableSetups(catalog, filter);
   $('table-count').textContent = `${isThread(filter) ? 'Налаштувань' : 'Перерізів'}: ${new Set(rows.map(info => `${info.option.id}:${info.row.section}`)).size}`;
   $('table-section-heading').textContent = isThread(filter) ? 'Основа' : 'мм²';
-  $('table-core-heading').innerHTML = `SIKORA<br>${isThread(filter) ? 'нитка' : 'жила'}, мм`;
+  $('table-core-heading').hidden = isThread(filter);
+  $('table-outer-heading').hidden = isThread(filter);
   $('table-body').innerHTML = rows.map(info => {
     const cell = key => {
       if (key === 'extruder2' && info.mode === 'single') return '<span class="table-value table-off">Вимк.</span>';
@@ -237,10 +242,10 @@ function renderTable() {
       return `<span class="table-value">${display(value)}</span>${VALUE_LABELS[source] ? `<small class="table-source" data-source="${source}">${esc(VALUE_LABELS[source])}</small>` : ''}`;
     };
     const stage = value => value == null ? '—' : `<span class="table-value">${fmt(value)}</span>${VALUE_LABELS[info.stages.source] ? `<small class="table-source" data-source="${info.stages.source}" title="Розраховано за робочою швидкістю">${esc(VALUE_LABELS[info.stages.source])}</small>` : ''}`;
-    return `<tr class="table-effective"><th scope="row">${esc(info.option.label)}<small class="table-mode">${info.mode === 'dual' ? '№1 + №2' : info.mode === 'single' ? 'Тільки №1' : 'Режим не визначено'}</small></th><td>${isThread(info.option.id) ? 'Нитка' : fmt(info.row.section)}</td><td>${cell('extruder1')}</td><td>${cell('extruder2')}</td>${['sikoraWire','sikoraOuter','dorn','matrix'].map(key=>`<td>${cell(key)}</td>`).join('')}<td>${stage(info.stages.first)}</td><td>${stage(info.stages.second)}</td><td>${cell('workingSpeed')}</td><td><button type="button" class="back" data-record="${esc(info.option.id)}|${info.row.section}|${info.mode}|${info.color || 'blue'}">${isThread(info.option.id) ? 'Пояснення' : 'Фото ↗'}</button></td></tr>`;
+    return `<tr class="table-effective"><th scope="row">${esc(info.option.label)}<small class="table-mode">${info.mode === 'dual' ? '№1 + №2' : info.mode === 'single' ? 'Тільки №1' : 'Режим не визначено'}</small></th><td>${isThread(info.option.id) ? 'Нитка' : fmt(info.row.section)}</td><td>${cell('extruder1')}</td><td>${cell('extruder2')}</td>${['sikoraWire','sikoraOuter','dorn','matrix'].map(key=>`<td${isThread(filter) && key.startsWith('sikora') ? ' hidden' : ''}>${isThread(info.option.id) && key.startsWith('sikora') ? '<span class="table-off">Не використ.</span>' : cell(key)}</td>`).join('')}<td>${stage(info.stages.first)}</td><td>${stage(info.stages.second)}</td><td>${cell('workingSpeed')}</td><td><button type="button" class="back" data-record="${esc(info.option.id)}|${info.row.section}|${info.mode}|${info.color || 'blue'}">${isThread(info.option.id) ? 'Пояснення' : 'Фото ↗'}</button></td></tr>`;
   }).join('');
 }
-function numbersList(row) { return `<dl class="numbers-list">${FIELDS.map(([key, label]) => `<div><dt>${esc(key === 'sikoraWire' && isThread(row.optionId || row.cableId) ? 'SIKORA: діаметр нитки, мм' : label)}</dt><dd>${key === 'extruder2' && row.mode === 'single' ? 'Вимк.' : fmt(row[key])}</dd></div>`).join('')}</dl>`; }
+function numbersList(row) { return `<dl class="numbers-list">${FIELDS.filter(([key]) => !isThread(row.optionId || row.cableId) || !key.startsWith('sikora')).map(([key, label]) => `<div><dt>${esc(label)}</dt><dd>${key === 'extruder2' && row.mode === 'single' ? 'Вимк.' : fmt(row[key])}</dd></div>`).join('')}</dl>`; }
 function openRecord(id) {
   const [optionId,section,mode,selectedColor = 'blue'] = id.split('|'), info = setupFor(optionId,Number(section),catalog, selectedColor, { mode }), row = { ...info.stored, mode: info.mode, optionId, color: selectedColor };
   const recipeId = recipeIdFor(info.base.id, 'all', optionId, mode);
@@ -262,7 +267,8 @@ async function copyPlan() {
   state.drums.forEach((drum, i) => {
     const result = planner.result(drum, i), info = planner.setup(drum), r = { mode: info.mode };
     const labeled = key => `${display(info.effective[key])} (${info.sources[key] === 'manual' ? 'орієнтовно · за твоєю швидкістю' : VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;
-    lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${planner.drumTitle(drum)} · ${colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв. Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}. Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — ${fmt(info.stages.first)}, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `Стан: ${drumStatus(drum) === 'done' ? 'готово' : drumStatus(drum) === 'active' ? 'в роботі' : 'у черзі'}. ${result.target > 0 ? `На екрані: ${fmt(result.target)} м.` : 'Завдання зупинки потребує уточнення.'}`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
+    const sikora = isThread(drum.cableId) ? '' : ` Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}.`;
+    lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${planner.drumTitle(drum)} · ${colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв.${sikora} Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — ${fmt(info.stages.first)}, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `Стан: ${drumStatus(drum) === 'done' ? 'готово' : drumStatus(drum) === 'active' ? 'в роботі' : 'у черзі'}. ${result.target > 0 ? `На екрані: ${fmt(result.target)} м.` : 'Завдання зупинки потребує уточнення.'}`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
     if (result.transition) lines.push('Стравити та перекинути вручну за потрібним кольором у 4-му рядку ванни.');
     if (result.setupChange) lines.push(planner.transitionText(drum, i));
     if (result.splice.spliceCount && !result.splice.errors.length) lines.push('На лейбл: ' + result.splice.label);
@@ -325,8 +331,8 @@ function fillMeasurement(row, revision) {
     const label = FIELDS.find(([field]) => field === key)[1], lead = key.startsWith('colorLead');
     const heading = key === 'colorLead1' ? '<div class="measurement-color-heading"><h3>Зміна барвника</h3></div>' : '';
     const rpm = key.startsWith('extruder');
-    const title = rpm ? `№${key.at(-1)}` : lead ? `№${key.at(-1)} — за, м` : key === 'sikoraWire' && isThread(option.id) ? 'SIKORA: нитка, мм' : label;
-    return `${heading}<label${key === 'maxSpeed' ? ' class="measurement-speed"' : ''}>${rpm ? `<span data-rpm-label="${key}">${esc(title)}</span>` : esc(title)}<input name="${key}" inputmode="${rpm ? 'text' : lead ? 'numeric' : 'decimal'}"${rpm ? ' aria-describedby="measurement-rpm-help"' : ''} autocomplete="off" value="${row[key] == null ? key === 'extruder2' && row.mode === 'single' ? '0' : '' : esc(row[key])}" placeholder="${rpm ? key === 'extruder2' ? '0 або 53,7/72,2' : '75' : 'Не записано'}" maxlength="${rpm ? 25 : 12}"></label>`;
+    const title = rpm ? `№${key.at(-1)}` : lead ? `№${key.at(-1)} — за, м` : label;
+    return `${heading}<label${key === 'maxSpeed' ? ' class="measurement-speed"' : ''}${isThread(option.id) && key.startsWith('sikora') ? ' hidden' : ''}>${rpm ? `<span data-rpm-label="${key}">${esc(title)}</span>` : esc(title)}<input name="${key}" inputmode="${rpm ? 'text' : lead ? 'numeric' : 'decimal'}"${rpm ? ' aria-describedby="measurement-rpm-help"' : ''} autocomplete="off" value="${row[key] == null ? key === 'extruder2' && row.mode === 'single' ? '0' : '' : esc(row[key])}" placeholder="${rpm ? key === 'extruder2' ? '0 або 53,7/72,2' : '75' : 'Не записано'}" maxlength="${rpm ? 25 : 12}"></label>`;
   }).join('');
   updateMeasurementControls();
   $('measure-note').value = row.note || '';
@@ -337,7 +343,7 @@ function fillMeasurement(row, revision) {
 }
 function formValues() {
   const values = { baseId: selectedBase().id, optionId: $('measure-cable').value, section: Number($('measure-section').value), color: 'all', note: $('measure-note').value };
-  for (const [key] of FIELDS) values[key] = $('measurement-form').elements.namedItem(key).value;
+  for (const [key] of FIELDS) values[key] = isThread(values.optionId) && key.startsWith('sikora') ? '' : $('measurement-form').elements.namedItem(key).value;
   values.mode = inferMeasurementMode(values);
   return values;
 }
@@ -497,6 +503,9 @@ document.addEventListener('click', event => {
     fillMeasurement({ ...row, ...(mode !== row.mode ? { extruder1: null, extruder2: null, maxSpeed: null } : {}), ...state.overrides[target.dataset.old], baseId: id, mode, color, note: 'Уточнення, збережене на цьому пристрої' });
     $('record-dialog').close(); saveDraft();
   }
+});
+$('thread-final-diameter').addEventListener('input', () => {
+  state.finalDiameter = $('thread-final-diameter').value; persist();
 });
 for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change', () => {
   if (id === 'cable') { state.cableId = $('cable').value; if (!CABLES.find(c => c.id === state.cableId).sections.includes(state.section)) state.section = CABLES.find(c => c.id === state.cableId).sections[0]; }

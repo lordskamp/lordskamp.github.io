@@ -21,6 +21,83 @@ const group = drums => drums.reduce((groups, drum) => {
   else groups.push({ color: drum.color, length: drum.length, count: 1 });
   return groups;
 }, []);
+const threadJob = overrides => job({ cableId: 'thread-bundle', section: 1, lengthsText: '15', ...overrides });
+
+test('thread final diameter from the task expands to all colours and remains an optional decimal millimetre value', () => {
+  for (const value of ['2,5', ' 2.50 ', 2.5, '.5', '0,5']) {
+    const result = expandJobs([threadJob({ finalDiameter: value })]);
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.drums.length, 3);
+    assert(result.drums.every(drum => drum.finalDiameter === Number(String(value).trim().replace(',', '.'))));
+  }
+  for (const finalDiameter of [undefined, null, '', '   ']) {
+    const result = scheduleJobs([threadJob({ finalDiameter })]);
+    assert.deepEqual(result.errors, []);
+    assert(result.drums.every(drum => drum.finalDiameter === null));
+    assert.equal(planSummary(result.drums, [threadJob({ finalDiameter })]).ready[0].finalDiameter, null);
+  }
+  const metal = expandJobs([job({ finalDiameter: 'not applicable' })]);
+  assert.deepEqual(metal.errors, []);
+  assert(metal.drums.every(drum => !Object.hasOwn(drum, 'finalDiameter')));
+});
+
+test('invalid nonempty final diameter never generates a partial thread plan', () => {
+  for (const finalDiameter of [0, -2.5, '0', '-2,5', 'wrong', '2,5,1', Infinity, NaN, 'Infinity', '1e2', '0x10', true, [], {}]) {
+    for (const operation of [expandJobs, scheduleJobs]) {
+      const result = operation([threadJob({ finalDiameter })]);
+      assert.deepEqual(result.drums, []);
+      assert(result.errors.some(error => error.includes('кінцевий діаметр джгута')), String(finalDiameter));
+    }
+  }
+});
+
+test('thread regeneration preserves completion for equal diameters and resets real diameter changes', () => {
+  const task = threadJob({ finalDiameter: '2,5' });
+  const saved = scheduleJobs([task]).drums.map((drum, index) => ({ ...drum, finalDiameter: '2,50', status: index === 0 ? 'active' : 'done',
+    name: `Б-${index}`, breakdowns: '6838' }));
+  const before = structuredClone(saved);
+  const same = scheduleJobs([{ ...task, finalDiameter: 2.5 }], saved);
+  assert.deepEqual(same.warnings, []);
+  for (const drum of same.drums) assert.equal(drum.status, saved.find(source => source.id === drum.id).status);
+  for (const diameter of [2.6, '', undefined]) {
+    const result = scheduleJobs([{ ...task, finalDiameter: diameter }], saved);
+    assert(result.drums.every(drum => drum.status === 'queued'));
+    assert(result.warnings.some(warning => warning.includes('кінцевим діаметром')));
+    for (const drum of result.drums) {
+      const original = saved.find(source => source.id === drum.id);
+      assert.equal(drum.name, original.name);
+      assert.equal(drum.breakdowns, original.breakdowns);
+    }
+  }
+  assert.deepEqual(saved, before);
+  const old = scheduleJobs([threadJob()]).drums.map(drum => { const legacy = { ...drum, status: 'done' }; delete legacy.finalDiameter; return legacy; });
+  assert(scheduleJobs([threadJob({ finalDiameter: '' })], old).drums.every(drum => drum.status === 'done'));
+  assert(scheduleJobs([threadJob({ finalDiameter: 2.5 })], old).drums.every(drum => drum.status === 'queued'));
+});
+
+test('thread readiness retains target diameter and excludes another or unrecorded diameter', () => {
+  const task = threadJob({ finalDiameter: '2,5' });
+  const original = scheduleJobs([task]).drums.map(drum => ({ ...drum, status: 'done', finalDiameter: '2.50' }));
+  for (const operation of [planSummary, productionSummary]) {
+    const complete = operation(original, [task]);
+    assert.equal(complete.ready[0].finalDiameter, 2.5);
+    assert.equal(complete.ready[0].readyMetres, 15000);
+    assert.equal(complete.ready[0].complete, true);
+    for (const finalDiameter of [2.6, null, undefined, '', 'bad']) {
+      const edited = original.map(drum => drum.color === 'blue' ? { ...drum, finalDiameter } : drum);
+      const summary = operation(edited, [task]);
+      assert.equal(summary.ready[0].readyMetres, 0, String(finalDiameter));
+      assert.equal(summary.ready[0].complete, false);
+      assert(summary.warnings.some(warning => warning.includes('кінцевий діаметр')));
+    }
+  }
+  const legacy = productionSummary(original);
+  assert.equal(legacy.ready[0].finalDiameter, 2.5);
+  assert.equal(legacy.ready[0].readyMetres, 15000);
+  const mixed = productionSummary(original.map(drum => drum.color === 'blue' ? { ...drum, finalDiameter: 3 } : drum));
+  assert.equal(mixed.ready[0].readyMetres, 0);
+  assert.equal(mixed.ready[0].complete, false);
+});
 
 test('kilometre notation expands repeats exactly for each decimal and separator style', () => {
   for (const text of ['3×15,0 + 3x15.0 + 11,0', '3х15,0; 3*15,0;11,0км', '3 × 15\n3 X 15\n11 km', '3×15\r\n3×15\r\n11']) {
