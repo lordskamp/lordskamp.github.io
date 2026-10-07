@@ -7,6 +7,7 @@ import worker, { verifyTelegram } from '../api/zavod-worker.js';
 import { baseline, findRecipe, csv } from '../Zavod/store.js';
 import { CATALOG_OPTIONS, baseFor, measurementColor, recipeIdFor } from '../Zavod/catalog-base.js';
 import { setupFor } from '../Zavod/setup-data.js';
+import { refreshPendingMeasurements } from '../Zavod/measurement-input.js';
 
 const TOKEN = 'test-bot-secret-only';
 const owner = { id: 100, username: 'Lordskamp' };
@@ -108,6 +109,35 @@ test('Apply shared dual mode, optimistic conflicts, legacy history link, seed re
   const fresh = await worker.fetch(new Request('https://test.invalid/catalog'), { ...env });
   assert.equal((await fresh.json()).recipes.find(row => row.id === measurementRecipeId(draft)).extruder1, 144);
 });
+test('retry of an old failed snapshot revalidates omitted fields before a fresh explicit save', async t => {
+  const option = CATALOG_OPTIONS.find(row => row.brand === 'H07V-K');
+  const base = baseFor(option.id, 4);
+  const entered = measurement({ baseId: base.id, optionId: option.id, section: 4, color: 'all', mode: 'dual', extruder1: 56, extruder2: 82, colorLead1: 300, colorLead2: 2000 });
+  const legacy = { ...entered }; delete legacy.colorLead1;
+  const { call, db } = fixture({ beforeManagement(legacyDb) {
+    legacyDb.prepare('INSERT INTO measurements(id, base_id, color, data, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(legacy.id, legacy.baseId, legacy.color, JSON.stringify(legacy), '2026-10-01T10:00:00.000Z', '100');
+  } }); t.after(() => db.close());
+  const pending = { entries: [{ mode: 'dual', id: legacy.id, expectedRevision: 0, recorded: true, published: false }] };
+  const retry = await call('/admin/measurements', authenticated({ ...entered, id: pending.entries[0].id }));
+  assert.equal(retry.status, 409);
+  assert.match(retry.data.error, /цим номером уже існує/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM measurements').get().n, 1);
+  assert.equal(JSON.parse(db.prepare('SELECT data FROM measurements WHERE id = ?').get(legacy.id).data).colorLead1, undefined);
+  pending.entries[0].conflict = true;
+  assert.equal(refreshPendingMeasurements(pending, { revisionFor: () => 0, createId: randomUUID }), 1);
+  const renewed = pending.entries[0]; assert.notEqual(renewed.id, legacy.id);
+  assert.equal(renewed.recorded, false);
+  assert.equal((await call('/admin/measurements', authenticated({ ...entered, id: renewed.id }))).status, 200);
+  const publish = authenticated({ measurementId: renewed.id, expectedRevision: renewed.expectedRevision }, 'PUT');
+  const result = await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(entered)), publish);
+  assert.equal(result.status, 200);
+  assert.deepEqual([result.data.recipe.extruder1, result.data.recipe.extruder2, result.data.recipe.colorLead1, result.data.recipe.colorLead2], [56, 82, 300, 2000]);
+  assert.equal((await call('/admin/measurements', authenticated({ ...entered, id: renewed.id }))).status, 200);
+  assert.equal((await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(entered)), publish)).status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM measurements').get().n, 2);
+});
+
 test('Partial measurements keep absent values null; unknown mode cannot be applied', async t => {
   const { call, db } = fixture(); t.after(() => db.close());
   const draft = measurement({ mode: 'unknown', extruder1: null });

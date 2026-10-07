@@ -388,10 +388,11 @@ async function saveMeasurement(event) {
       const entry = pendingSave.entries.find(row => row.mode === input.mode);
       if (entry.published) continue;
       activeEntry = entry;
-      if (!entry.recorded) {
-        await api('/admin/measurements', { method: 'POST', admin: true, body: { ...input, id: entry.id } });
-        entry.recorded = true; saveDraft();
-      }
+      // Recheck every unfinished snapshot, including retries recorded by an
+      // older API that may have omitted a newly supported field. This POST is
+      // idempotent; changed snapshots require explicit refresh and a new ID.
+      await api('/admin/measurements', { method: 'POST', admin: true, body: { ...input, id: entry.id } });
+      entry.recorded = true; saveDraft();
       const id = recipeIdFor(input.baseId, input.color, input.optionId, input.mode);
       const result = await api('/admin/recipes/' + encodeURIComponent(id), { method: 'PUT', admin: true, body: { measurementId: entry.id, expectedRevision: entry.expectedRevision } });
       catalog.recipes = [...catalog.recipes.filter(row => row.id !== result.recipe.id), result.recipe];
@@ -409,7 +410,10 @@ async function saveMeasurement(event) {
     if (error.status === 409 && activeEntry) { activeEntry.conflict = true; saveDraft(); }
     const recorded = pendingSave.entries.some(entry => entry.recorded), completed = pendingSave.entries.filter(entry => entry.published).length;
     if (recorded) await syncCatalog();
-    $('save-message').textContent = (completed ? 'Один режим збережено. Другий ще не завершено; введені значення залишилися у формі. ' : error.status !== 409 && recorded ? 'Замір уже доповнює практичні значення. Оновлення основного запису ще не підтверджено. ' : '') + (error.status === 409 ? 'Інший замір змінив цей режим. Онови таблицю, перевір свої значення та збережи їх як новий замір.' : error.message);
+    const conflictMessage = error.message === 'Запис із цим номером уже існує.'
+      ? 'Збережений раніше запис відрізняється від введених значень. Онови таблицю та збережи їх як новий замір; усі поля залишилися у формі.'
+      : 'Інший замір змінив цей режим. Онови таблицю, перевір свої значення та збережи їх як новий замір.';
+    $('save-message').textContent = (completed ? 'Один режим збережено. Другий ще не завершено; введені значення залишилися у формі. ' : error.status !== 409 && recorded ? 'Замір уже доповнює практичні значення. Оновлення основного запису ще не підтверджено. ' : '') + (error.status === 409 ? conflictMessage : error.message);
     $('refresh-measurement').hidden = !recorded && !activeEntry?.conflict;
     saveDraft(); haptic('error');
   } finally {
