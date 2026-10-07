@@ -23,7 +23,7 @@ test('Джгути are last and retain a separate thread recipe without invented
   assert.equal(CATALOG_OPTIONS.at(-1), thread);
   assert.equal(thread.label, 'Джгути');
   assert.equal(thread.coreKind, 'thread');
-  assert.equal(thread.mode, 'unknown');
+  assert.equal(thread.mode, 'single');
   assert.equal(thread.practicalCableId, null);
   assert.deepEqual(referenceCard(thread), VIRTUAL_CARDS[0]);
   assert.equal(referenceCard(thread).source, null);

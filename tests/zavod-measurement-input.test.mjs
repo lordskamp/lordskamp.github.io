@@ -13,6 +13,20 @@ test('decimal comma pairs are parsed in physical extruder order', () => {
   assert.deepEqual(parseExtruderInput('75'), { kind: 'number', value: 75 });
 });
 
+test('thread input carries its real final diameter in a fixed single, uncoloured measurement', () => {
+  const thread = input({ baseId: baseFor('thread-bundle', 1).id, optionId: 'thread-bundle', finalDiameter: '1,70', extruder1: '63,6', extruder2: '0', maxSpeed: '700' });
+  const [row] = measurementRecords(thread);
+  assert.equal(inferMeasurementMode(thread), 'single');
+  assert.deepEqual([row.finalDiameter, row.mode, row.extruder1, row.extruder2, row.maxSpeed, row.colorLead1, row.colorLead2], [1.7, 'single', 63.6, null, 700, null, null]);
+  assert.doesNotThrow(() => validateMeasurement({ ...row, id: '12345678-1234-1234-1234-123456789012' }));
+  for (const invalid of [undefined, '', '0', '-1', '1001', 'wrong']) assert.throws(() => measurementRecords({ ...thread, finalDiameter: invalid }), /діаметр/);
+  for (const invalid of [{ extruder2: '70' }, { extruder2: '50/70' }, { extruder1: '50/70', extruder2: '' }, { extruder1: '0' }, { colorLead1: '300' }, { colorLead2: '0' }, { color: 'blue' }]) assert.throws(() => measurementRecords({ ...thread, ...invalid }));
+  const [partial] = measurementRecords({ ...thread, extruder1: '', dorn: '.95', matrix: '1,9' });
+  assert.equal(partial.mode, 'single'); assert.equal(partial.extruder1, null); assert.equal(partial.finalDiameter, 1.7);
+  const [metal] = measurementRecords(input({ extruder1: '75', finalDiameter: '1,7' }));
+  assert.equal(metal.finalDiameter, undefined);
+});
+
 test('single value plus paired second field saves independent single and dual RPM', () => {
   const rows = measurementRecords(input({ extruder1: '75', extruder2: '53,7/72,2', maxSpeed: '150', matrix: '3,6', colorLead1: '300', colorLead2: '2000', note: 'Практичний замір' }));
   assert.deepEqual(rpm(rows), [{ mode: 'dual', extruder1: 53.7, extruder2: 72.2 }, { mode: 'single', extruder1: 75, extruder2: null }]);

@@ -70,7 +70,8 @@ export function colorName(id) {
   return COLORS.find(color => color.id === id)?.label ?? 'Колір не обрано';
 }
 
-export function dyePlan(color, mode) {
+export function dyePlan(color, mode, options = {}) {
+  if (options.noDye) return { first: 'Без барвника', second: 'Вимкнений', valid: true, note: 'Джгут — один екструдер, без барвника.' };
   if (!COLORS.some(item => item.id === color)) return null;
   if (mode === 'single') {
     if (color === 'yellow-green') return { first: 'Потрібне уточнення', second: 'Вимкнений', valid: false, note: 'Схему жовто-зеленого для одного екструдера не описано.' };
@@ -94,10 +95,12 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
     supplied(drum.cableId) && supplied(nextDrum.cableId) && drum.cableId !== nextDrum.cableId ||
     supplied(drum.section) && supplied(nextDrum.section) && (number(drum.section) ?? drum.section) !== (number(nextDrum.section) ?? nextDrum.section)
   ));
-  const headChange = Boolean(nextDrum && (drum.color === 'yellow-green') !== (nextDrum.color === 'yellow-green'));
+  const headChange = Boolean(nextDrum && (!drum.noDye && drum.color === 'yellow-green') !== (!nextDrum.noDye && nextDrum.color === 'yellow-green'));
   const modeChange = Boolean(nextDrum && supplied(drum.mode) && supplied(nextDrum.mode) && drum.mode !== nextDrum.mode);
-  const setupChange = cableChange || headChange || modeChange;
-  const changes = { setupChange, cableChange, headChange, modeChange };
+  const matrixChange = Boolean(nextDrum && drum.noDye && nextDrum.noDye && positive(drum.finalDiameter) !== null
+    && positive(nextDrum.finalDiameter) !== null && positive(drum.finalDiameter) !== positive(nextDrum.finalDiameter));
+  const setupChange = cableChange || headChange || modeChange || matrixChange;
+  const changes = { setupChange, cableChange, headChange, modeChange, matrixChange };
   const errors = [];
   for (const key of ['bath', 'reserve', 'lead1', 'lead2', 'splice']) {
     const value = number(rules[key]);
@@ -111,7 +114,7 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
 
   // A conductor change leaves the last bath length to finish. Color changes
   // on the same conductor keep the reserve, including a later head/mode stop.
-  const transition = Boolean(nextDrum && nextDrum.color !== drum.color && !cableChange);
+  const transition = Boolean(nextDrum && !drum.noDye && !nextDrum.noDye && nextDrum.color !== drum.color && !cableChange);
   const events = [];
   const warnings = [];
   let target = length;

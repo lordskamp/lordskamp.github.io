@@ -267,6 +267,54 @@ test('з одним екструдером звичайний колір под�
   assert.equal(dyePlan('brown', 'single').second, 'Вимкнений');
 });
 
+test('джгути працюють без барвника незалежно від старого кольору в черзі', () => {
+  const dyes = dyePlan('yellow-green', 'single', { noDye: true });
+  assert.equal(dyes.valid, true);
+  assert.equal(dyes.first, 'Без барвника');
+  assert.equal(dyes.second, 'Вимкнений');
+  for (const [currentColor, nextColor] of [['blue', 'brown'], ['yellow-green', 'blue'], ['blue', 'yellow-green']]) {
+    const current = Object.freeze({ ...drum(currentColor), cableId: 'thread-bundle', section: 1, noDye: true, mode: 'single' });
+    const next = Object.freeze({ ...drum(nextColor), cableId: 'thread-bundle', section: 1, noDye: true, mode: 'single' });
+    const result = planDrum(current, next, 'single');
+    assert.equal(result.target, 15000);
+    assert.equal(result.transition, false);
+    assert.equal(result.headChange, false);
+    assert.equal(result.setupChange, false);
+    assert.deepEqual(result.events, []);
+    assert.deepEqual(result.warnings, []);
+  }
+});
+
+test('зміна діаметра джгута потребує заміни матриці без запасу барвника чи зупинки за 150 м', () => {
+  const current = Object.freeze({ ...drum('blue'), cableId: 'thread-bundle', section: 1, finalDiameter: '1,5', noDye: true, mode: 'single' });
+  const next = Object.freeze({ ...drum('yellow-green'), cableId: 'thread-bundle', section: 1, finalDiameter: 1.7, noDye: true, mode: 'single' });
+  const result = planDrum(current, next, 'single');
+  assert.equal(result.matrixChange, true);
+  assert.equal(result.setupChange, true);
+  assert.equal(result.cableChange, false);
+  assert.equal(result.headChange, false);
+  assert.equal(result.transition, false);
+  assert.equal(result.target, 15000);
+  assert.deepEqual(result.events, []);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('перехід між джгутом та проводом зберігає зупинку на довжину ванни без стравлення кольору', () => {
+  const thread = Object.freeze({ ...drum('yellow-green'), cableId: 'thread-bundle', section: 1, noDye: true, mode: 'single' });
+  const metal = Object.freeze({ ...drum('yellow-green'), cableId: 'pv3', section: 1.5, mode: 'dual' });
+  for (const [current, next, mode] of [[thread, metal, 'single'], [metal, thread, 'dual']]) {
+    const result = planDrum(current, next, mode);
+    assert.equal(result.target, 14850);
+    assert.equal(result.cableChange, true);
+    assert.equal(result.headChange, true, 'the striped metal cable still needs its real splitter');
+    assert.equal(result.modeChange, true);
+    assert.equal(result.transition, false);
+    assert.deepEqual(result.events, []);
+    assert.deepEqual(result.errors, []);
+  }
+});
+
 test('невідомі кольори відхиляються до розрахунку переходу', () => {
   for (const [current, next] of [[drum(''), drum('brown')], [drum('blue'), drum('violet')]]) {
     const result = planDrum(current, next, 'dual');

@@ -1,8 +1,9 @@
-import { number } from './core.js?v=24';
+import { number } from './core.js?v=25';
 
 const NUMERIC_FIELDS = ['extruder1', 'extruder2', 'sikoraWire', 'sikoraOuter', 'dorn', 'matrix', 'maxSpeed', 'colorLead1', 'colorLead2'];
 const LABELS = { extruder1: 'Оберти №1', extruder2: 'Оберти №2', sikoraWire: 'Діаметр жили', sikoraOuter: 'Діаметр з ізоляцією', dorn: 'Дорн', matrix: 'Матриця', maxSpeed: 'Робоча швидкість', colorLead1: 'Зміна кольору №1', colorLead2: 'Зміна кольору №2' };
 const fail = message => { throw new Error(message); };
+const isThread = raw => raw.optionId === 'thread-bundle' || raw.cableId === 'thread-bundle' || raw.baseId === 'thread-bundle-1';
 
 export function parseExtruderInput(raw) {
   const text = String(raw ?? '').trim();
@@ -20,6 +21,7 @@ export function parseExtruderInput(raw) {
 
 /** RPM fields determine the working mode; legacy draft metadata cannot override them. */
 export function inferMeasurementMode(raw) {
+  if (isThread(raw)) return 'single';
   const parse = value => { try { return parseExtruderInput(value); } catch { return { kind: 'invalid' }; } };
   const first = parse(raw.extruder1), second = parse(raw.extruder2);
   if (second.kind === 'pair' || (first.kind === 'pair' && second.kind === 'empty')) return 'dual';
@@ -68,6 +70,16 @@ export function measurementRecords(raw) {
     if (['sikoraWire', 'sikoraOuter', 'dorn', 'matrix'].includes(key) && value > 1000) fail(`${LABELS[key]}: перевір діаметр у міліметрах.`);
     values[key] = value;
   }
+  if (isThread(raw)) {
+    const diameter = number(raw.finalDiameter);
+    if (diameter === null || diameter <= 0 || diameter > 1000) fail('Вкажи додатний кінцевий діаметр джгута в міліметрах.');
+    if (paired.length || parsed.extruder2.kind === 'number') fail('Джгути працюють лише екструдером №1. Для №2 введи 0 або залиш поле порожнім.');
+    if (parsed.extruder1.kind === 'off') fail('Для джгутів працює екструдер №1. Вкажи його оберти або залиш поле порожнім для часткового заміру.');
+    if (values.colorLead1 !== null || values.colorLead2 !== null) fail('Для джгутів зміна барвника не використовується. Залиш ці поля порожніми.');
+    if (raw.color !== 'all') fail('Замір джгута не прив’язується до кольору.');
+    return [{ ...values, finalDiameter: diameter, mode: 'single', extruder1: parsed.extruder1.value, extruder2: null, colorLead1: null, colorLead2: null }];
+  }
+  delete values.finalDiameter;
   const rpmOnly = mode => ({ baseId: raw.baseId, optionId: raw.optionId, section: raw.section, color: raw.color, note: '', mode, ...Object.fromEntries(NUMERIC_FIELDS.map(key => [key, null])) });
   let records;
   if (paired.length) {

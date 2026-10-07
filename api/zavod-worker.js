@@ -76,7 +76,7 @@ async function bodyJson(request) {
   } catch { fail(400, 'Некоректний запис.'); }
 }
 
-export function validateMeasurement(input) {
+export function validateMeasurement(input, { historical = false } = {}) {
   const base = RECIPES.find(row => row.id === input.baseId);
   if (!base) fail(400, 'Оберіть марку та переріз із таблиці.');
   if (!/^[a-f\d-]{36}$/i.test(input.id ?? '')) fail(400, 'Некоректний номер запису.');
@@ -89,11 +89,23 @@ export function validateMeasurement(input) {
     if (!option || baseFor(option.id, base.section)?.id !== base.id) fail(400, 'Замір належить іншій марці або карті.');
     result.optionId = optionFor(option.id).id;
   }
+  const thread = optionFor(result.optionId ?? base.cableId)?.coreKind === 'thread';
+  if (thread) {
+    const diameter = input.finalDiameter;
+    if (diameter !== undefined && diameter !== null && (typeof diameter !== 'number' || !Number.isFinite(diameter) || diameter <= 0 || diameter > 1000)) fail(400, 'Вкажіть додатний кінцевий діаметр джгута в міліметрах.');
+    if (!historical && (diameter === undefined || diameter === null)) fail(400, 'Вкажіть кінцевий діаметр джгута.');
+    if (diameter !== undefined && diameter !== null) result.finalDiameter = diameter;
+    if (!historical && (input.mode !== 'single' || input.color !== 'all' || ![undefined, null, '', 0].includes(input.extruder2)
+      || ![undefined, null, ''].includes(input.colorLead1) || ![undefined, null, ''].includes(input.colorLead2))) {
+      fail(400, 'Джгути працюють лише екструдером №1, без кольору та зміни барвника.');
+    }
+  }
   if (input.mode === 'single' && input.color !== 'all' && modeFor(optionFor(result.optionId ?? base.cableId), input.color, 'single') === 'dual') {
     fail(400, 'Для цього кольору потрібні два екструдери.');
   }
   for (const field of NUMERIC) {
     const value = input[field];
+    if (thread && !historical && field === 'extruder2' && value === 0) { result[field] = null; continue; }
     if (value === null || value === undefined || value === '') { result[field] = null; continue; }
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || (!COLOR_LEADS.includes(field) && value === 0) || value > 100000) fail(400, 'Перевірте числа: значення мають бути додатними, випередження зміни кольору може бути нульовим.');
     if (COLOR_LEADS.includes(field) && !Number.isInteger(value)) fail(400, 'Випередження зміни кольору вкажіть у цілих метрах.');
@@ -121,13 +133,15 @@ async function deleteMeasurement(id, env, user) {
   const statements = [env.DB.prepare('UPDATE measurements SET deleted_at = ?, deleted_by = ?, withdrawn_at = ? WHERE id = ? AND deleted_at IS NULL').bind(now, String(user.id), now, id)];
   for (const row of affected.results) {
     const current = JSON.parse(row.data);
-    const fallback = { ...original, id: row.id, baseId: measurement.baseId, color: 'all', mode: current.mode, origin: 'handwritten', ...(current.optionId ? { optionId: current.optionId } : {}) };
+    const fallback = { ...original, id: row.id, baseId: measurement.baseId, color: 'all', mode: current.mode, origin: 'handwritten', ...(current.optionId ? { optionId: current.optionId } : {}),
+      ...(current.finalDiameter !== undefined ? { finalDiameter: current.finalDiameter } : {}) };
     // Resolve the previous calibration inside the transaction so a concurrent
     // deletion cannot bring an already deleted measurement back into use.
     const prior = `SELECT h.data FROM recipe_history h JOIN measurements m ON m.id = json_extract(h.data, '$.measurementId')
       WHERE h.recipe_id = recipes.id AND m.deleted_at IS NULL AND m.withdrawn_at IS NULL
         AND COALESCE(json_extract(h.data, '$.optionId'), '') = COALESCE(json_extract(recipes.data, '$.optionId'), '')
         AND json_extract(h.data, '$.mode') = json_extract(recipes.data, '$.mode')
+        AND COALESCE(json_extract(h.data, '$.finalDiameter'), 0) = COALESCE(json_extract(recipes.data, '$.finalDiameter'), 0)
       ORDER BY h.recorded_at DESC, h.revision DESC, h.id DESC LIMIT 1`;
     statements.push(env.DB.prepare(`UPDATE recipes SET
       data = json_set(COALESCE((${prior}), ?), '$.id', recipes.id, '$.color', 'all'),
@@ -149,7 +163,7 @@ export async function handleRequest(request, env) {
     ]);
     const calibrations = measured.map(row => {
       const measurement = JSON.parse(row.data);
-      const identity = Object.fromEntries(['id', 'baseId', 'cableId', 'section', 'optionId', 'color', 'mode'].filter(key => measurement[key] !== undefined).map(key => [key, measurement[key]]));
+      const identity = Object.fromEntries(['id', 'baseId', 'cableId', 'section', 'optionId', 'color', 'mode', 'finalDiameter'].filter(key => measurement[key] !== undefined).map(key => [key, measurement[key]]));
       return { ...identity, ...Object.fromEntries(NUMERIC.map(key => [key, measurement[key] ?? null])), measurementId: measurement.id, origin: 'measurement', createdAt: row.created_at, updatedAt: row.created_at };
     });
     const measuredAt = new Map(calibrations.map(row => [row.measurementId, row.createdAt]));
@@ -180,7 +194,7 @@ export async function handleRequest(request, env) {
     if (!result.meta.changes) {
       const existing = await env.DB.prepare('SELECT data, created_at, deleted_at FROM measurements WHERE id = ?').bind(measurement.id).first();
       if (existing.deleted_at) fail(409, 'Цей запис видалено. Спочатку відновіть його.');
-      if (JSON.stringify(validateMeasurement(JSON.parse(existing.data))) !== JSON.stringify(measurement)) fail(409, 'Запис із цим номером уже існує.');
+      if (JSON.stringify(validateMeasurement(JSON.parse(existing.data), { historical: true })) !== JSON.stringify(measurement)) fail(409, 'Запис із цим номером уже існує.');
       return { measurement: { ...measurement, createdAt: existing.created_at } };
     }
     return { measurement: { ...measurement, createdAt: now } };
@@ -200,8 +214,11 @@ export async function handleRequest(request, env) {
     const stored = await env.DB.prepare('SELECT data, created_at FROM measurements WHERE id = ? AND deleted_at IS NULL').bind(String(payload.measurementId)).first();
     if (!stored) fail(404, 'Замір не знайдено.');
     const measurement = JSON.parse(stored.data);
-    const id = recipeIdFor(measurement.baseId, measurement.color, measurement.optionId, measurement.mode);
-    const legacyIds = [recipeIdFor(measurement.baseId, measurement.color), recipeIdFor(measurement.baseId, measurement.color, measurement.optionId)];
+    const id = recipeIdFor(measurement.baseId, measurement.color, measurement.optionId, measurement.mode, measurement.finalDiameter);
+    // A diameter-specific thread slot has no unsized alias: sharing one would
+    // let a later size redirect the history and revision of another size.
+    const sizedThread = optionFor(measurement.optionId ?? measurement.cableId)?.coreKind === 'thread' && measurement.finalDiameter > 0;
+    const legacyIds = sizedThread ? [] : [recipeIdFor(measurement.baseId, measurement.color), recipeIdFor(measurement.baseId, measurement.color, measurement.optionId)];
     if (requestedId !== id && !legacyIds.includes(requestedId)) fail(400, 'Замір належить іншому проводу або режиму.');
     if (measurement.mode === 'unknown') fail(400, 'Перед застосуванням оберіть кількість екструдерів.');
     const original = RECIPES.find(row => row.id === measurement.baseId);

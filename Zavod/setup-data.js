@@ -1,11 +1,12 @@
-import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=24';
+import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=25';
 import { RECIPES } from './data.js';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=24';
-import { forecastFor } from './forecast.js?v=24';
-import { number, firstSpeed, secondSpeed, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=24';
-import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=24';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=25';
+import { forecastFor } from './forecast.js?v=25';
+import { number, firstSpeed, secondSpeed, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=25';
+import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=25';
+import { threadSetup, threadDiameters } from './thread-settings.js?v=25';
 
-export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю' };
+export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю', rule: 'За налаштуванням' };
 const metric = row => ({
   extruder1: number(row?.extruder1), extruder2: number(row?.extruder2), workingSpeed: number(row?.maxSpeed),
   dorn: number(row?.dorn), matrix: number(row?.matrix), sikoraWire: number(row?.sikoraWire), sikoraOuter: number(row?.sikoraOuter),
@@ -21,7 +22,7 @@ export function metricValues(info, key) {
   const reference = info.reference[key] ?? nominal ?? null;
   const referenceLabel = info.reference[key] == null && nominal != null ? 'Довідкові · номінальний діаметр' : VALUE_LABELS.reference;
   const source = info.sources[key] ?? 'reference';
-  const mainLabel = source === 'reference' ? referenceLabel : VALUE_LABELS[source];
+  const mainLabel = source === 'reference' ? referenceLabel : source === 'rule' && key === 'matrix' ? 'Із завдання' : VALUE_LABELS[source];
   const main = { source, value: source === 'reference' ? reference : info.effective[key], label: mainLabel };
   const forecastLabel = VALUE_LABELS.forecast;
   return [main,
@@ -33,6 +34,8 @@ export function metricValues(info, key) {
 export function setupFor(optionId, section, catalog, color = 'blue', options = {}) {
   const option = optionFor(optionId), card = referenceCard(option), row = card.rows.find(row => row.section === Number(section));
   const base = baseFor(option.id, section);
+  if (option.coreKind === 'thread') return threadSetup({ option, card, row, base, catalog, color, finalDiameter: options.finalDiameter,
+    stored: practicalFor(option.id, section, catalog, 'single', color, { finalDiameter: options.finalDiameter }) });
   const ownRecords = [...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])].filter(record => !record.deletedAt && !record.withdrawnAt && (!record.optionId || record.optionId === option.id)
     && (record.optionId === option.id || record.cableId === option.id || option.practicalCableId && record.cableId === option.practicalCableId));
   const measured = ownRecords.filter(record => record.origin === 'measurement' && ['single', 'dual'].includes(record.mode))
@@ -114,7 +117,9 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
 }
 
 export function tableSetups(catalog, selected = '') {
-  return CATALOG_OPTIONS.filter(option => !selected || option.id === selected).flatMap(option => option.sections.flatMap(section => {
+  return CATALOG_OPTIONS.filter(option => !selected || option.id === selected).flatMap(option => {
+    if (option.coreKind === 'thread') return threadDiameters(catalog).map(finalDiameter => setupFor(option.id, option.sections[0], catalog, 'white', { finalDiameter }));
+    return option.sections.flatMap(section => {
     const standard = setupFor(option.id, section, catalog, supportsSingleColorMode(option) ? 'brown' : 'blue');
     const modes = new Set([standard.mode]);
     if (supportsSingleColorMode(option) || hasPv3Modes(option) || standard.mode === 'single') modes.add('dual');
@@ -125,5 +130,6 @@ export function tableSetups(catalog, selected = '') {
     if (modes.size > 1) modes.delete('unknown');
     return [...modes].map(mode => mode === standard.mode ? standard : setupFor(option.id, section, catalog,
       mode === 'single' ? 'brown' : supportsSingleColorMode(option) ? 'blue' : 'black', {mode}));
-  }));
+    });
+  });
 }

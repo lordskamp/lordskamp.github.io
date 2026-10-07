@@ -1,8 +1,8 @@
 import { RECIPES } from './data.js';
-import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=24';
-import { CATALOG_OPTIONS } from './catalog-options.js?v=24';
-import { ALL_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=24';
-import { operatingRecords } from './pv3-modes.js?v=24';
+import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=25';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=25';
+import { ALL_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=25';
+import { operatingRecords } from './pv3-modes.js?v=25';
 
 const HANDWRITTEN = {
   'pvs-380': ['pvs-shvvp'], 'vvg-066': ['vvg'], 'vvg-p-066': ['vvgng-p'],

@@ -1,7 +1,8 @@
-import { CATALOG_OPTIONS } from './catalog-options.js?v=24';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=25';
 import { RECIPES } from './data.js';
-import { ALL_CARDS } from './reference-data.js?v=24';
-import { hasPv3Modes, pv3Recipe, modeFor } from './pv3-modes.js?v=24';
+import { ALL_CARDS } from './reference-data.js?v=25';
+import { hasPv3Modes, pv3Recipe, modeFor } from './pv3-modes.js?v=25';
+import { positive } from './core.js?v=25';
 
 export { CATALOG_OPTIONS };
 export const CATALOG_CABLES = CATALOG_OPTIONS;
@@ -30,17 +31,26 @@ export const CATALOG_BASES = [...new Map([
   ...CATALOG_OPTIONS.flatMap(option => option.sections.map(section => baseFor(option.id, section))),
 ].map(base => [base.id, base])).values()];
 
-export const recipeIdFor = (baseId, color = 'all', optionId, mode) => `${optionId ? `${optionId}::` : ''}${baseId}${mode ? `~${mode}` : color === 'all' ? '' : `~${color}`}`;
+export function recipeIdFor(baseId, color = 'all', optionId, mode, finalDiameter) {
+  const id = `${optionId ? `${optionId}::` : ''}${baseId}${mode ? `~${mode}` : color === 'all' ? '' : `~${color}`}`;
+  const option = optionFor(optionId ?? CATALOG_BASES.find(base => base.id === baseId)?.cableId);
+  const diameter = positive(finalDiameter);
+  return option?.coreKind === 'thread' && diameter !== null ? `${id}~d${String(diameter).replace('.', '-')}` : id;
+}
 
 // Kept as the shared form/API helper: measurements belong to an extruder mode,
 // while the selected colour only determines which mode the operator needs.
 export const measurementColor = () => 'all';
 
-export function practicalFor(optionId, section, catalog, mode, color = 'blue') {
+export function practicalFor(optionId, section, catalog, mode, color = 'blue', options = {}) {
   const option = optionFor(optionId);
   const base = baseFor(optionId, section);
   if (!base) return null;
-  const applied = [...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])].filter(row => !row.deletedAt && !row.withdrawnAt);
+  const finalDiameter = positive(options.finalDiameter);
+  // The internal thread section is only a catalog slot. Untagged legacy
+  // records and other final diameters cannot supply this size's settings.
+  const applied = [...(catalog?.recipes ?? []), ...(catalog?.calibrations ?? [])].filter(row => !row.deletedAt && !row.withdrawnAt
+    && (option.coreKind !== 'thread' || finalDiameter !== null && positive(row.finalDiameter) === finalDiameter));
   const rows = applied.filter(row => (row.baseId || row.id) === base.id && (!row.optionId || row.optionId === option.id));
   const byLatest = (a, b) => Number(Boolean(b.optionId)) - Number(Boolean(a.optionId)) || String(b.updatedAt ?? b.createdAt ?? '').localeCompare(String(a.updatedAt ?? a.createdAt ?? '')) || Number(b.revision ?? 0) - Number(a.revision ?? 0);
   const latestMode = applied.filter(row => row.origin === 'measurement' && !row.deletedAt && ['single', 'dual'].includes(row.mode)
@@ -48,7 +58,7 @@ export function practicalFor(optionId, section, catalog, mode, color = 'blue') {
     .sort((a, b) => Number(b.section === Number(section)) - Number(a.section === Number(section)) || byLatest(a, b))[0];
   const normalMode = option.mode !== 'unknown' ? option.mode : applied.some(row => row.origin === 'measurement' && !row.deletedAt && row.mode === 'single'
     && (row.optionId === option.id || !row.optionId && (row.cableId === option.id || row.cableId === option.practicalCableId))) ? 'single' : latestMode?.mode ?? base.mode;
-  const desiredMode = mode ?? modeFor(option, color, normalMode);
+  const desiredMode = option.coreKind === 'thread' ? 'single' : mode ?? modeFor(option, color, normalMode);
   const candidates = rows.filter(row => row.origin === 'measurement' && (!['single', 'dual'].includes(desiredMode) || row.mode === desiredMode));
   const geometryRows = rows.filter(row => row.origin === 'measurement' && (row.mode === desiredMode || row.mode === 'unknown')).sort(byLatest);
   const latest = candidates.sort(byLatest)[0] ?? geometryRows[0];
@@ -64,7 +74,8 @@ export function practicalFor(optionId, section, catalog, mode, color = 'blue') {
     }
     return merged;
   }
-  const original = rows.find(row => row.origin !== 'measurement' && row.color === 'all') ?? { ...base, baseId: base.id, color: 'all', origin: 'handwritten', revision: 0 };
+  const original = rows.find(row => row.origin !== 'measurement' && row.color === 'all') ?? { ...base, baseId: base.id, color: 'all', origin: 'handwritten', revision: 0,
+    ...(option.coreKind === 'thread' && finalDiameter !== null ? { finalDiameter } : {}) };
   const selectedMode = desiredMode ?? modeFor(option, color, original.mode === 'unknown' ? option.mode : original.mode);
   if (hasPv3Modes(option) && selectedMode) return { ...pv3Recipe(original, selectedMode), color: 'all' };
   if (['single', 'dual'].includes(selectedMode) && selectedMode !== original.mode) {

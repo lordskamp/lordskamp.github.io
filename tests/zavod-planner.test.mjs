@@ -23,11 +23,12 @@ const group = drums => drums.reduce((groups, drum) => {
 }, []);
 const threadJob = overrides => job({ cableId: 'thread-bundle', section: 1, lengthsText: '15', ...overrides });
 
-test('thread final diameter from the task expands to all colours and remains an optional decimal millimetre value', () => {
+test('thread final diameter expands to one undyed production stream and remains an optional decimal millimetre value', () => {
   for (const value of ['2,5', ' 2.50 ', 2.5, '.5', '0,5']) {
     const result = expandJobs([threadJob({ finalDiameter: value })]);
     assert.deepEqual(result.errors, []);
-    assert.equal(result.drums.length, 3);
+    assert.equal(result.drums.length, 1);
+    assert.equal(result.drums[0].color, 'white');
     assert(result.drums.every(drum => drum.finalDiameter === Number(String(value).trim().replace(',', '.'))));
   }
   for (const finalDiameter of [undefined, null, '', '   ']) {
@@ -84,7 +85,7 @@ test('thread readiness retains target diameter and excludes another or unrecorde
     assert.equal(complete.ready[0].readyMetres, 15000);
     assert.equal(complete.ready[0].complete, true);
     for (const finalDiameter of [2.6, null, undefined, '', 'bad']) {
-      const edited = original.map(drum => drum.color === 'blue' ? { ...drum, finalDiameter } : drum);
+      const edited = original.map(drum => ({ ...drum, finalDiameter }));
       const summary = operation(edited, [task]);
       assert.equal(summary.ready[0].readyMetres, 0, String(finalDiameter));
       assert.equal(summary.ready[0].complete, false);
@@ -94,9 +95,64 @@ test('thread readiness retains target diameter and excludes another or unrecorde
   const legacy = productionSummary(original);
   assert.equal(legacy.ready[0].finalDiameter, 2.5);
   assert.equal(legacy.ready[0].readyMetres, 15000);
-  const mixed = productionSummary(original.map(drum => drum.color === 'blue' ? { ...drum, finalDiameter: 3 } : drum));
-  assert.equal(mixed.ready[0].readyMetres, 0);
+  const mixed = productionSummary([...original, ...original.map(drum => ({ ...drum, id: drum.id + '-other-size', finalDiameter: 3 }))]);
+  assert.equal(mixed.ready[0].readyMetres, 15000);
   assert.equal(mixed.ready[0].complete, false);
+});
+
+test('legacy thread task colours never triple its production lengths', () => {
+  const task = Object.freeze(threadJob({ finalDiameter: '1,7', lengthsText: '3×15 + 11', cores: 3,
+    colors: Object.freeze(['yellow-green', 'blue', 'brown']), urgent: true }));
+  const result = scheduleJobs([task]);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.drums.length, 4);
+  assert.deepEqual(result.drums.map(drum => drum.length), ['15000', '15000', '15000', '11000']);
+  assert(result.drums.every(drum => drum.color === 'white' && drum.finalDiameter === 1.7));
+  const summary = planSummary(result.drums, [task]);
+  assert.equal(summary.totalMetres, 56000);
+  assert.equal(summary.headChanges, 0);
+  assert.equal(summary.colorChanges, 0);
+  assert.deepEqual(summary.ready[0].colors, ['white']);
+  assert.equal(summary.ready[0].readyMetres, 56000);
+  assert.deepEqual(task.colors, ['yellow-green', 'blue', 'brown'], 'validation never rewrites saved source data');
+  for (const colors of [[], ['invalid'], null]) assert.equal(expandJobs([threadJob({ colors, cores: 0 })]).drums.length, 1);
+});
+
+test('old thread queue rows keep their physical progress independent of former colour markers', () => {
+  const legacy = Object.freeze(['yellow-green', 'blue', 'brown'].map((color, index) => Object.freeze({
+    id: `old:${color}:0`, jobId: 'old', cableId: 'thread-bundle', section: 1, finalDiameter: 1.5,
+    color, length: '15000', name: `Б-${index}`, breakdowns: '6838', status: index ? 'queued' : 'done'
+  })));
+  const summary = planSummary(legacy);
+  assert.equal(summary.totalMetres, 45000);
+  assert.equal(summary.headChanges, 0);
+  assert.equal(summary.colorChanges, 0);
+  assert.equal(summary.ready[0].totalMetres, 45000);
+  assert.deepEqual(summary.ready[0].colors, ['white']);
+  const produced = productionSummary(legacy);
+  assert.equal(produced.doneMetres, 15000);
+  assert.equal(produced.ready[0].readyMetres, 15000);
+  assert.equal(produced.ready[0].complete, false);
+  assert.deepEqual(recommendOrder(legacy), legacy, 'no dye-based rearrangement of physical thread rows');
+});
+
+test('a unique old thread marker retains annotations and status when explicitly regenerating one stream', () => {
+  const task = threadJob({ finalDiameter: 1.7, lengthsText: '15 + 11' });
+  const legacy = Object.freeze(scheduleJobs([task]).drums.map((drum, index) => Object.freeze({
+    ...drum, id: `job-1:blue:${index}`, color: 'blue', name: `Б-${index}`, breakdowns: '6838',
+    status: index ? 'active' : 'done', note: 'Запис оператора'
+  })));
+  const result = scheduleJobs([task], legacy);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.drums.map(drum => drum.status), ['done', 'active']);
+  assert.deepEqual(result.drums.map(drum => drum.name), ['Б-0', 'Б-1']);
+  assert(result.drums.every(drum => drum.color === 'white' && drum.breakdowns === '6838' && drum.note === 'Запис оператора'));
+  assert(legacy.every(drum => drum.color === 'blue'), 'the saved queue is never mutated');
+  const ambiguous = [...legacy, { ...legacy[0], id: 'job-1:brown:0', color: 'brown' }];
+  const replaced = scheduleJobs([task], ambiguous);
+  assert.equal(replaced.drums[0].status, 'queued', 'different physical records cannot be merged arbitrarily');
+  assert(replaced.warnings.some(warning => warning.includes('Старі розпочаті барабани')));
 });
 
 test('kilometre notation expands repeats exactly for each decimal and separator style', () => {

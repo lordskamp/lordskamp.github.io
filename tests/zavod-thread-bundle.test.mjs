@@ -3,72 +3,65 @@ import test from 'node:test';
 import { RECIPES } from '../Zavod/data.js';
 import { baseFor, optionFor, referenceCard } from '../Zavod/catalog-base.js';
 import { forecastFor } from '../Zavod/forecast.js';
-import { setupFor, tableSetups } from '../Zavod/setup-data.js';
+import { setupFor, tableSetups, metricValues } from '../Zavod/setup-data.js';
 import { modeFor } from '../Zavod/pv3-modes.js';
 
 const id = 'thread-bundle';
-const card = referenceCard(optionFor(id));
-const row = card.rows[0];
 const measurement = (values, extra = {}) => ({ ...baseFor(id, 1), baseId: baseFor(id, 1).id,
-  optionId: id, id: 'thread-measurement', origin: 'measurement', mode: 'single', source: 'Замір', color: 'all',
+  optionId: id, id: 'thread-measurement', origin: 'measurement', mode: 'single', source: null, color: 'all',
   updatedAt: '2026-10-07T12:00:00Z', ...values, ...extra });
 
-test('thread settings remain unknown without a genuine own measurement, for every colour', () => {
-  const catalog = { recipes: RECIPES };
+test('thread setup uses one extruder without dye and operator tool rules for all colours', () => {
   for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
-    assert.equal(modeFor(optionFor(id), color), 'unknown');
-    const result = setupFor(id, 1, catalog, color);
-    assert.equal(result.mode, 'unknown');
+    assert.equal(modeFor(optionFor(id), color, 'dual'), 'single');
+    const result = setupFor(id, 1, { recipes: RECIPES }, color, { finalDiameter: '1,8', mode: 'dual' });
+    assert.equal(result.mode, 'single');
+    assert.equal(result.noDye, true);
+    assert.equal(result.finalDiameter, 1.8);
+    assert.deepEqual([result.effective.extruder1, result.effective.extruder2, result.effective.workingSpeed], [61.5, null, 600]);
+    assert.deepEqual([result.effective.dorn, result.effective.matrix], [.95, 2]);
+    assert.deepEqual([result.effective.sikoraWire, result.effective.sikoraOuter, result.effective.colorLead1, result.effective.colorLead2], [null, null, null, null]);
+    assert.equal(metricValues(result, 'dorn')[0].label, 'За налаштуванням');
+    assert.equal(metricValues(result, 'matrix')[0].label, 'Із завдання');
     assert.equal(result.forecast.borrowedFrom.length, 0);
-    for (const key of ['extruder1', 'extruder2', 'workingSpeed', 'sikoraWire', 'sikoraOuter', 'dorn', 'matrix']) {
-      assert.equal(result.effective[key], null, `${color} ${key}`);
-    }
-    assert.deepEqual(result.stages, { first: null, second: null, working: null, source: null });
   }
 });
 
-test('a real thread measurement is practical for all colours and remains separate by extruder mode', () => {
-  const single = measurement({ extruder1: 25, maxSpeed: 100, sikoraWire: .3, sikoraOuter: 1.2, dorn: .5, matrix: 1, colorLead1: 50 });
-  const dual = measurement({ extruder1: 20, extruder2: 30, maxSpeed: 80, colorLead1: 40, colorLead2: 60 },
-    { id: 'thread-dual', mode: 'dual', updatedAt: '2026-10-07T13:00:00Z' });
-  const catalog = { recipes: RECIPES, calibrations: [single, dual] };
-  for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
-    const info = setupFor(id, 1, catalog, color);
-    assert.equal(info.mode, 'single');
-    assert.deepEqual([info.effective.extruder1, info.effective.extruder2, info.effective.workingSpeed], [25, null, 100]);
-    assert.equal(info.sources.extruder1, 'practical');
-    assert.equal(info.sources.sikoraWire, 'practical');
-    const dualInfo = setupFor(id, 1, catalog, color, { mode: 'dual' });
-    assert.deepEqual([dualInfo.effective.extruder1, dualInfo.effective.extruder2, dualInfo.effective.workingSpeed], [20, 30, 80]);
-    assert.equal(dualInfo.effective.sikoraWire, null, 'single-mode geometry is not an unknown-mode measurement');
-  }
-  assert.deepEqual(new Set(tableSetups(catalog, id).map(info => info.mode)), new Set(['single', 'dual']));
+test('thread table exposes only known diameters and a single mode instead of the internal section slot', () => {
+  const values = tableSetups({}, id);
+  assert.deepEqual(values.map(info => info.finalDiameter), [1.5, 1.7, 2.1]);
+  assert(values.every(info => info.mode === 'single' && info.noDye));
+  const actual = measurement({ finalDiameter: 1.8, extruder1: 64, maxSpeed: 600 });
+  assert.deepEqual(tableSetups({ calibrations: [actual] }, id).map(info => info.finalDiameter), [1.5, 1.7, 1.8, 2.1]);
 });
 
-test('partial thread measurements merge own fields while unknown-mode geometry cannot establish RPM', () => {
-  const first = measurement({ extruder1: 25, maxSpeed: 100, matrix: 1 });
-  const newer = measurement({ extruder1: 27 }, { id: 'thread-partial', updatedAt: '2026-10-07T14:00:00Z' });
-  const info = setupFor(id, 1, { calibrations: [first, newer] });
-  assert.deepEqual([info.effective.extruder1, info.effective.workingSpeed, info.effective.matrix], [27, 100, 1]);
-  assert.equal(info.effective.sikoraOuter, null, 'metallic section allowance cannot manufacture a thread diameter');
-  const unknown = measurement({ sikoraWire: .2, matrix: .7, extruder1: 999, maxSpeed: 999 }, { mode: 'unknown' });
-  const unconfirmed = setupFor(id, 1, { calibrations: [unknown] });
-  assert.equal(unconfirmed.effective.matrix, .7);
-  assert.equal(unconfirmed.effective.extruder1, null);
-  assert.equal(unconfirmed.effective.workingSpeed, null);
+test('thread admin values stay specific to the final diameter and cannot establish SIKORA or dye settings', () => {
+  const own = measurement({ finalDiameter: 1.8, extruder1: 64, maxSpeed: 600, sikoraWire: .3, sikoraOuter: 1.2, dorn: 8, matrix: 9, colorLead1: 50 });
+  const unsized = measurement({ extruder1: 9999, maxSpeed: 9999 }, { id: 'legacy-unsized' });
+  const dual = measurement({ finalDiameter: 1.8, extruder1: 9999, extruder2: 9999, maxSpeed: 9999 }, { mode: 'dual', id: 'legacy-dual' });
+  const catalog = { calibrations: [own, unsized, dual] };
+  const actual = setupFor(id, 1, catalog, 'black', { finalDiameter: 1.8 });
+  assert.deepEqual([actual.effective.extruder1, actual.effective.workingSpeed], [64, 600]);
+  assert.equal(actual.sources.extruder1, 'practical');
+  assert.equal(actual.sources.workingSpeed, 'practical');
+  assert.deepEqual([actual.effective.dorn, actual.effective.matrix], [.95, 2]);
+  assert.equal(actual.effective.sikoraOuter, null);
+  assert.equal(actual.effective.colorLead1, null);
+  const next = setupFor(id, 1, catalog, 'black', { finalDiameter: 1.9 });
+  assert.equal(next.sources.extruder1, 'forecast');
+  assert.notEqual(next.effective.extruder1, 64);
+  assert(next.effective.extruder1 < 100);
 });
 
-test('thread records never train metallic estimates and metallic records never train thread estimates', () => {
+test('thread records never train metallic estimates and metal records do not change thread settings', () => {
   const metal = referenceCard(optionFor('h07v-k--h07v-k'));
   const metalRow = metal.rows.find(row => row.section === 4);
-  const thread = measurement({ extruder1: 9999, extruder2: 9999, maxSpeed: 9999, sikoraWire: 20, sikoraOuter: 30, dorn: 22, matrix: 28 }, { mode: 'dual' });
+  const thread = measurement({ finalDiameter: 1.8, extruder1: 9999, maxSpeed: 9999 });
   assert.deepEqual(forecastFor(metal, metalRow, [thread], { optionId: 'h07v-k--h07v-k', mode: 'dual' }),
     forecastFor(metal, metalRow, [], { optionId: 'h07v-k--h07v-k', mode: 'dual' }));
-  const empty = forecastFor(card, row, RECIPES, { optionId: id });
-  assert.equal(empty.mode, 'unknown');
-  assert.deepEqual(empty.anchors, []);
-  assert.deepEqual(empty.borrowedFrom, []);
-  assert.equal(empty.extruder1, null);
+  const baseline = setupFor(id, 1, {}, 'white', { finalDiameter: 1.8 });
+  const withMetal = setupFor(id, 1, { recipes: RECIPES }, 'blue', { finalDiameter: 1.8 });
+  assert.deepEqual(withMetal.effective, baseline.effective);
   const withdrawn = { ...thread, withdrawnAt: '2026-10-07T15:00:00Z' };
-  assert.deepEqual(forecastFor(card, row, [withdrawn], { optionId: id }), empty);
+  assert.deepEqual(setupFor(id, 1, { calibrations: [withdrawn] }, 'white', { finalDiameter: 1.8 }).effective, baseline.effective);
 });

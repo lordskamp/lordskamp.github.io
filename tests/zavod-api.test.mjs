@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createHmac, randomUUID } from 'node:crypto';
 import worker, { verifyTelegram } from '../api/zavod-worker.js';
 import { baseline, findRecipe, csv } from '../Zavod/store.js';
-import { CATALOG_OPTIONS, baseFor, measurementColor, recipeIdFor } from '../Zavod/catalog-base.js';
+import { CATALOG_OPTIONS, baseFor, measurementColor, practicalFor, recipeIdFor } from '../Zavod/catalog-base.js';
 import { setupFor } from '../Zavod/setup-data.js';
 import { refreshPendingMeasurements } from '../Zavod/measurement-input.js';
 
@@ -46,7 +46,7 @@ function fixture({ beforeManagement, beforeModes } = {}) {
 }
 const measurement = (overrides = {}) => ({ id: randomUUID(), baseId: 'vvgng-p-1-5', color: 'blue', mode: 'dual', note: 'Перевірено', extruder1: 142, extruder2: 196, dorn: 1.4, matrix: 2.45, sikoraWire: 1.37, sikoraOuter: 2.6, maxSpeed: 800, ...overrides });
 const authenticated = (body, method = 'POST') => ({ body, method, initData: signed() });
-const measurementRecipeId = row => recipeIdFor(row.baseId, row.color, row.optionId, row.mode);
+const measurementRecipeId = row => recipeIdFor(row.baseId, row.color, row.optionId, row.mode, row.finalDiameter);
 
 test('Telegram: authentic signature only; no forged, expired, future, duplicate, or bot data', async () => {
   assert.deepEqual(await verifyTelegram(signed(), TOKEN, now), owner);
@@ -167,7 +167,7 @@ test('a cable present only in the printed catalogue can receive its first owner 
   assert.equal((await call('/admin/measurements', authenticated(measurement({ baseId: option.id + '-invalid' })))).status, 400);
   assert.equal((await call('/admin/measurements', authenticated(measurement({ optionId: option.id })))).status, 400);
 });
-test('thread bundles accept their own single and dual measurements without metallic dimensions or donors', async t => {
+test('thread diameter measurements stay independent, public and reversible without changing metallic settings', async t => {
   const { call, db } = fixture(); t.after(() => db.close());
   const option = CATALOG_OPTIONS.find(row => row.id === 'thread-bundle'), base = baseFor(option.id, 1);
   const initial = (await call('/catalog')).data;
@@ -175,51 +175,76 @@ test('thread bundles accept their own single and dual measurements without metal
   const originalMetalSetup = setupFor('h07v-k--h07v-k', 4, initial, 'blue').effective;
   assert.equal(initial.cables.at(-1).id, option.id);
   assert.equal(initial.cables.at(-1).coreKind, 'thread');
-  for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
-    const empty = setupFor(option.id, 1, initial, color);
-    assert.equal(empty.mode, 'unknown');
-    for (const key of ['extruder1', 'extruder2', 'workingSpeed', 'dorn', 'matrix', 'sikoraWire', 'sikoraOuter']) assert.equal(empty.effective[key], null);
+  const rows = [[1.5, 50, 700], [1.7, 63.6, 700], [2.1, 84.8, 600]].map(([finalDiameter, extruder1, maxSpeed]) => measurement({
+    baseId: base.id, optionId: option.id, finalDiameter, color: 'all', mode: 'single', extruder1, extruder2: 0, maxSpeed,
+    dorn: .95, matrix: Math.round((finalDiameter + .2) * 100) / 100, sikoraWire: null, sikoraOuter: null, note: 'THREAD_PRIVATE_NOTE',
+  }));
+  for (const row of rows) {
+    const saved = await call('/admin/measurements', authenticated(row));
+    assert.equal(saved.status, 200); assert.equal(saved.data.measurement.finalDiameter, row.finalDiameter);
+    assert.equal(saved.data.measurement.optionId, option.id); assert.equal(saved.data.measurement.extruder2, null);
+    const applied = await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(row)), authenticated({ measurementId: row.id, expectedRevision: 0 }, 'PUT'));
+    assert.equal(applied.status, 200); assert.equal(applied.data.recipe.source, null);
   }
-  const single = measurement({ baseId: base.id, optionId: option.id, color: 'all', mode: 'single', extruder1: 40, extruder2: null,
-    maxSpeed: 100, dorn: null, matrix: null, sikoraWire: null, sikoraOuter: null, note: 'THREAD_PRIVATE_NOTE' });
-  const savedSingle = await call('/admin/measurements', authenticated(single));
-  assert.equal(savedSingle.status, 200);
-  assert.equal(savedSingle.data.measurement.optionId, option.id);
-  assert.equal(savedSingle.data.measurement.cableId, option.id);
-  const appliedSingle = await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(single)), authenticated({ measurementId: single.id, expectedRevision: 0 }, 'PUT'));
-  assert.equal(appliedSingle.status, 200);
-  assert.equal(appliedSingle.data.recipe.source, null);
-  const singleCatalog = (await call('/catalog')).data;
-  for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
-    const info = setupFor(option.id, 1, singleCatalog, color);
-    assert.equal(info.mode, 'single');
-    assert.deepEqual([info.effective.extruder1, info.effective.extruder2, info.effective.workingSpeed], [40, null, 100]);
-    assert.equal(info.sources.extruder1, 'practical');
-    for (const key of ['dorn', 'matrix', 'sikoraWire', 'sikoraOuter']) assert.equal(info.effective[key], null);
-  }
-  const dual = { ...single, id: randomUUID(), mode: 'dual', extruder1: 45, extruder2: 70, maxSpeed: 120 };
-  assert.equal((await call('/admin/measurements', authenticated(dual))).status, 200);
-  assert.equal((await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(dual)), authenticated({ measurementId: dual.id, expectedRevision: 0 }, 'PUT'))).status, 200);
   const catalog = (await call('/catalog')).data;
   assert.deepEqual(catalog.recipes.filter(row => row.optionId !== option.id), originalMetalRecipes);
   assert.deepEqual(setupFor('h07v-k--h07v-k', 4, catalog, 'blue').effective, originalMetalSetup);
-  assert.equal(catalog.calibrations.filter(row => row.optionId === option.id).length, 2);
+  assert.equal(catalog.calibrations.filter(row => row.optionId === option.id).length, 3);
   assert.equal(JSON.stringify(catalog).includes('THREAD_PRIVATE_NOTE'), false);
-  for (const [mode, expected] of [['single', [40, null, 100]], ['dual', [45, 70, 120]]]) {
-    const published = catalog.recipes.find(row => row.id === measurementRecipeId(mode === 'single' ? single : dual));
-    assert.equal(published.mode, mode);
+  assert.equal(new Set(rows.map(measurementRecipeId)).size, 3);
+  assert.equal(recipeIdFor(base.id, 'all', option.id, 'single', '1,50'), measurementRecipeId(rows[0]));
+  assert.equal((await call('/admin/recipes/' + encodeURIComponent(measurementRecipeId(rows[0])), authenticated({ measurementId: rows[1].id, expectedRevision: 1 }, 'PUT'))).status, 400);
+  for (const row of rows) {
+    const published = catalog.recipes.find(record => record.id === measurementRecipeId(row));
+    assert.equal(published.mode, 'single'); assert.equal(published.finalDiameter, row.finalDiameter);
     assert.equal(published.origin, 'measurement');
     assert.equal(published.optionId, option.id);
-    for (const color of ['blue', 'brown', 'black', 'yellow-green']) {
-      const info = setupFor(option.id, 1, catalog, color, { mode });
-      assert.equal(info.mode, mode);
-      assert.deepEqual([info.effective.extruder1, info.effective.extruder2, info.effective.workingSpeed], expected);
-      assert.equal(info.sources.extruder1, 'practical');
-      assert.equal(info.forecast.borrowedFrom.length, 0);
-    }
+    const practical = practicalFor(option.id, 1, catalog, 'single', 'white', { finalDiameter: row.finalDiameter });
+    assert.deepEqual([practical.extruder1, practical.extruder2, practical.maxSpeed], [row.extruder1, null, row.maxSpeed]);
+    assert.equal(practical.finalDiameter, row.finalDiameter); assert.equal(practical.sikoraOuter, null);
   }
-  const invalidSection = { ...single, id: randomUUID(), baseId: 'thread-bundle-2-5' };
-  assert.equal((await call('/admin/measurements', authenticated(invalidSection))).status, 400);
+  assert.equal(practicalFor(option.id, 1, catalog, 'single', 'white', { finalDiameter: 4 }).extruder1, null);
+  assert.equal(practicalFor(option.id, 1, catalog, 'single').extruder1, null);
+  assert.equal(practicalFor(option.id, 1, catalog, 'dual', 'blue', { finalDiameter: 1.7 }).mode, 'single');
+  const newer = { ...rows[0], id: randomUUID(), extruder1: 52 };
+  assert.equal((await call('/admin/measurements', authenticated(newer))).status, 200);
+  const sizedPath = '/admin/recipes/' + encodeURIComponent(measurementRecipeId(newer));
+  assert.equal((await call(sizedPath, authenticated({ measurementId: newer.id, expectedRevision: 0 }, 'PUT'))).status, 409);
+  assert.equal((await call(sizedPath, authenticated({ measurementId: newer.id, expectedRevision: 1 }, 'PUT'))).status, 200);
+  assert.equal((await call('/admin/measurements', authenticated(newer))).status, 200);
+  assert.equal((await call(sizedPath, authenticated({ measurementId: newer.id, expectedRevision: 1 }, 'PUT'))).data.recipe.revision, 2);
+  assert.equal((await call('/admin/measurements/' + newer.id, { method: 'DELETE', initData: signed() })).status, 200);
+  const restored = (await call('/catalog')).data;
+  assert.equal(restored.recipes.find(row => row.id === measurementRecipeId(rows[0])).extruder1, 50);
+  assert.equal(restored.recipes.find(row => row.id === measurementRecipeId(rows[1])).extruder1, 63.6);
+  assert.equal(restored.recipes.find(row => row.id === measurementRecipeId(rows[2])).extruder1, 84.8);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM recipe_aliases').get().n, 0);
+});
+
+test('new thread saves require a diameter and reject dual, colour or dye while legacy records remain intact', async t => {
+  const { call, db } = fixture(); t.after(() => db.close());
+  const optionId = 'thread-bundle', base = baseFor(optionId, 1);
+  const row = measurement({ baseId: base.id, optionId, finalDiameter: 1.7, color: 'all', mode: 'single', extruder1: 63.6,
+    extruder2: null, maxSpeed: 700, dorn: .95, matrix: 1.9, sikoraWire: null, sikoraOuter: null });
+  for (const invalid of [undefined, null, '', 0, -1, 1001, Infinity, '1.7']) assert.equal((await call('/admin/measurements', authenticated({ ...row, id: randomUUID(), finalDiameter: invalid }))).status, 400);
+  for (const invalid of [{ mode: 'dual' }, { mode: 'unknown' }, { extruder2: 20 }, { color: 'blue' }, { colorLead1: 0 }, { colorLead2: 300 }]) assert.equal((await call('/admin/measurements', authenticated({ ...row, id: randomUUID(), ...invalid }))).status, 400);
+  const legacy = { ...row, id: randomUUID(), mode: 'dual', extruder2: 80, colorLead2: 300 }; delete legacy.finalDiameter;
+  const legacyBytes = JSON.stringify(legacy);
+  db.prepare('INSERT INTO measurements(id, base_id, color, data, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(legacy.id, legacy.baseId, legacy.color, legacyBytes, '2026-10-01T10:00:00.000Z', '100');
+  const catalog = (await call('/catalog')).data;
+  assert.equal(catalog.calibrations.find(record => record.id === legacy.id).finalDiameter, undefined);
+  assert.equal(practicalFor(optionId, 1, catalog, 'single', 'white', { finalDiameter: 1.7 }).extruder1, null);
+  assert.equal(practicalFor(optionId, 1, catalog, 'dual', 'white', { finalDiameter: 1.7 }).extruder1, null);
+  assert.equal((await call('/admin/measurements', authenticated({ ...row, id: legacy.id }))).status, 409);
+  assert.equal(db.prepare('SELECT data FROM measurements WHERE id = ?').get(legacy.id).data, legacyBytes);
+  assert.equal((await call('/admin/measurements', { initData: signed() })).data.measurements[0].mode, 'dual');
+  assert.equal((await call('/admin/measurements', authenticated(row))).status, 200);
+  const unsized = recipeIdFor(row.baseId, row.color, row.optionId, row.mode);
+  assert.equal((await call('/admin/recipes/' + encodeURIComponent(unsized), authenticated({ measurementId: row.id, expectedRevision: 0 }, 'PUT'))).status, 400);
+  const metal = measurement({ finalDiameter: 1.7 });
+  const storedMetal = await call('/admin/measurements', authenticated(metal));
+  assert.equal(storedMetal.status, 200); assert.equal(storedMetal.data.measurement.finalDiameter, undefined);
+  assert.equal(recipeIdFor(metal.baseId, metal.color, metal.optionId, metal.mode, 1.7), recipeIdFor(metal.baseId, metal.color, metal.optionId, metal.mode));
 });
 
 test('PV3 single and yellow-green measurements persist independently and retain unused original anchors', async t => {

@@ -61,6 +61,8 @@ test('thread jobs follow the main selection, generate and restore without displa
   state.cableId = 'thread-bundle'; state.section = 1;
   assert.equal(syncPlannerSelection(state), true);
   const job = state.jobs[0]; job.lengthsText = '15';
+  assert.equal(job.cores, 1);
+  assert.deepEqual(job.colors, ['white']);
   const planned = scheduleJobs(state.jobs);
   assert.deepEqual(planned.errors, []);
   state.drums = planned.drums; state.planJobs = structuredClone(state.jobs);
@@ -69,12 +71,18 @@ test('thread jobs follow the main selection, generate and restore without displa
     planner.render();
     assert.equal(planner.drumTitle(state.drums[0]), 'Джгути');
     assert.match(element('jobs').innerHTML, /<label hidden>Переріз жили/);
-    assert.match(element('jobs').innerHTML, /Кількість кольорів/);
+    assert.match(element('jobs').innerHTML, /<label hidden>Кількість жил/);
+    assert.match(element('jobs').innerHTML, /<fieldset class="job-colors" hidden>/);
+    assert.match(element('jobs').innerHTML, /<label class="check job-priority" hidden>/);
+    assert.match(element('jobs').innerHTML, /Довжини барабанів, км/);
     assert.match(element('drums').innerHTML, /<label hidden>Переріз, мм²/);
+    assert.match(element('drums').innerHTML, /<label[^>]*hidden[^>]*>Колір<select/);
     assert.match(element('drums').innerHTML, /<b>Джгути<\/b>/);
     assert.match(element('plan-summary').innerHTML, /15 км \(Джгути\)/);
     assert.doesNotMatch(element('plan-summary').innerHTML, /1 мм²|3×1/);
-  }, (id, section, color) => setupFor(id, section, {}, color));
+    assert.doesNotMatch(element('plan-summary').innerHTML, /кожного кольору|комплекту кольорів/);
+    assert.match(element('drums').innerHTML, /Без барвника\./);
+  }, (id, section, color, finalDiameter) => setupFor(id, section, {}, color, { finalDiameter }));
   const restored = { ...initialState(), cableId: 'thread-bundle', section: 1 };
   restorePlanner(structuredClone(state), restored);
   assert.deepEqual(restored.drums, state.drums);
@@ -92,6 +100,62 @@ test('thread task target diameter survives planning and local queue restoration'
   const regenerated = scheduleJobs(restored.jobs, restored.drums);
   assert.deepEqual(regenerated.errors, []);
   assert(regenerated.drums.every(drum => drum.finalDiameter === 2.5));
+});
+
+test('restoring old thread jobs normalises their stream without replacing existing production rows', () => {
+  const task = { id: 'old-thread-task', cableId: 'thread-bundle', section: 1, cores: 3,
+    colors: ['yellow-green', 'blue', 'brown'], lengthsText: '15', finalDiameter: '1,7', urgent: true, batchSize: 3 };
+  const drums = ['yellow-green', 'blue', 'brown'].map((color, index) => ({
+    id: `old-thread-task:${color}:0`, jobId: task.id, cableId: task.cableId, section: 1,
+    color, length: '15000', finalDiameter: '1,7', name: `Б-${index}`, breakdowns: '6838', status: index ? 'queued' : 'done'
+  }));
+  const saved = { ...initialState(), cableId: task.cableId, section: 1, jobs: [task], planJobs: [task], drums };
+  const state = initialState();
+  restorePlanner(saved, state);
+  for (const restored of [...state.jobs, ...state.planJobs]) {
+    assert.equal(restored.cores, 1);
+    assert.deepEqual(restored.colors, ['white']);
+    assert.equal(restored.urgent, false);
+    assert.equal(restored.lengthsText, '15');
+  }
+  assert.deepEqual(state.drums, drums, 'stored physical drums, names, faults and completion remain intact');
+});
+
+test('thread setup receives its task diameter and a changed diameter invalidates the cached settings', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  state.jobs = [newJob('thread-bundle', 1, { finalDiameter: '1,5', lengthsText: '15' })];
+  state.planJobs = structuredClone(state.jobs); state.drums = scheduleJobs(state.jobs).drums;
+  const calls = [];
+  withPlannerHarness(state, ({ planner }) => {
+    const first = planner.setup(state.drums[0]);
+    assert.equal(first.finalDiameter, 1.5);
+    assert.equal(planner.setup(state.drums[0]), first);
+    state.drums[0].finalDiameter = 1.7;
+    assert.equal(planner.setup(state.drums[0]).finalDiameter, 1.7);
+    assert.deepEqual(calls, [['thread-bundle', 1, 'white', 1.5], ['thread-bundle', 1, 'white', 1.7]]);
+  }, (id, section, color, finalDiameter) => {
+    calls.push([id, section, color, finalDiameter]);
+    return { mode: 'single', stored: {}, finalDiameter };
+  });
+});
+
+test('thread diameter transitions keep nominal length and show matrix changes without dye instructions', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  state.jobs = [newJob('thread-bundle', 1, { finalDiameter: 1.5, lengthsText: '15 + 11' })];
+  state.planJobs = structuredClone(state.jobs); state.drums = scheduleJobs(state.jobs).drums;
+  state.drums[1].finalDiameter = 1.7;
+  withPlannerHarness(state, ({ planner, element, clickAction }) => {
+    const result = planner.result(state.drums[0], 0);
+    assert.equal(result.target, 15000);
+    assert.equal(result.matrixChange, true);
+    assert.match(planner.transitionText(state.drums[0], 0), /змінити матрицю на 1,9 мм/);
+    assert.doesNotMatch(planner.transitionText(state.drums[0], 0), /барвник №|за 150|− 150/);
+    planner.render();
+    assert.match(element('drums').innerHTML, /Перехід після зупинки\. Без барвника\./);
+    clickAction(state.drums[0].id, 'done');
+    assert.match(element('plan-live').textContent, /Без барвника: готово/);
+    assert.doesNotMatch(element('plan-summary').innerHTML, /кожного кольору|комплекту кольорів/);
+  }, (id, section, color, finalDiameter) => ({ mode: 'single', noDye: true, stored: {}, effective: { matrix: number(finalDiameter) + .2 } }));
 });
 
 test('multiplication notation updates while editing without moving the caret and survives reload', () => {

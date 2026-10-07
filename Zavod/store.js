@@ -1,8 +1,8 @@
 import { CABLES, RECIPES } from './data.js';
-import { optionFor } from './catalog-base.js?v=24';
-import { colorName } from './core.js?v=24';
+import { optionFor } from './catalog-base.js?v=25';
+import { colorName } from './core.js?v=25';
 import { API_URL } from './config.js?v=3';
-import { PUBLIC_CALIBRATIONS, CALIBRATION_SNAPSHOT } from './calibration-snapshot.js?v=24';
+import { PUBLIC_CALIBRATIONS, CALIBRATION_SNAPSHOT } from './calibration-snapshot.js?v=25';
 const CACHE = 'zavod-shared-table-v1';
 export const FIELDS = [['extruder1', 'Оберти №1, об/хв'], ['extruder2', 'Оберти №2, об/хв'], ['sikoraWire', 'SIKORA: діаметр жили, мм'], ['sikoraOuter', 'SIKORA: з ізоляцією, мм'], ['dorn', 'Дорн, мм'], ['matrix', 'Матриця, мм'], ['maxSpeed', 'Робоча швидкість, м/хв'], ['colorLead1', 'Зміна кольору №1 за, м'], ['colorLead2', 'Зміна кольору №2 за, м']];
 export function baseline() {

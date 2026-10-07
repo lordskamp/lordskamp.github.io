@@ -18,7 +18,7 @@ export const pv3Mode = color => ['blue', 'yellow-green'].includes(color) ? 'dual
 // Other colours can run on one; measurements belong to a mode, not a dye.
 // Keep the previously established black/striped rule for other cable families.
 export function modeFor(option, color, defaultMode = option?.mode) {
-  if (option?.coreKind === 'thread') return ['single', 'dual'].includes(defaultMode) ? defaultMode : 'unknown';
+  if (option?.coreKind === 'thread') return 'single';
   if (supportsSingleColorMode(option) || hasPv3Modes(option)) return pv3Mode(color);
   if (['black', 'yellow-green'].includes(color)) return 'dual';
   const normal = ['single', 'dual'].includes(defaultMode) ? defaultMode : hasPv3Modes(option) ? 'single' : defaultMode ?? option?.mode ?? 'unknown';

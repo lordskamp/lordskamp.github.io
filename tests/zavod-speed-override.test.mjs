@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { speedRpm } from '../Zavod/rpm.js';
 import { speedKey, speedLimit, speedSetup } from '../Zavod/speed-override.js';
+import { setupFor } from '../Zavod/setup-data.js';
 
 const base = (changes = {}) => ({
   option: { id: 'h07v-k--h07v-k' }, row: { section: 2.5, maxSpeed: 400 }, mode: 'dual', color: 'blue',
@@ -69,4 +70,55 @@ test('single mode keeps second extruder off and unavailable modes cannot produce
   assert.equal(speedRpm({ mode: 'unknown', extruder1: 40, extruder2: 50, maxSpeed: 100 }, 80).first, null);
   assert.equal(speedRpm({ mode: 'dual', extruder1: 40, extruder2: null, maxSpeed: 100 }, 80).first, null);
   assert.equal(speedRpm({ mode: 'single', extruder1: 40, maxSpeed: null }, 80).first, null);
+});
+
+test('thread speed adjustment scales the known practical pair for the selected diameter', () => {
+  for (const [diameter, target, expected] of [[1.5, 600, 42.9], [1.7, 600, 54.5], [2.1, 700, 98.9], [1.8, 700, 71.8]]) {
+    const info = setupFor('thread-bundle', 1, {}, 'white', { finalDiameter: diameter });
+    const original = structuredClone(info);
+    const result = speedSetup(info, target);
+    assert.equal(result.error, null);
+    assert.equal(result.info.effective.extruder1, expected);
+    assert.equal(result.info.effective.extruder2, null);
+    assert.equal(result.info.effective.workingSpeed, target);
+    assert.equal(result.info.rpmWorkingSpeed, target);
+    assert.equal(result.info.rpmSpeedBasis.extruder1, target);
+    assert.equal(result.info.noDye, true);
+    assert.equal(result.info.effective.sikoraOuter, null);
+    assert.equal(result.info.effective.matrix, info.effective.matrix);
+    assert.deepEqual(info, original);
+  }
+});
+
+test('thread overrides use separate normalized diameter keys and the known line speed limit', () => {
+  const first = setupFor('thread-bundle', 1, {}, 'white', { finalDiameter: '1,5' });
+  const same = setupFor('thread-bundle', 1, {}, 'blue', { finalDiameter: '1.50' });
+  const other = setupFor('thread-bundle', 1, {}, 'white', { finalDiameter: 1.7 });
+  assert.equal(speedKey(first), speedKey(same));
+  assert.notEqual(speedKey(first), speedKey(other));
+  assert.equal(speedLimit(first), 700);
+  assert.match(speedSetup(first, 701).error, /700/);
+  assert.strictEqual(speedSetup(first, 700).info, first);
+  speedSetup(first, 600);
+  assert.equal(speedSetup(first, 500).info.effective.extruder1, 35.7, 'each adjustment uses the unmodified practical pair');
+});
+
+test('a partial thread RPM without same-diameter speed cannot be scaled using the default 600', () => {
+  const partial = { id: 'thread-partial', baseId: 'thread-bundle-1', optionId: 'thread-bundle', cableId: 'thread-bundle',
+    origin: 'measurement', mode: 'single', section: 1, finalDiameter: 1.9, extruder1: 75, maxSpeed: null,
+    updatedAt: '2026-10-08T12:00:00Z' };
+  const catalog = { calibrations: [partial] };
+  const info = setupFor('thread-bundle', 1, catalog, 'white', { finalDiameter: 1.9 });
+  assert.equal(info.effective.extruder1, 75);
+  assert.equal(info.effective.workingSpeed, 600);
+  assert.equal(info.rpmSpeedBasis.extruder1, null);
+  const result = speedSetup(info, 500);
+  assert.strictEqual(result.info, info);
+  assert.match(result.error, /швидкість, за якої записані ці оберти/);
+  assert.strictEqual(speedSetup(info, 600).info, info, 'keeping the default does not pretend to recalculate a measurement');
+  const known = setupFor('thread-bundle', 1, { calibrations: [partial, { ...partial, id: 'thread-speed', extruder1: null, maxSpeed: 700,
+    updatedAt: '2026-10-08T13:00:00Z' }] }, 'white', { finalDiameter: 1.9 });
+  assert.equal(speedSetup(known, 600).info.effective.extruder1, 64.3);
+  const missing = setupFor('thread-bundle', 1, {}, 'white');
+  assert.match(speedSetup(missing, 500).error, /фінальний діаметр/);
 });

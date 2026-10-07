@@ -119,7 +119,7 @@ test('reference values stay primary where practical values are absent and foreca
   assert.equal(result.sources.workingSpeed, 'reference');
   assert.deepEqual(result.stages, { first: 80, second: 260, working: 450, source: 'reference' });
   assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source,item.value]), [['reference',117], ['forecast',60.3]]);
-  assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю' });
+  assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю', rule: 'За налаштуванням' });
 });
 
 test('PV3 pairs supply dual RPM without becoming practical single-extruder RPM', () => {
@@ -275,9 +275,9 @@ test('explicit single mode cannot inherit Speaker dual pairs or dual-source work
 });
 
 test('table includes every reference row with one entry per extruder mode', () => {
-  const records = tableSetups(catalog());
+  const records = tableSetups(catalog()).filter(record=>record.option.coreKind!=='thread');
   assert.equal(new Set(records.map(record=>`${record.option.id}:${record.row.section}:${record.mode}`)).size, records.length);
-  assert.equal(new Set(records.map(record=>`${record.option.id}:${record.row.section}`)).size, CATALOG_OPTIONS.reduce((count,item)=>count+item.sections.length,0));
+  assert.equal(new Set(records.map(record=>`${record.option.id}:${record.row.section}`)).size, CATALOG_OPTIONS.filter(option=>option.coreKind!=='thread').reduce((count,item)=>count+item.sections.length,0));
   assert(records.every(record => record.option && record.row && (record.stages.first === null || record.stages.first <= record.stages.working)));
   assert.deepEqual(records.filter(record=>record.option.id==='pv3--pv3'&&record.row.section===.75).map(record=>[record.color,record.mode]), [['brown','single'],['blue','dual']]);
 });
