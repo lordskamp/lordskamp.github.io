@@ -12,16 +12,14 @@ const MODES = {
 
 export const hasPv3Modes = option => option?.practicalCableId === 'pv3';
 export const supportsSingleColorMode = option => /^(?:H|\(H\)|ПВ)/iu.test(option?.brand ?? '');
-export const pv3Mode = color => ['blue', 'yellow-green'].includes(color) ? 'dual' : 'single';
+export const pv3Mode = color => ['black', 'yellow-green'].includes(color) ? 'dual' : 'single';
 
-// Confirmed H*/ПВ* families use both extruders for blue and yellow-green.
-// Other colours can run on one; measurements belong to a mode, not a dye.
-// Keep the previously established black/striped rule for other cable families.
-export function modeFor(option, color, defaultMode = option?.mode) {
+// Black and striped metal wires require both extruders. Other colours follow
+// the selected physical mode; H*/ПВ* families normally use the first extruder.
+export function modeFor(option, color, defaultMode) {
   if (option?.coreKind === 'thread') return 'single';
-  if (supportsSingleColorMode(option) || hasPv3Modes(option)) return pv3Mode(color);
   if (['black', 'yellow-green'].includes(color)) return 'dual';
-  const normal = ['single', 'dual'].includes(defaultMode) ? defaultMode : hasPv3Modes(option) ? 'single' : defaultMode ?? option?.mode ?? 'unknown';
+  const normal = ['single', 'dual'].includes(defaultMode) ? defaultMode : supportsSingleColorMode(option) || hasPv3Modes(option) ? 'single' : defaultMode ?? option?.mode ?? 'unknown';
   return normal;
 }
 
@@ -33,7 +31,7 @@ export function pv3Recipe(record, mode) {
     ...record, mode, modeResolved: true,
     extruder1: values[0], extruder2: values[1], maxSpeed: values[2],
     notes: [
-      'ПВ3: два екструдери для синього та жовто-зеленого; для інших кольорів — один. Робочі значення спільні для всіх кольорів одного режиму.',
+      'ПВ3: для чорного та жовто-зеленого потрібні два екструдери. Для інших кольорів зазвичай працює один; можна обрати два. Робочі значення спільні для всіх кольорів одного режиму.',
       ...(record.section === .75 ? ['Основний запис: 68 для одного екструдера; 65/85 для двох; робоча швидкість 350. Додаткові 57 і 300 залишені у джерелі, умови не уточнені.'] : []),
       ...(record.section === 6 ? ['Робоча швидкість: 120 для одного екструдера, 130 для двох. Підтверджено оператором 30.09.2026.'] : []),
       ...(record.notes ?? []).filter(note => !/екструд|швидк|68|57|65\s*\/\s*85|74|67/.test(note)),

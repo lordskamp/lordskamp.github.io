@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RECIPES } from '../Zavod/data.js';
 import { OPERATOR_REFERENCE, OPERATOR_HANDWRITTEN } from '../Zavod/operator-data.js';
-import { trialRpm, additionalRpm, handwrittenAlternatives } from '../Zavod/rpm.js';
+import { trialRpm, speedRpm, additionalRpm, handwrittenAlternatives } from '../Zavod/rpm.js';
 
 const pv1 = RECIPES.find(r => r.id === 'pv1-1-5');
 const vvg = RECIPES.find(r => r.id === 'vvgng-p-1-5');
@@ -17,7 +17,14 @@ test('перерахунок обертів за швидкістю зберіг
 test('обидва екструдери перераховуються для того самого режиму', () => {
   const result = trialRpm(vvg, '760', 'blue');
   assert.equal(result.first, 133);
-  assert.equal(result.second, 173);
+  assert.equal(result.second, 185.3);
+});
+
+test('підтверджена пара 60/100 при 250 стає 72/120 при 300 без абсолютного обмеження різниці', () => {
+  const original = Object.freeze({ extruder1: 60, extruder2: 100, maxSpeed: 250, mode: 'dual' });
+  assert.deepEqual(speedRpm(original, 300), { first: 72, second: 120, message: 'Орієнтовно · за твоєю швидкістю' });
+  assert.deepEqual([original.extruder1, original.extruder2], [60, 100]);
+  assert.deepEqual([speedRpm(original, 125).first, speedRpm(original, 125).second], [30, 50]);
 });
 
 test('прогноз не виходить за межі швидкості й не приймає порожні або хибні числа', () => {
@@ -32,6 +39,7 @@ test('прогноз не виходить за межі швидкості й �
 test('відсутні режими та непідтверджені пари ПВ3 не породжують прогнозу', () => {
   assert.equal(trialRpm({ ...pv1, mode: 'unknown' }, 300, 'blue').first, null);
   assert.equal(trialRpm(pv1, 300, 'yellow-green').first, null);
+  assert.equal(trialRpm(pv1, 300, 'black').first, null);
   assert.equal(trialRpm({ ...pv1, extruder1: null }, 300, 'blue').first, null);
   const pv3 = RECIPES.find(r => r.cableId === 'pv3' && r.section === 1);
   assert.equal(trialRpm(pv3, 290, 'yellow-green').first, null);

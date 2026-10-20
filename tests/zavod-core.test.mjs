@@ -18,6 +18,15 @@ import {
 
 const drum = (color, length = 15000) => ({ color, length });
 
+test('чорний і жовто-зелений потребують двох екструдерів, джгути не використовують барвник', () => {
+  for (const color of ['black', 'yellow-green']) {
+    assert.equal(dyePlan(color, 'single').valid, false);
+    assert.equal(dyePlan(color, 'dual').valid, true);
+  }
+  assert.equal(dyePlan('blue', 'single').valid, true);
+  assert.equal(dyePlan('black', 'single', { noDye: true }).valid, true);
+});
+
 test('15 км зі зміною кольору: екран 15 850 м, барвник Е2 на 13 000 м', () => {
   const result = planDrum(drum('blue'), drum('brown'), 'dual');
   assert.deepEqual(result.errors, []);

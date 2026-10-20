@@ -20,7 +20,7 @@ const finitePositive = value => typeof value === 'number' && Number.isFinite(val
 test('H07V-K predicts another section directly from its recorded 1.5, 2.5 and 6 values', () => {
   const records = [measured(1.5, { extruder1: 80, maxSpeed: 300 }), measured(2.5, { extruder1: 70, maxSpeed: 220 }), measured(6, { extruder1: 56, maxSpeed: 80 })];
   const result = predict('h07v-k', 4, records, { optionId: h07, mode: 'single' });
-  assert.deepEqual([result.extruder1, result.extruder2, result.workingSpeed], [64, null, 160]);
+  assert.deepEqual([result.extruder1, result.extruder2, result.workingSpeed], [87.8, null, 160]);
   assert.equal(result.method, 'interpolation');
   assert.equal(result.rpmMethod, 'measured-values');
   assert.deepEqual(result.fieldAnchors.extruder1.map(anchor => anchor.section), [2.5, 6]);
@@ -34,7 +34,7 @@ test('printed speed and RPM never train operating forecasts; nominal geometry is
   const changed = forecastFor(reference, { ...row, maxSpeed: 1, rpm1: 9999, rpm2: 9999 }, records, { optionId: h07 });
   assert.deepEqual(changed, normal);
   const geometryChanged = forecastFor(reference, { ...row, wireNom: 3, outerNom: 5 }, records, { optionId: h07 });
-  assert.equal(geometryChanged.extruder1, normal.extruder1);
+  assert.notEqual(geometryChanged.extruder1, normal.extruder1);
   assert.equal(geometryChanged.workingSpeed, normal.workingSpeed);
   assert.notEqual(geometryChanged.sikoraWire, normal.sikoraWire);
 });
@@ -43,7 +43,7 @@ test('latest measurement corrects its section and recomputes the forecast', () =
   const records = [measured(2.5, { extruder1: 70, maxSpeed: 220 }), measured(6, { extruder1: 56, maxSpeed: 80 })];
   records.push(measured(6, { extruder1: 84, maxSpeed: 150 }, { id: 'new-sample', revision: 2, updatedAt: '2026-10-02T12:00:00Z' }));
   const result = predict('h07v-k', 4, records, { optionId: h07 });
-  assert.deepEqual([result.extruder1, result.workingSpeed], [76, 190]);
+  assert.deepEqual([result.extruder1, result.workingSpeed], [88.2, 190]);
   assert.equal(ownAnchors(result).length, 2);
 });
 
@@ -59,7 +59,7 @@ test('each partial field uses its own independent anchors', () => {
 test('a partial update does not erase the older recorded field in the same section', () => {
   const records = [measured(2.5, { extruder1: 70, maxSpeed: 220 }), measured(6, { extruder1: 56, maxSpeed: 80 }), measured(6, { maxSpeed: 150 }, { revision: 2, updatedAt: '2026-10-02T12:00:00Z' })];
   const result = predict('h07v-k', 4, records, { optionId: h07 });
-  assert.equal(result.extruder1, 64);
+  assert.equal(result.extruder1, 66.8);
   assert.equal(result.workingSpeed, 190);
 });
 
@@ -124,11 +124,11 @@ test('verified ПВ1/H07V-U family is an explicit fallback and own measurements 
 test('own geometry interpolates and missing SIKORA follows the predicted matrix with a positive allowance', () => {
   const records = [measured(2.5, { matrix: 3, dorn: 2, sikoraOuter: 3.2 }), measured(6, { matrix: 4.4, dorn: 3.4, sikoraOuter: 4.6 })];
   const result = predict('h07v-k', 4, records, { optionId: h07 });
-  assert.deepEqual([result.matrix, result.dorn, result.sikoraOuter], [3.6, 2.6, 3.8]);
+  assert.deepEqual([result.matrix, result.dorn, result.sikoraOuter], [3.73, 2.63, 3.93]);
   const missing = predict('h07v-k', 4, records.map(record => ({ ...record, sikoraOuter: null })), { optionId: h07 });
   const changedMatrix = predict('h07v-k', 4, records.map(record => ({ ...record, sikoraOuter: null, matrix: 20 })), { optionId: h07 });
   assert(finitePositive(missing.sikoraOuter));
-  assert.equal(missing.sikoraOuter, 3.75);
+  assert.equal(missing.sikoraOuter, 3.88);
   assert.equal(changedMatrix.sikoraOuter, 20.15);
   assert.equal(missing.fieldMethods.sikoraOuter, 'matrix-related-allowance');
 });
@@ -136,7 +136,7 @@ test('own geometry interpolates and missing SIKORA follows the predicted matrix 
 test('forecast SIKORA uses the selected practical or reference matrix and a learned positive measured allowance', () => {
   const training = [measured(2.5, { matrix: 3, sikoraOuter: 3.25 }), measured(6, { matrix: 4.4, sikoraOuter: 4.65 })];
   const result = predict('h07v-k', 4, training, { optionId: h07, mode: 'single', matrix: 4 });
-  assert.equal(result.matrix, 3.6);
+  assert.equal(result.matrix, 3.73);
   assert.equal(result.sikoraOuterMatrix, 4);
   assert.equal(result.sikoraOuter, 4.25);
   assert.equal(result.fieldMethods.sikoraOuter, 'matrix-measured-allowance');
@@ -210,7 +210,7 @@ test('deleted measurements are excluded from calibration', () => {
 
 test('original handwritten values can fill gaps by measured-value interpolation', () => {
   const result = predict('pvs-380', 1);
-  assert.deepEqual([result.extruder1, result.extruder2, result.workingSpeed], [67, 106, 500]);
+  assert.deepEqual([result.extruder1, result.extruder2, result.workingSpeed], [58, 109.8, 500]);
   assert.equal(result.rpmMethod, 'measured-values');
   assert(finitePositive(predict('pvs-380', 6).workingSpeed));
 });
@@ -226,23 +226,33 @@ test('actual H07V-K 1.5 and 2.5 predict held-out 6 without using the 6 measureme
   assert.deepEqual(ownAnchors(result).map(anchor => anchor.section), [1.5, 2.5]);
   assert(Object.values(result.fieldAnchors).flat().every(anchor => anchor.measurementId !== actual.id));
   assert.equal(result.fieldMethods.extruder1, 'annular-flow');
-  assert.equal(result.fieldMethods.extruder2, 'empirical-extrapolation');
+  assert.equal(result.fieldMethods.extruder2, 'paired-balance');
   assert(result.borrowedFrom.includes('YSLY'));
   assert(result.borrowedFrom.includes('ПВС'));
+});
+
+test('H07V-K held-out 2.5 uses the curved construction geometry rather than underestimating its diameter and operating load', () => {
+  const actual=realRecords.find(record=>record.section===2.5);
+  const training=realRecords.filter(record=>record.section!==actual.section);
+  const result=predict('h07v-k',2.5,training,{optionId:h07,mode:'dual',workingSpeed:actual.maxSpeed});
+  for(const key of ['extruder1','extruder2']) assert(Math.abs(result[key]/actual[key]-1)<.08,`${key}: ${result[key]} vs ${actual[key]}`);
+  for(const key of ['sikoraWire','matrix','sikoraOuter']) assert(Math.abs(result[key]/actual[key]-1)<.05,key);
+  assert.equal(result.fieldMethods.matrix,'nominal-residual-interpolation');
+  assert(Object.values(result.fieldAnchors).flat().every(anchor=>anchor.measurementId!==actual.id));
 });
 
 test('H07V-K 4 follows the measured speed curve instead of multiplying RPM by the printed maximum speed', () => {
   const records = realRecords.map(record => ({ ...record, baseId: baseFor(h07, record.section).id }));
   const result = setupFor(h07, 4, { calibrations: records }, 'blue', { mode: 'dual' });
   const actual = setupFor(h07, 6, { calibrations: records }, 'blue', { mode: 'dual' });
-  assert.deepEqual([result.effective.extruder1, result.effective.extruder2, result.effective.workingSpeed], [56, 82, 137]);
+  assert.deepEqual([result.effective.extruder1, result.effective.extruder2, result.effective.workingSpeed], [61.1, 84.2, 137]);
   assert.deepEqual([actual.effective.extruder1, actual.effective.extruder2, actual.effective.workingSpeed], [59, 95, 120]);
   assert.equal(result.sources.workingSpeed, 'forecast');
   assert.equal(result.reference.workingSpeed, 250, 'printed maximum remains available for comparison');
-  assert.equal(result.forecast.fieldMethods.extruder1, 'interpolation');
-  assert.equal(result.forecast.fieldMethods.extruder2, 'interpolation');
+  assert.equal(result.forecast.fieldMethods.extruder1, 'speed-normalized-interpolation');
+  assert.equal(result.forecast.fieldMethods.extruder2, 'speed-normalized-interpolation');
   const heldOut = setupFor(h07, 6, { calibrations: records.filter(record => record.section !== 6) }, 'blue', { mode: 'dual' });
-  assert.deepEqual([heldOut.effective.extruder1, heldOut.effective.extruder2, heldOut.effective.workingSpeed], [61.1, 97.4, 123]);
+  assert.deepEqual([heldOut.effective.extruder1, heldOut.effective.extruder2, heldOut.effective.workingSpeed], [61.1, 94, 123]);
 });
 
 test('the calibrated operating curve controls setup values for every family with own same-mode admin speed anchors', () => {
@@ -251,10 +261,12 @@ test('the calibrated operating curve controls setup values for every family with
       measured(6, { extruder1: 60, extruder2: 95, maxSpeed: 120 }, { optionId, cableId: optionId, mode: 'dual' })]
       .map(record => ({ ...record, baseId: baseFor(optionId, record.section).id }));
     const result = setupFor(optionId, 4, { calibrations: records }, 'blue', { mode: 'dual' });
-    assert.deepEqual([result.effective.extruder1, result.effective.extruder2, result.effective.workingSpeed], [55.4, 80.7, 137], optionId);
+    assert.equal(result.effective.workingSpeed,137,optionId);
+    assert(result.effective.extruder1>=52/150*137-.1&&result.effective.extruder1<=60/120*137+.1,optionId);
+    assert(result.effective.extruder2>=70/150*137-.1&&result.effective.extruder2<=95/120*137+.1,optionId);
     assert.equal(result.sources.workingSpeed, 'forecast', optionId);
-    assert.equal(result.forecast.fieldMethods.extruder1, 'interpolation', optionId);
-    assert.equal(result.forecast.fieldMethods.extruder2, 'interpolation', optionId);
+    assert.equal(result.forecast.fieldMethods.extruder1, 'speed-normalized-interpolation', optionId);
+    assert.equal(result.forecast.fieldMethods.extruder2, 'speed-normalized-interpolation', optionId);
   }
 });
 
@@ -264,17 +276,60 @@ test('an exact practical RPM is never rescaled or relabelled by an unrelated sel
   assert.equal(result.fieldMethods.extruder1, 'measured-value');
   assert.equal(result.fieldMethods.extruder2, 'measured-value');
   assert.deepEqual(result.rpmSpeedBasis, { extruder1: 120, extruder2: 120 });
+  const precise=predict('h07v-k',6,[measured(6,{extruder1:72.25,extruder2:120.125,maxSpeed:300},{mode:'dual'})],{optionId:h07,mode:'dual',workingSpeed:150});
+  assert.deepEqual([precise.extruder1,precise.extruder2],[72.25,120.125]);
 });
 
-test('estimated second RPM is bounded by the final main RPM plus 40, including selected-speed scaling', () => {
+test('unmeasured larger sections have greater measured load at the same speed, while modes and exact measurements remain independent', () => {
+  for (const mode of ['single','dual']) {
+    const records = [measured(1.5, { extruder1:72,extruder2:mode==='dual'?120:null,maxSpeed:300 }, {mode}),
+      measured(6, { extruder1:100,extruder2:mode==='dual'?180:null,maxSpeed:200 }, {mode})];
+    const smaller=predict('h07v-k',2.5,records,{optionId:h07,mode,workingSpeed:150});
+    const larger=predict('h07v-k',4,records,{optionId:h07,mode,workingSpeed:150});
+    const doubled=predict('h07v-k',4,records,{optionId:h07,mode,workingSpeed:300});
+    assert(larger.extruder1>smaller.extruder1);
+    assert(Math.abs(doubled.extruder1-larger.extruder1*2)<.11);
+    if(mode==='dual') {
+      assert(larger.extruder2>smaller.extruder2);
+      assert(Math.abs(doubled.extruder2-larger.extruder2*2)<.21);
+      assert(doubled.extruder2-doubled.extruder1>40);
+    } else assert.equal(larger.extruder2,null);
+    const actual=predict('h07v-k',1.5,records,{optionId:h07,mode,workingSpeed:150});
+    assert.deepEqual([actual.extruder1,actual.extruder2],[72,mode==='dual'?120:null]);
+  }
+});
+
+test('secondary extrapolation below the observed range preserves a real measured RPM per metre instead of a foreign balance', () => {
+  const donors=realRecords;
+  const source='h07v-k--h05v-k';
+  const result=predict('h07v-k',.75,donors,{optionId:source,mode:'dual',workingSpeed:160});
+  assert.equal(result.fieldMethods.extruder2,'nearest-secondary-load-at-selected-speed');
+  assert(Math.abs(result.extruder2-65/150*160)<.11);
+  assert.equal(result.confidence,'low');
+});
+
+test('second-extruder color change uses class anchors, exact practical values first and no assumption that PV3 is class 5', () => {
+  const flexible=predict('h07v-k',1.5,[],{optionId:h07,mode:'dual'});
+  assert.equal(flexible.colorLead2,1600);
+  assert.equal(flexible.fieldMethods.colorLead2,'operator-anchor');
+  assert.equal(flexible.colorLead2Model.approximate,true);
+  const actual=predict('h07v-k',1.5,[measured(1.5,{colorLead2:0},{mode:'dual'})],{optionId:h07,mode:'dual'});
+  assert.equal(actual.colorLead2,0);
+  assert.equal(actual.fieldMethods.colorLead2,'measured-value');
+  assert.equal(predict('h07v-k',1.5,[],{optionId:h07,mode:'single'}).colorLead2,null);
+  const pv3=predict('pv3',1.5,[],{optionId:'pv3--pv3',mode:'dual'});
+  assert(!pv3.fieldMethods.colorLead2.startsWith('operator-'));
+});
+
+test('a measured paired balance scales both estimated RPM together without an absolute difference clamp', () => {
   const records = [measured(2.5, { extruder1: 40, extruder2: 120, maxSpeed: 150 }, { mode: 'dual' }),
     measured(6, { extruder1: 40, extruder2: 120, maxSpeed: 120 }, { mode: 'dual' })];
   for (const workingSpeed of [undefined, 300]) {
     const result = predict('h07v-k', 4, records, { optionId: h07, mode: 'dual', workingSpeed });
-    assert.equal(result.extruder2, Math.round((result.extruder1 + 40) * 10) / 10);
-    assert.equal(result.rpmLimit.maximumDifference, 40);
-    assert(result.fieldMethods.extruder2.endsWith('-limited-gap'));
-    assert.equal(result.confidence, 'low');
+    assert(Math.abs(result.extruder2 / result.extruder1 - 3) < .01);
+    assert(result.extruder2 > result.extruder1 + 40);
+    assert.equal(result.rpmLimit, undefined);
+    assert(result.fieldMethods.extruder2.startsWith('paired-balance-interpolation'));
   }
   const recorded = predict('h07v-k', 6, records, { optionId: h07, mode: 'dual' });
   assert.deepEqual([recorded.extruder1, recorded.extruder2], [40, 120]);
@@ -283,29 +338,29 @@ test('estimated second RPM is bounded by the final main RPM plus 40, including s
   assert.deepEqual([handwritten.extruder1, handwritten.extruder2], [50, 130]);
 });
 
-test('an estimated second RPM also respects an exact practical main RPM in the effective setup', () => {
+test('an estimated second RPM follows the paired balance at an exact practical main RPM', () => {
   const records = [measured(2.5, { extruder1: 100, extruder2: 120, maxSpeed: 150 }, { mode: 'dual' }),
     measured(6, { extruder1: 100, extruder2: 120, maxSpeed: 120 }, { mode: 'dual' }),
     measured(4, { extruder1: 25 }, { mode: 'dual', updatedAt: '2026-10-03T12:00:00Z' })]
     .map(record => ({ ...record, baseId: baseFor(h07, record.section).id }));
-  const result = setupFor(h07, 4, { calibrations: records }, 'blue');
+  const result = setupFor(h07, 4, { calibrations: records }, 'black');
   assert.equal(result.effective.extruder1, 25);
   assert.equal(result.sources.extruder1, 'practical');
-  assert.equal(result.effective.extruder2, 65);
+  assert.equal(result.effective.extruder2, 30);
   assert.equal(result.sources.extruder2, 'forecast');
-  assert(result.forecast.fieldMethods.extruder2.endsWith('-limited-gap'));
-  assert.equal(result.rpmConflict, null);
+  assert.equal(result.forecast.fieldMethods.extruder2, 'paired-balance-interpolation');
+  assert.equal(result.rpmConflict, undefined);
 });
 
-test('retained actual or reference RPM conflicts are reported without rewriting their values', () => {
+test('actual and reference paired RPM remain intact even when their difference exceeds 40', () => {
   const records = [measured(6, { extruder1: 40, extruder2: 120, maxSpeed: 120 }, { mode: 'dual' })]
     .map(record => ({ ...record, baseId: baseFor(h07, record.section).id }));
-  const actual = setupFor(h07, 6, { calibrations: records }, 'blue');
+  const actual = setupFor(h07, 6, { calibrations: records }, 'black');
   assert.deepEqual([actual.effective.extruder1, actual.effective.extruder2], [40, 120]);
-  assert.deepEqual(actual.rpmConflict, { first: 40, second: 120, difference: 80, sources: ['practical', 'practical'] });
-  const printed = setupFor('pvs-380--pvsng', 4, {}, 'blue');
+  assert.equal(actual.rpmConflict, undefined);
+  const printed = setupFor('pvs-380--pvsng', 4, {}, 'black');
   assert.deepEqual([printed.effective.extruder1, printed.effective.extruder2], [122, 244]);
-  assert.equal(printed.rpmConflict.difference, 122);
+  assert.equal(printed.rpmConflict, undefined);
 });
 
 test('compatible same-mode admin donors replace older mixed operating curves without relabelling borrowed values as practical', () => {
@@ -318,7 +373,7 @@ test('compatible same-mode admin donors replace older mixed operating curves wit
     assert.equal(result.sources.extruder1, 'forecast', optionId);
     assert.equal(result.practical.extruder1, null, optionId);
     assert(result.effective.extruder1 < 60, optionId);
-    assert(result.effective.extruder2 <= result.effective.extruder1 + 40, optionId);
+    assert(finitePositive(result.effective.extruder2), optionId);
   }
   const single = setupFor('pv5--pv5', 4, { calibrations: records }, 'brown');
   assert.equal(single.mode, 'single');
@@ -359,7 +414,7 @@ test('selected-speed RPM uses the same own admin speed anchors and legacy base-b
   const raw = predict('pv1', 4, training, { optionId, mode: 'single' });
   assert.equal(raw.workingSpeed, 200);
   const result = predict('pv1', 4, training, { optionId, mode: 'single', workingSpeed: 160 });
-  assert.equal(result.extruder1, 80);
+  assert.equal(result.extruder1, 100.6);
   assert.deepEqual(result.fieldAnchors.workingSpeed.map(anchor => anchor.section), [1.5, 6]);
   const borrowed = predict('pv1', 4, [], { optionId, mode: 'single' });
   assert.equal(borrowed.method, 'related-practical');
@@ -369,6 +424,12 @@ test('selected-speed RPM uses the same own admin speed anchors and legacy base-b
 
 test('RPM without measured speed extrapolates empirically and never claims a flow or selected-speed basis', () => {
   const training = [measured(1.5, { extruder1: 40, extruder2: 60 }, { mode: 'dual' }), measured(2.5, { extruder1: 60, extruder2: 80 }, { mode: 'dual' })];
+  for(const section of [.75,6]) {
+    const unscaled=predict('h07v-k',section,training,{optionId:h07,mode:'dual'});
+    const selected=predict('h07v-k',section,training,{optionId:h07,mode:'dual',workingSpeed:250});
+    assert.deepEqual([selected.extruder1,selected.extruder2],[unscaled.extruder1,unscaled.extruder2]);
+    assert.equal(selected.rpmWorkingSpeed,null);
+  }
   const raw = predict('h07v-k', 6, training, { optionId: h07, mode: 'dual' });
   const scaled = predict('h07v-k', 6, training, { optionId: h07, mode: 'dual', workingSpeed: 250 });
   assert.equal(scaled.extruder1, raw.extruder1);

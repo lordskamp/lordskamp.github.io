@@ -1,10 +1,10 @@
-import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=25';
+import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=27';
 import { RECIPES } from './data.js';
-import { SOURCE_ANNOTATIONS } from './reference-data.js?v=25';
-import { forecastFor } from './forecast.js?v=25';
-import { number, firstSpeed, secondSpeed, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=25';
-import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=25';
-import { threadSetup, threadDiameters } from './thread-settings.js?v=25';
+import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
+import { forecastFor } from './forecast.js?v=27';
+import { number, firstSpeed, secondSpeed } from './core.js?v=27';
+import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=27';
+import { threadSetup, threadDiameters } from './thread-settings.js?v=27';
 
 export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю', rule: 'За налаштуванням' };
 const metric = row => ({
@@ -42,7 +42,7 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
     .sort((a, b) => Number(b.section === Number(section)) - Number(a.section === Number(section)) || Number(Boolean(b.optionId)) - Number(Boolean(a.optionId))
       || String(b.updatedAt ?? b.createdAt ?? '').localeCompare(String(a.updatedAt ?? a.createdAt ?? '')) || Number(b.revision ?? 0) - Number(a.revision ?? 0))[0];
   const normalMode = option.mode !== 'unknown' ? option.mode : ownRecords.some(record => record.origin === 'measurement' && record.mode === 'single') ? 'single' : measured?.mode ?? base.mode;
-  const selectedMode = ['single', 'dual'].includes(options.mode) ? options.mode : modeFor(option, color, normalMode);
+  const selectedMode = modeFor(option, color, ['single', 'dual'].includes(options.mode) ? options.mode : normalMode);
   const stored = practicalFor(option.id, section, catalog, selectedMode === 'unknown' ? undefined : selectedMode, color);
   const practical = metric(stored);
   const annotations = SOURCE_ANNOTATIONS.filter(annotation => annotation[0] === card.source && annotation[2] === Number(section) && (annotation[1] === option.brand || annotation[1] === 'ПВС / ШВВП' && ['ПВС','ШВВП'].includes(option.brand)));
@@ -97,21 +97,7 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
     const chosen = choices.find(([,value]) => value !== null && value !== undefined && value !== '');
     sources[key] = chosen?.[0] ?? null; effective[key] = chosen?.[1] ?? null;
   }
-  // The effective main RPM can be an exact practical/reference value while
-  // the second RPM is estimated. Apply the estimate-only bound to that final
-  // pair too; keep recorded second-extruder values untouched.
-  if (sources.extruder2 === 'forecast' && number(effective.extruder1) > 0 && number(effective.extruder2) > number(effective.extruder1) + MAX_EXTRUDER_RPM_DIFFERENCE) {
-    forecast.rpmLimit = { key: 'extruder2', original: effective.extruder2, maximumDifference: MAX_EXTRUDER_RPM_DIFFERENCE };
-    effective.extruder2 = Math.round(limitPredictedExtruder2(effective.extruder1, effective.extruder2) * 10) / 10;
-    forecast.extruder2 = effective.extruder2;
-    if (!forecast.fieldMethods.extruder2.endsWith('-limited-gap')) forecast.fieldMethods.extruder2 += '-limited-gap';
-    forecast.fieldConfidence.extruder2 = 'low';
-    forecast.confidence = 'low';
-  }
-  const rpmConflict = number(effective.extruder1) > 0 && number(effective.extruder2) > number(effective.extruder1) + MAX_EXTRUDER_RPM_DIFFERENCE
-    ? { first: number(effective.extruder1), second: number(effective.extruder2), difference: Math.round((number(effective.extruder2) - number(effective.extruder1)) * 10) / 10,
-      sources: [sources.extruder1, sources.extruder2] } : null;
-  return { option, card, row, base, stored, practical, practicalSources: [...practicalSources].filter(Boolean), reference, forecast, effective, sources, rpmConflict,
+  return { option, card, row, base, stored, practical, practicalSources: [...practicalSources].filter(Boolean), reference, forecast, effective, sources,
     mode: mode === 'unknown' ? forecast.mode ?? 'unknown' : mode, normalMode, color,
     stages: speedStages(effective.workingSpeed, sources.workingSpeed) };
 }

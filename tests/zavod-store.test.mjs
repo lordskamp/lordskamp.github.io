@@ -28,21 +28,41 @@ test('thread CSV exports the thread foundation instead of the internal numeric r
   }
 });
 
-test('a fresh offline installation carries real public numeric calibration and reproduces the live H07 curve', t => {
+test('a fresh offline installation carries the current public numeric calibrations and exact measured H07 values', t => {
   globals(t, { localStorage: storage() });
   const catalog = cachedCatalog();
   assert.equal(catalog.source, 'snapshot');
-  assert.equal(catalog.calibrations.length, 3);
-  assert.equal(CALIBRATION_SNAPSHOT.retrievedOn, '2026-10-02');
+  assert.equal(catalog.calibrations.length, 11);
+  assert.equal(CALIBRATION_SNAPSHOT.retrievedOn, '2026-10-19');
   assert.equal(CALIBRATION_SNAPSHOT.source, 'https://zavod-data.lordskamp.workers.dev/catalog');
-  const interior = setupFor(h07, 4, catalog, 'blue');
-  const actual = setupFor(h07, 6, catalog, 'blue');
-  assert.deepEqual([interior.effective.extruder1, interior.effective.extruder2, interior.effective.workingSpeed], [56, 82, 137]);
+  const interior = setupFor(h07, 4, catalog, 'black');
+  const actual = setupFor(h07, 6, catalog, 'black');
+  assert.ok(interior.effective.extruder1 > 0 && interior.effective.extruder2 > 0 && interior.effective.workingSpeed > 0);
   assert.deepEqual([actual.effective.extruder1, actual.effective.extruder2, actual.effective.workingSpeed], [59, 95, 120]);
   assert.equal(actual.sources.extruder1, 'practical');
-  for (const row of PUBLIC_CALIBRATIONS) for (const key of ['note', 'notes', 'uncertain', 'telegramId', 'operatorId', 'account', 'user']) assert(!Object.hasOwn(row, key), key);
+  const allowed = new Set(['id', 'source', 'baseId', 'cableId', 'optionId', 'section', 'finalDiameter', 'color', 'mode',
+    'measurementId', 'revision', 'createdAt', 'updatedAt', 'extruder1', 'extruder2', 'maxSpeed', 'dorn', 'matrix',
+    'sikoraWire', 'sikoraOuter', 'colorLead1', 'colorLead2', 'origin', 'bundledCalibration']);
+  for (const row of PUBLIC_CALIBRATIONS) for (const key of Object.keys(row)) assert(allowed.has(key), key);
   catalog.calibrations[0].extruder1 = 999;
   assert.equal(baseline().calibrations[0].extruder1, 37.5, 'callers cannot mutate bundled training data');
+});
+
+test('all eleven current numerical snapshots preserve their own exact mode values across seven marketing options', t => {
+  globals(t, { localStorage: storage() });
+  const catalog = cachedCatalog();
+  assert.equal(new Set(PUBLIC_CALIBRATIONS.map(row => row.optionId)).size, 7);
+  for (const record of PUBLIC_CALIBRATIONS) {
+    const info = setupFor(record.optionId, record.section, catalog, record.mode === 'dual' ? 'black' : 'blue');
+    assert.equal(info.mode, record.mode, record.optionId);
+    for (const key of ['extruder1', 'extruder2', 'dorn', 'matrix', 'sikoraWire', 'sikoraOuter', 'colorLead1', 'colorLead2']) {
+      if (record[key] !== null && record[key] !== undefined) assert.equal(info.practical[key], record[key], `${record.optionId}/${record.section}/${record.mode}/${key}`);
+    }
+    if (record.maxSpeed != null) assert.equal(info.practical.workingSpeed, record.maxSpeed, record.optionId);
+  }
+  const thin = setupFor('pv3--pv3', .5, catalog, 'black');
+  assert.deepEqual([thin.practical.extruder1, thin.practical.extruder2, thin.practical.workingSpeed], [47, 90, 350]);
+  assert.equal(setupFor('vvg-066--vvgngd', 2.5, catalog, 'black').practical.colorLead2, 2000, 'the actual lead retains priority over a class estimate');
 });
 
 test('legacy offline cache supplements missing calibration while exact newer records and retractions win', t => {
@@ -53,9 +73,9 @@ test('legacy offline cache supplements missing calibration while exact newer rec
   globals(t, { localStorage: storage(original) });
   const cached = cachedCatalog();
   assert.equal(cached.source, 'cache');
-  assert.deepEqual(cached.calibrations.map(row => row.section), [6]);
-  assert.equal(setupFor(h07, 1.5, cached, 'blue').effective.extruder1, 42);
-  assert.equal(setupFor(h07, 2.5, cached, 'blue').practical.extruder1, null);
+  assert.deepEqual(cached.calibrations.map(row => row.id), PUBLIC_CALIBRATIONS.slice(2).map(row => row.id));
+  assert.equal(setupFor(h07, 1.5, cached, 'black').effective.extruder1, 42);
+  assert.equal(setupFor(h07, 2.5, cached, 'black').practical.extruder1, null);
 });
 
 test('full online catalog is authoritative and missing/deleted snapshot records stay absent after an offline reload', async t => {
@@ -70,7 +90,7 @@ test('full online catalog is authoritative and missing/deleted snapshot records 
   const offline = cachedCatalog();
   assert.equal(offline.source, 'cache');
   assert.deepEqual(offline.calibrations, []);
-  assert.equal(setupFor(h07, 6, offline, 'blue').practical.extruder1, null);
+  assert.equal(setupFor(h07, 6, offline, 'black').practical.extruder1, null);
 });
 
 test('older caches explicitly sourced from the server also preserve its omissions', t => {
@@ -87,7 +107,7 @@ test('new live partial fields replace snapshot records without stale bundled fie
   globals(t, { localStorage: storage(), fetch: async () => new Response(JSON.stringify(server), { status: 200 }) });
   const online = await loadCatalog();
   assert.equal(online.calibrations, undefined);
-  assert.equal(setupFor(h07, 6, online, 'blue').practical.extruder1, 63);
-  assert.equal(setupFor(h07, 6, online, 'blue').practical.extruder2, null);
+  assert.equal(setupFor(h07, 6, online, 'black').practical.extruder1, 63);
+  assert.equal(setupFor(h07, 6, online, 'black').practical.extruder2, null);
   assert.equal(cachedCatalog().calibrations, undefined);
 });

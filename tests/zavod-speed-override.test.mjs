@@ -43,23 +43,35 @@ test('same physical mode shares a saved speed while option, section and mode iso
   assert.notEqual(speedKey(info), speedKey(base({ option: { id: 'pv3--pv3' } })));
 });
 
-test('printer speed can be raised to a known reference maximum but never above known values', () => {
+test('known speeds are hints and do not impose an unconfirmed physical limit on a chosen speed', () => {
   const info = base();
   assert.equal(speedLimit(info), 400);
   assert.equal(speedSetup(info, 400).error, null);
-  assert.equal(speedSetup(info, 401).info, info);
-  assert.match(speedSetup(info, 401).error, /400/);
+  assert.equal(speedSetup(info, 401).error, null);
+  assert.equal(speedSetup(info, 100000).error, null);
+  assert.match(speedSetup(info, 100001).error, /100 000/);
   assert.equal(speedSetup(info, '120,5').info.effective.workingSpeed, 120.5);
   for (const target of ['', 0, -3, 'abc', Infinity]) assert.ok(speedSetup(info, target).error);
 });
 
-test('derived dual RPM difference never exceeds 40, including a faster local speed', () => {
+test('faster local speed preserves both proportional feeds even when their RPM difference exceeds 40', () => {
   const info = base({ effective: { extruder1: 50, extruder2: 80, workingSpeed: 100 } });
   const result = speedSetup(info, 300).info;
   assert.equal(result.effective.extruder1, 150);
-  assert.equal(result.effective.extruder2, 190);
+  assert.equal(result.effective.extruder2, 240);
   assert.equal(result.stages.first, 80);
   assert.ok(result.stages.second > 80 && result.stages.second < 300);
+});
+
+test('the requested 250 to 300 speed adjustment retains the exact 60/100 to 72/120 pair', () => {
+  const info = base({ row: { section: 2.5, maxSpeed: 250 }, reference: { workingSpeed: 250 },
+    effective: { extruder1: 60, extruder2: 100, workingSpeed: 250 }, practical: { workingSpeed: 250 } });
+  const adjusted = speedSetup(info, 300);
+  assert.equal(adjusted.error, null);
+  assert.equal(adjusted.info.effective.extruder1, 72);
+  assert.equal(adjusted.info.effective.extruder2, 120);
+  assert.equal(speedLimit(info), 250, 'known values remain available as an informational hint');
+  assert.equal(info.effective.workingSpeed, 250);
 });
 
 test('single mode keeps second extruder off and unavailable modes cannot produce adjusted RPM', () => {
@@ -90,14 +102,14 @@ test('thread speed adjustment scales the known practical pair for the selected d
   }
 });
 
-test('thread overrides use separate normalized diameter keys and the known line speed limit', () => {
+test('thread overrides use separate normalized diameter keys and retain known speed hints', () => {
   const first = setupFor('thread-bundle', 1, {}, 'white', { finalDiameter: '1,5' });
   const same = setupFor('thread-bundle', 1, {}, 'blue', { finalDiameter: '1.50' });
   const other = setupFor('thread-bundle', 1, {}, 'white', { finalDiameter: 1.7 });
   assert.equal(speedKey(first), speedKey(same));
   assert.notEqual(speedKey(first), speedKey(other));
   assert.equal(speedLimit(first), 700);
-  assert.match(speedSetup(first, 701).error, /700/);
+  assert.equal(speedSetup(first, 701).error, null);
   assert.strictEqual(speedSetup(first, 700).info, first);
   speedSetup(first, 600);
   assert.equal(speedSetup(first, 500).info.effective.extruder1, 35.7, 'each adjustment uses the unmodified practical pair');

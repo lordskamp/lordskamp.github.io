@@ -9,21 +9,21 @@ import { modeFor, supportsSingleColorMode } from '../Zavod/pv3-modes.js';
 const catalog = () => ({ recipes: RECIPES.map(record => ({ ...record, baseId: record.id, origin: 'handwritten', color: 'all', revision: 1, updatedAt: '2026-09-29T00:00:00Z' })) });
 const option = (cardId, brand) => CATALOG_OPTIONS.find(candidate => candidate.cardId === cardId && candidate.brand === brand);
 const setup = (cardId, brand, section, records = catalog()) => setupFor(option(cardId, brand).id, section, records,
-  /^(?:pv[135]|h07v-[urk])$/.test(cardId) ? 'brown' : 'blue');
+  'brown', { mode: /^(?:pv[135]|h07v-[urk])$/.test(cardId) ? 'single' : 'dual' });
 
 test('public admin measurements are practical without a matching published recipe and update independently by field', () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/zavod-h07-calibrations.json', import.meta.url), 'utf8'));
   const records = catalog();
   records.calibrations = fixture.measurements.map(row => ({ ...row, id: `admin-${row.section}`, baseId: baseFor(fixture.optionId,row.section).id,
     optionId:fixture.optionId, mode:fixture.mode, origin:'measurement', color:'all' }));
-  for (const color of ['blue','yellow-green']) {
+  for (const color of ['black','yellow-green']) {
     const result = setupFor(fixture.optionId,6,records,color);
     assert.equal(result.mode,'dual');
     assert.deepEqual([result.effective.extruder1,result.effective.extruder2,result.effective.workingSpeed],[59,95,120]);
     for (const key of ['extruder1','extruder2','workingSpeed','dorn','matrix','sikoraWire','sikoraOuter']) assert.equal(result.sources[key],'practical');
   }
   records.calibrations.push({...records.calibrations[2],id:'new-partial',extruder1:61,extruder2:null,maxSpeed:null,dorn:null,matrix:null,sikoraWire:null,sikoraOuter:null,updatedAt:'2026-10-02T13:00:00Z'});
-  const result = setupFor(fixture.optionId,6,records);
+  const result = setupFor(fixture.optionId,6,records,'black');
   assert.deepEqual([result.practical.extruder1,result.practical.extruder2,result.practical.workingSpeed],[61,95,120]);
 });
 
@@ -71,11 +71,11 @@ test('SIKORA uses the selected matrix while nominal outside diameters stay compa
   const records = catalog(), id = result.option.id, base = baseFor(id, 2.5);
   records.calibrations = [{ id: 'custom-matrix', baseId: base.id, optionId: id, section: 2.5,
     origin: 'measurement', mode: result.mode, matrix: 4.1, updatedAt: '2026-10-02T16:00:00Z' }];
-  const changed = setupFor(id, 2.5, records);
+  const changed = setupFor(id, 2.5, records, 'brown', {mode:result.mode});
   assert.equal(changed.effective.matrix, 4.1);
   assert(changed.effective.sikoraOuter > 4.1);
   records.calibrations[0].sikoraOuter = 4.21;
-  assert.equal(setupFor(id, 2.5, records).effective.sikoraOuter, 4.21, 'admin measurement remains authoritative');
+  assert.equal(setupFor(id, 2.5, records, 'brown', {mode:result.mode}).effective.sikoraOuter, 4.21, 'admin measurement remains authoritative');
 });
 
 test('catalogue main SIKORA values remain above numeric matrices without substituting nominal specifications', () => {
@@ -113,12 +113,12 @@ test('known practical settings remain primary while reference and forecast stay 
 test('reference values stay primary where practical values are absent and forecasts remain visible', () => {
   const result = setup('pvs-380', 'ПВС', 1);
   assert.deepEqual([result.practical.extruder1, result.practical.extruder2, result.practical.workingSpeed], [null, null, null]);
-  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2, result.forecast.workingSpeed], [60.3, 95.4, 500]);
+  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2, result.forecast.workingSpeed], [52.2, 98.8, 500]);
   assert.equal(result.forecast.rpmWorkingSpeed,450);
   assert.equal(result.sources.extruder1, 'reference');
   assert.equal(result.sources.workingSpeed, 'reference');
   assert.deepEqual(result.stages, { first: 80, second: 260, working: 450, source: 'reference' });
-  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source,item.value]), [['reference',117], ['forecast',60.3]]);
+  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source,item.value]), [['reference',117], ['forecast',52.2]]);
   assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю', rule: 'За налаштуванням' });
 });
 
@@ -141,7 +141,7 @@ test('PV3 pairs supply dual RPM without becoming practical single-extruder RPM',
 });
 
 test('PV3 0.75 uses 68 or 65/85 at working speed 350; section 6 uses its two recorded speeds', () => {
-  for (const color of ['black','brown','white','green']) {
+  for (const color of ['blue','brown','white','green']) {
     const result = setupFor('pv3',.75,catalog(),color);
     assert.equal(result.mode, 'single');
     assert.deepEqual([result.effective.extruder1,result.effective.extruder2,result.effective.workingSpeed], [68,null,350]);
@@ -151,8 +151,8 @@ test('PV3 0.75 uses 68 or 65/85 at working speed 350; section 6 uses its two rec
   const striped = setupFor('pv3',.75,catalog(),'yellow-green');
   assert.equal(striped.mode, 'dual');
   assert.deepEqual([striped.effective.extruder1,striped.effective.extruder2,striped.effective.workingSpeed], [65,85,350]);
-  assert.deepEqual([setupFor('pv3',6,catalog(),'brown').effective.workingSpeed,setupFor('pv3',6,catalog(),'blue').effective.workingSpeed], [120,130]);
-  for (const [color, pair] of [['brown',[74,null]],['blue',[64,80]]]) {
+  assert.deepEqual([setupFor('pv3',6,catalog(),'brown').effective.workingSpeed,setupFor('pv3',6,catalog(),'black').effective.workingSpeed], [120,130]);
+  for (const [color, pair] of [['brown',[74,null]],['black',[64,80]]]) {
     const result = setupFor('pv3',4,catalog(),color);
     assert.deepEqual([result.effective.extruder1,result.effective.extruder2], pair);
     assert.equal(result.effective.workingSpeed,150);
@@ -187,7 +187,7 @@ test('equal values are confirmed only by a real practical value of the same metr
   assert(metricValues(unmeasured,'extruder1').every(item=>!item.confirmed));
 });
 
-test('partial speed measurement does not manufacture RPM scaling from printed conditions', () => {
+test('partial speed measurement scales only estimated RPM using actual operating anchors, leaving printed RPM intact', () => {
   const records = catalog();
   const base = baseFor(option('pvs-380', 'ПВС').id, 1);
   records.recipes = records.recipes.filter(record => record.id !== base.id);
@@ -195,9 +195,9 @@ test('partial speed measurement does not manufacture RPM scaling from printed co
   const result = setup('pvs-380', 'ПВС', 1, records);
   assert.equal(result.practical.workingSpeed, 200);
   assert.equal(result.forecast.workingSpeed, 200);
-  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2], [67, 106]);
+  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2], [23.2, 43.9]);
   assert.deepEqual([result.effective.extruder1, result.effective.extruder2], [117, 233]);
-  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.value,item.label]), [[117,'Довідкові'], [67,'Прогнозовані']]);
+  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.value,item.label]), [[117,'Довідкові'], [23.2,'Прогнозовані']]);
   assert.deepEqual(result.stages, { first: 40, second: 120, working: 200, source: 'practical' });
 });
 
@@ -298,9 +298,9 @@ test('every selectable cable, section and production color has sourced values fo
   }
 });
 
-test('blue uses two extruders and shares practical/forecast values with yellow-green', () => {
+test('black requires two extruders and shares practical values with yellow-green; blue can select either mode', () => {
   for (const id of ['pv3', 'pv1', 'h07v-u--h07v-u']) {
-    const blue = setupFor(id, 1.5, catalog(), 'blue');
+    const blue = setupFor(id, 1.5, catalog(), 'blue', {mode:'dual'});
     assert.equal(blue.mode, 'dual');
     assert.equal(blue.color, 'blue');
     const striped = setupFor(id, 1.5, catalog(), 'yellow-green');
@@ -309,10 +309,11 @@ test('blue uses two extruders and shares practical/forecast values with yellow-g
   }
   const records = catalog(), base = baseFor('pv3', .75);
   records.recipes.push({ ...base, baseId: base.id, optionId: 'pv3--pv3', id: recipeIdFor(base.id,'black','pv3--pv3'), origin: 'measurement', color: 'black', mode: 'dual', extruder1: 78, extruder2: 92, maxSpeed: 280, colorLead1: 400, colorLead2: 1800, revision: 1, updatedAt: '2026-10-02T12:00:00Z' });
-  const blue = setupFor('pv3', .75, records, 'blue');
+  const blue = setupFor('pv3', .75, records, 'blue', {mode:'dual'});
   assert.deepEqual([blue.effective.extruder1,blue.effective.extruder2,blue.effective.workingSpeed], [78,92,280]);
   assert.deepEqual([blue.effective.colorLead1,blue.effective.colorLead2], [400,1800]);
-  assert.deepEqual([setupFor('pv3',.75,records,'yellow-green').effective.extruder1,setupFor('pv3',.75,records,'black').effective.extruder1], [78,68]);
+  assert.deepEqual([setupFor('pv3',.75,records,'yellow-green').effective.extruder1,setupFor('pv3',.75,records,'black').effective.extruder1], [78,78]);
+  assert.equal(setupFor('pv3',.75,records,'blue',{mode:'single'}).effective.extruder1,68);
   assert.deepEqual(setupFor('pv3',.75,records,'yellow-green').effective,blue.effective);
 });
 
@@ -335,7 +336,7 @@ test('partial current recipe retains prior applied fields and updates prediction
   assert.equal(forecast.effective.workingSpeed,forecast.forecast.workingSpeed);
   assert.equal(forecast.effective.extruder1,forecast.forecast.extruder1);
   assert.equal(forecast.forecast.rpmWorkingSpeed,forecast.forecast.workingSpeed);
-  const blue = setupFor(id,4,records,'blue');
+  const blue = setupFor(id,4,records,'black');
   assert.equal(blue.mode,'dual');
   assert.equal(blue.practical.extruder1,null);
   assert(blue.effective.extruder1 > 0);
@@ -354,30 +355,33 @@ test('other cable families keep their established black rule', () => {
   assert.equal(modeFor({mode:'unknown'},'black'),'dual');
   assert.equal(modeFor({mode:'single'},'black'),'dual');
   assert.equal(modeFor({mode:'dual'},'black'),'dual');
-  assert.equal(setupFor('h07v-k--h07v-k',4,catalog(),'black').mode,'single');
+  assert.equal(setupFor('h07v-k--h07v-k',4,catalog(),'black').mode,'dual');
 });
 
-test('all H and ПВ names require dual blue/striped modes and allow single ordinary colours', () => {
+test('all H and ПВ names require black/striped dual modes and allow either mode for other colours', () => {
   for (const selected of CATALOG_OPTIONS.filter(supportsSingleColorMode)) {
-    for (const color of ['blue', 'yellow-green']) assert.equal(modeFor(selected,color,'single'),'dual', `${selected.brand} ${color}`);
-    for (const color of ['black', 'brown', 'white', 'gray', 'red', 'green', 'yellow']) {
-      assert.equal(modeFor(selected,color,'dual'),'single', `${selected.brand} ${color}`);
+    for (const color of ['black', 'yellow-green']) assert.equal(modeFor(selected,color,'single'),'dual', `${selected.brand} ${color}`);
+    for (const color of ['blue', 'brown', 'white', 'gray', 'red', 'green', 'yellow']) {
+      assert.equal(modeFor(selected,color,'single'),'single', `${selected.brand} ${color}`);
+      assert.equal(modeFor(selected,color,'dual'),'dual', `${selected.brand} ${color}`);
     }
   }
   for (const id of ['h07v-k--h07v-k', 'pv1--pv1ng', 'pv3--pv3ngd', 'pv5--pv5', 'h03-en--h-03vv-f', 'pvs-380--pvs']) {
     const selected = CATALOG_OPTIONS.find(item => item.id === id), section = selected.sections[0], records = catalog();
-    const blue = setupFor(id,section,records,'blue'), striped = setupFor(id,section,records,'yellow-green');
+    const blue = setupFor(id,section,records,'black'), striped = setupFor(id,section,records,'yellow-green');
     assert.equal(blue.mode,'dual');
     assert.deepEqual(blue.effective,striped.effective);
-    assert.equal(setupFor(id,section,records,'black').mode,'single');
-    assert.equal(setupFor(id,section,records,'black').effective.extruder2,null);
+    assert.equal(setupFor(id,section,records,'blue',{mode:'single'}).mode,'single');
+    assert.equal(setupFor(id,section,records,'blue',{mode:'single'}).effective.extruder2,null);
+    assert.equal(setupFor(id,section,records,'black',{mode:'single'}).mode,'dual');
+    assert.equal(setupFor(id,section,records,'yellow-green',{mode:'single'}).mode,'dual');
     assert.deepEqual(new Set(tableSetups(records,id).filter(row=>row.row.section===section).map(row=>row.mode)), new Set(['single','dual']));
   }
 });
 
 test('allowing ordinary H colours one extruder does not relabel printed dual RPM', () => {
   const single = setupFor('h05-en--h05vv-f',.75,catalog(),'brown');
-  const dual = setupFor('h05-en--h05vv-f',.75,catalog(),'blue');
+  const dual = setupFor('h05-en--h05vv-f',.75,catalog(),'black');
   assert.equal(single.mode,'single');
   assert.equal(single.reference.extruder1,null);
   assert.equal(single.reference.extruder2,null);
@@ -402,8 +406,8 @@ test('a new partial dual measurement never inherits operating fields from an old
   assert.equal(practicalFor(id,6,records,'dual').mode,'dual');
   assert.equal(setupFor(id,4,records).normalMode,'single');
   assert.equal(practicalFor(id,4,records,'dual').mode,'dual');
-  assert.equal(setupFor(id,6,records,'blue').practical.extruder2,90);
-  assert.equal(setupFor(id,6,records,'black').practical.extruder1,56);
+  assert.equal(setupFor(id,6,records,'blue',{mode:'dual'}).practical.extruder2,90);
+  assert.equal(setupFor(id,6,records,'blue',{mode:'single'}).practical.extruder1,56);
 });
 
 test('partial measurements merge previous colours only within the same extruder mode', () => {
@@ -413,11 +417,11 @@ test('partial measurements merge previous colours only within the same extruder 
   const single = { ...base, optionId, baseId:base.id, color:'blue', mode:'single', origin:'measurement', extruder1:82, extruder2:null, maxSpeed:340, updatedAt:'2026-10-03T12:00:00Z' };
   records.recipes.push(partial,single);
   records.calibrations = [shared,partial,single];
-  for (const color of ['blue','yellow-green']) {
+  for (const color of ['black','yellow-green']) {
     const result = setupFor(optionId,.75,records,color);
     assert.deepEqual([result.practical.extruder1,result.practical.extruder2,result.practical.workingSpeed,result.practical.colorLead1,result.practical.colorLead2], [70,100,300,400,1800]);
   }
-  assert.deepEqual([setupFor(optionId,.75,records,'black').practical.extruder1,setupFor(optionId,.75,records,'black').practical.workingSpeed], [82,340]);
+  assert.deepEqual([setupFor(optionId,.75,records,'blue').practical.extruder1,setupFor(optionId,.75,records,'blue').practical.workingSpeed], [82,340]);
   assert.equal(recipeIdFor(base.id,'black',optionId,'dual'),recipeIdFor(base.id,'yellow-green',optionId,'dual'));
   assert.notEqual(recipeIdFor(base.id,'all',optionId,'single'),recipeIdFor(base.id,'all',optionId,'dual'));
   assert.equal(recipeIdFor(base.id,'all',optionId,'dual'),`${optionId}::${base.id}~dual`);

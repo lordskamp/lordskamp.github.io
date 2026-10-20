@@ -3,6 +3,7 @@ import test from 'node:test';
 import { CATALOG_OPTIONS, catalogOption } from '../Zavod/catalog-options.js';
 import { REFERENCE_CARDS, VIRTUAL_CARDS } from '../Zavod/reference-data.js';
 import { baseFor, referenceCard } from '../Zavod/catalog-base.js';
+import { modeFor, pv3Mode } from '../Zavod/pv3-modes.js';
 
 test('каталог містить усі довідкові карти й рядки, навіть без практичних записів', () => {
   const printed = CATALOG_OPTIONS.filter(option => option.coreKind !== 'thread');
@@ -86,11 +87,29 @@ test('режим кольорів спільний для ПВ3, але прак
 test('H and ПВ families allow one extruder while preserving the original reference mode', () => {
   for (const option of CATALOG_OPTIONS.filter(item => /^(?:H|\(H\)|ПВ)/iu.test(item.brand))) {
     assert.equal(option.mode, 'single', option.brand);
-    assert.match(option.modeHint, /Синій і жовто-зелений/);
+    assert.match(option.modeHint, /Чорний і жовто-зелений/);
   }
   assert.equal(catalogOption('h05-en--h05vv-f').referenceMode, 'dual');
   assert.equal(catalogOption('pv1--pv1').referenceMode, 'single');
   assert.equal(catalogOption('ysly-1000--ysly-jz').mode, 'dual');
+});
+
+test('black and yellow-green always require dual metal operation; ordinary colours retain explicit mode choices', () => {
+  for (const option of CATALOG_OPTIONS.filter(row => row.coreKind !== 'thread')) {
+    for (const color of ['black', 'yellow-green']) {
+      assert.equal(modeFor(option, color), 'dual', `${option.brand} ${color}`);
+      assert.equal(modeFor(option, color, 'single'), 'dual', 'a forced colour overrides a saved single choice');
+    }
+    for (const color of ['blue', 'brown', 'white', 'red']) {
+      assert.equal(modeFor(option, color, 'single'), 'single');
+      assert.equal(modeFor(option, color, 'dual'), 'dual');
+    }
+  }
+  for (const color of ['black', 'yellow-green']) assert.equal(pv3Mode(color), 'dual');
+  assert.equal(pv3Mode('blue'), 'single');
+  assert.equal(modeFor({ brand: 'H07V-K', mode: 'dual' }, 'blue'), 'single', 'family default differs from an explicitly chosen mode');
+  assert.equal(modeFor({ brand: 'YSLY-JZ', mode: 'dual' }, 'blue'), 'dual', 'other existing defaults remain intact');
+  for (const color of ['blue', 'black', 'yellow-green']) assert.equal(modeFor(catalogOption('thread-bundle'), color, 'dual'), 'single');
 });
 
 test('назви не містять напругу, але початкові специфікації та ідентифікатори збережені', () => {

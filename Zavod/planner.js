@@ -119,6 +119,7 @@ function expandValidated(jobs) {
     cableId: job.cableId,
     section: job.section,
     ...(isThread(job) ? { finalDiameter: job.finalDiameter } : {}),
+    ...(isThread(job) ? { mode: 'single' } : ['black', 'yellow-green'].includes(color) ? { mode: 'dual' } : ['single', 'dual'].includes(job.mode) ? { mode: job.mode } : {}),
     color,
     length: String(length),
     name: '',
@@ -218,7 +219,11 @@ export function scheduleJobs(jobs, existingDrums = []) {
       && number(saved?.length) === number(drum.length) && sameDiameter(saved, drum);
     const status = unchanged ? drumStatus(saved) : 'queued';
     if (saved && drumStatus(saved) !== 'queued' && !unchanged) resetStarted = true;
-    return { ...saved, ...drum, name: saved?.name ?? '', breakdowns: saved?.breakdowns ?? '', status };
+    const mode = isThread(drum) ? 'single' : ['black', 'yellow-green'].includes(drum.color) ? 'dual'
+      : unchanged && ['single', 'dual'].includes(saved?.mode) ? saved.mode : drum.mode;
+    const restored = { ...saved, ...drum, name: saved?.name ?? '', breakdowns: saved?.breakdowns ?? '', status };
+    if (['single', 'dual'].includes(mode)) restored.mode = mode; else delete restored.mode;
+    return restored;
   });
   const warnings = resetStarted ? ['Позначки «В роботі» та «Готово» скинуто для барабанів зі зміненим типом кабелю, перерізом, кінцевим діаметром, кольором або довжиною.'] : [];
   const threadJobs = new Set(validated.jobs.filter(isThread).map(job => job.id));

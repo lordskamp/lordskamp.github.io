@@ -175,7 +175,7 @@ test('the boss example creates seven drums for each selected color with determin
   const result = expandJobs([job()]);
   assert.deepEqual(result.errors, []);
   assert.equal(result.drums.length, 21);
-  assert.deepEqual(result.drums[0], { id: 'job-1:yellow-green:0', jobId: 'job-1', cableId: 'vvgng-p', section: 2.5, color: 'yellow-green', length: '15000', name: '', breakdowns: '' });
+  assert.deepEqual(result.drums[0], { id: 'job-1:yellow-green:0', jobId: 'job-1', cableId: 'vvgng-p', section: 2.5, mode: 'dual', color: 'yellow-green', length: '15000', name: '', breakdowns: '' });
   for (const color of job().colors) assert.deepEqual(result.drums.filter(drum => drum.color === color).map(drum => drum.length), ['15000', '15000', '15000', '15000', '15000', '15000', '11000']);
   assert.deepEqual(expandJobs([job()]), result);
 });
@@ -307,6 +307,66 @@ test('regeneration retains operator metadata by stable id and applies new genera
     assert.equal(drum.operatorNote, 'перевірено');
   }
   assert.equal(annotated[0].length, '15000');
+});
+
+test('job modes expand per colour with forced dual black and striped streams and single undyed thread', () => {
+  for (const mode of ['single', 'dual', undefined, 'invalid']) {
+    const task = job({ mode, cores: 4, colors: ['brown', 'blue', 'black', 'yellow-green'], lengthsText: '2×1' });
+    for (const operation of [expandJobs, scheduleJobs]) {
+      const result = operation([task]);
+      assert.deepEqual(result.errors, []);
+      for (const drum of result.drums) {
+        assert.equal(drum.mode, ['black', 'yellow-green'].includes(drum.color) ? 'dual' : ['single', 'dual'].includes(mode) ? mode : undefined);
+        if (!['black', 'yellow-green'].includes(drum.color) && !['single', 'dual'].includes(mode)) assert.equal(Object.hasOwn(drum, 'mode'), false);
+      }
+    }
+  }
+  for (const mode of ['single', 'dual', undefined]) {
+    const result = scheduleJobs([threadJob({ mode, finalDiameter: 1.7, lengthsText: '2×1' })]);
+    assert(result.drums.every(drum => drum.mode === 'single'));
+  }
+});
+
+test('regeneration and reordering retain per-drum mode overrides with production progress and metadata', () => {
+  const task = job({ mode: 'single', cores: 4, colors: ['brown', 'blue', 'black', 'yellow-green'], lengthsText: '2×1' });
+  const original = scheduleJobs([task]).drums.map((drum, index) => Object.freeze({
+    ...drum, mode: ['black', 'yellow-green'].includes(drum.color) ? 'single' : drum.color === 'blue' ? 'dual' : 'single',
+    status: index === 0 ? 'done' : index === 1 ? 'active' : 'queued', name: `Б-${index}`, breakdowns: '500', note: 'Власний режим'
+  }));
+  const snapshot = structuredClone(original);
+  const regenerated = scheduleJobs([{ ...task, mode: 'dual' }], Object.freeze(original));
+  assert.deepEqual(regenerated.errors, []);
+  assert.deepEqual(regenerated.warnings, []);
+  for (const drum of regenerated.drums) {
+    const saved = original.find(row => row.id === drum.id);
+    assert.equal(drum.mode, ['black', 'yellow-green'].includes(drum.color) ? 'dual' : saved.mode);
+    assert.equal(drum.status, saved.status);
+    assert.equal(drum.name, saved.name);
+    assert.equal(drum.breakdowns, saved.breakdowns);
+    assert.equal(drum.note, saved.note);
+  }
+  const moved = moveDrum(regenerated.drums, regenerated.drums[0].id, regenerated.drums.length - 1);
+  const reordered = recommendOrder(moved, [task]);
+  for (const drum of regenerated.drums) {
+    assert.equal(reordered.find(row => row.id === drum.id), drum, 'reordering preserves each production object');
+    if (drum.status !== 'queued') assert.equal(reordered.findIndex(row => row.id === drum.id), moved.findIndex(row => row.id === drum.id));
+  }
+  assert.deepEqual(original, snapshot, 'regeneration and order restoration never rewrite the saved queue');
+});
+
+test('real physical drum changes discard a manual mode override and use the new task mode', () => {
+  const task = job({ mode: 'single', cores: 1, colors: ['brown'], lengthsText: '1' });
+  const saved = scheduleJobs([task]).drums.map(drum => ({ ...drum, mode: 'dual', status: 'done', name: 'Збережений' }));
+  const unchanged = scheduleJobs([task], saved);
+  assert.equal(unchanged.drums[0].mode, 'dual');
+  assert.equal(unchanged.drums[0].status, 'done');
+  for (const change of [{ lengthsText: '2' }, { section: 1.5 }, { cableId: 'pv3' }]) {
+    const result = scheduleJobs([{ ...task, ...change }], saved);
+    assert.equal(result.drums[0].mode, 'single');
+    assert.equal(result.drums[0].status, 'queued');
+    assert.equal(result.drums[0].name, 'Збережений');
+    assert(result.warnings.length > 0);
+  }
 });
 
 test('reordering is immutable, clamps final positions and handles invalid targets', () => {

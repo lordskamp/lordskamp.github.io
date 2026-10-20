@@ -1,8 +1,9 @@
 import { RECIPES } from './data.js';
-import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance, limitPredictedExtruder2, MAX_EXTRUDER_RPM_DIFFERENCE } from './core.js?v=25';
-import { CATALOG_OPTIONS } from './catalog-options.js?v=25';
-import { ALL_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=25';
-import { operatingRecords } from './pv3-modes.js?v=25';
+import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance } from './core.js?v=27';
+import { CATALOG_OPTIONS } from './catalog-options.js?v=27';
+import { ALL_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
+import { operatingRecords } from './pv3-modes.js?v=27';
+import { estimateColorLead2 } from './color-lead.js?v=27';
 
 const HANDWRITTEN = {
   'pvs-380': ['pvs-shvvp'], 'vvg-066': ['vvg'], 'vvg-p-066': ['vvgng-p'],
@@ -141,8 +142,10 @@ function mergedSection(records, section) {
 
 function measuredGeometry(records, record) {
   const merged = mergedSection(records, record.section), sourceRow = recordCard(record)?.rows.find(row => row.section === record.section);
+  const matrix = positive(merged.matrix) ? merged.matrix : sourceRow?.matrix;
+  const inferredOuter = positive(matrix) ? matrix + allowanceEstimate(records, [], record.section).value : sourceRow?.outerNom;
   return { wire: positive(merged.sikoraWire) ? merged.sikoraWire : sourceRow?.wireNom,
-    outer: positive(merged.sikoraOuter) ? merged.sikoraOuter : sourceRow?.outerNom };
+    outer: positive(merged.sikoraOuter) ? merged.sikoraOuter : inferredOuter };
 }
 
 function regression(points) {
@@ -160,7 +163,24 @@ function nearest(anchors, section) {
 
 function geometryEstimate(key, ownAnchors, related, ownRecords, card, row, estimated) {
   const direct = interpolate(ownAnchors, row.section, key);
-  if (direct) return direct;
+  if (direct?.method === 'measured-value') return direct;
+  if (direct) {
+    if (direct.used.every(record => valueFor(record, key) === valueFor(direct.used[0], key))) return direct;
+    const nominal = NOMINAL[key];
+    const residuals = direct.used.map(record => {
+      const sourceRow = card.rows.find(candidate => candidate.section === record.section);
+      return positive(sourceRow?.[nominal]) ? { ...record, [key]: valueFor(record, key) - sourceRow[nominal] } : null;
+    });
+    if (positive(row[nominal]) && residuals.every(Boolean)) {
+      // Diameter and tooling follow the cable construction, not a straight
+      // line in conductor area. Interpolate measured deviations from the
+      // nominal construction curve instead of flattening its real geometry.
+      const [low, high] = residuals, weight = (row.section - low.section) / (high.section - low.section);
+      const value = row[nominal] + low[key] + (high[key] - low[key]) * weight;
+      if (positive(value)) return { ...direct, value, method: 'nominal-residual-interpolation' };
+    }
+    return direct;
+  }
   if (flat(card) && key !== 'sikoraWire') return null; // Paired tools are text, never circular diameters.
   const donorGroups = ownAnchors.length ? [{ records: ownRecords }] : closestGroups(related, key);
   const anchors = ownAnchors.length ? ownAnchors : donorGroups.flatMap(group => fieldAnchors(group.records, key));
@@ -276,12 +296,103 @@ function empiricalTrend(anchors, section, key) {
   return clamp(projected, valueFor(anchor, key) / 2, valueFor(anchor, key) * 2);
 }
 
-function rpmEstimate(key, ownAnchors, ownRecords, related, row, targetArea, targetSpeed) {
+function normalizedRpmInterpolation(anchors, records, section, key, targetSpeed, targetArea) {
+  const direct = interpolate(anchors, section, key);
+  if (!direct || direct.method === 'measured-value' || !positive(targetSpeed)) return direct;
+  const normalized = direct.used.map(record => {
+    const speed = mergedSection(records, record.section).workingSpeed;
+    return positive(speed) ? { ...record, [key]: valueFor(record, key) / speed } : null;
+  });
+  if (normalized.some(record => !record)) return direct;
+  // RPM at 300 m/min and at 120 m/min are not comparable loads. Interpolate
+  // the measured RPM per metre first, then use one common target line speed.
+  const loads = normalized.map(record => {
+    const geometry = measuredGeometry(records, record);
+    return area(geometry.wire, geometry.outer);
+  });
+  const useArea = positive(targetArea) && loads.every(positive) && loads[1] > loads[0];
+  const areaWeight = useArea ? (targetArea - loads[0]) / (loads[1] - loads[0]) : null;
+  const weight = useArea ? clamp(areaWeight, 0, 1) : (section - normalized[0].section) / (normalized[1].section - normalized[0].section);
+  const value = normalized[0][key] + (normalized[1][key] - normalized[0][key]) * weight;
+  return { ...direct, value: value * targetSpeed,
+    method: 'speed-normalized-interpolation', speedBasisKnown: true,
+    confidence: useArea && (areaWeight < 0 || areaWeight > 1) ? 'low' : direct.confidence };
+}
+
+function balanceAnchors(records) {
+  return fieldAnchors(records, 'extruder2').flatMap(record => {
+    const first = mergedSection(records, record.section).extruder1;
+    return positive(first) ? [{ ...record, balance: record.extruder2 / first }] : [];
+  });
+}
+
+function pairedRpmEstimate(ownRecords, related, section, targetFirst, speedBasisKnown) {
+  if (!positive(targetFirst)) return null;
+  const own = balanceAnchors(ownRecords);
+  const donors = closestGroups(related.filter(group => balanceAnchors(group.records).length), 'extruder2');
+  const groups = own.length ? [{ records: ownRecords }] : donors;
+  const estimates = groups.map(group => {
+    const anchors = balanceAnchors(group.records), direct = interpolate(anchors, section, 'balance');
+    // Outside the observed range we know the paired machine balance, but not
+    // its future slope. A robust observed ratio avoids inventing a new speed
+    // basis for a raw secondary-extruder RPM-versus-section extrapolation.
+    return { value: direct?.value ?? median(anchors.map(record => record.balance)), used: direct?.used ?? anchors,
+      interior: direct?.method === 'interpolation' };
+  });
+  const ratio = median(estimates.map(estimate => estimate.value));
+  return positive(ratio) ? { value: targetFirst * ratio, used: estimates.flatMap(estimate => estimate.used),
+    groups: own.length ? [] : donors, speedBasisKnown,
+    method: own.length && estimates.every(estimate => estimate.interior) ? 'paired-balance-interpolation' : 'paired-balance',
+    confidence: own.length && estimates.every(estimate => estimate.interior) ? 'high' : 'low' } : null;
+}
+
+function nearestSecondaryLoad(ownRecords, related, section, targetSpeed) {
+  if (!positive(targetSpeed)) return null;
+  const ownRpm = fieldAnchors(ownRecords, 'extruder2');
+  const own = ownRpm.filter(record => positive(mergedSection(ownRecords, record.section).workingSpeed));
+  if (ownRpm.length && !own.length) return null;
+  const donors = closestGroups(related.filter(group => fieldAnchors(group.records, 'extruder2')
+    .some(record => positive(mergedSection(group.records, record.section).workingSpeed))), 'extruder2');
+  const groups = own.length ? [{ records: ownRecords }] : donors;
+  const estimates = groups.map(group => {
+    const anchor = nearest(fieldAnchors(group.records, 'extruder2')
+      .filter(record => positive(mergedSection(group.records, record.section).workingSpeed)), section);
+    return { value: anchor.extruder2 / mergedSection(group.records, anchor.section).workingSpeed * targetSpeed, used: [anchor] };
+  });
+  const value = median(estimates.map(estimate => estimate.value));
+  return positive(value) ? { value, used: estimates.flatMap(estimate => estimate.used), groups: own.length ? [] : donors,
+    speedBasisKnown: true, method: 'nearest-secondary-load', confidence: 'low' } : null;
+}
+
+function rpmEstimate(key, ownAnchors, ownRecords, related, row, targetArea, targetSpeed, targetFirst, firstSpeedBasisKnown, firstMeasured) {
   const direct = interpolate(ownAnchors, row.section, key);
-  if (direct) return direct;
+  if (direct?.method === 'measured-value') return direct;
+  const pairs = key === 'extruder2' ? balanceAnchors(ownRecords) : [];
+  const fixedBalance = pairs.length > 1 && pairs.every(record => Math.abs(record.balance - pairs[0].balance) < 1e-9);
+  if (key === 'extruder2' && direct && !firstMeasured && !fixedBalance) {
+    // Within a recorded secondary-extruder curve its own measured load is
+    // stronger evidence than a ratio to a separately estimated first RPM.
+    return normalizedRpmInterpolation(ownAnchors, ownRecords, row.section, key, targetSpeed, null);
+  }
+  if (key === 'extruder2') {
+    // Thin-core dosing below the observed range has no established downward
+    // response. Keep the nearest measured secondary RPM per metre rather than
+    // extending a foreign balance or flow curve into unsupported small loads.
+    if (ownAnchors.length && row.section < ownAnchors[0].section || !ownAnchors.length && !closestGroups(related, key)
+      .some(group => balanceAnchors(group.records).some(record => record.section <= row.section))) {
+      const nearestLoad = nearestSecondaryLoad(ownRecords, related, row.section, targetSpeed);
+      if (nearestLoad) return nearestLoad;
+    }
+    if (!ownAnchors.length || pairs.length) {
+      const covered = ownAnchors.length ? related : related.filter(group => balanceAnchors(group.records).some(record => record.section <= row.section));
+      const paired = pairedRpmEstimate(ownRecords, covered, row.section, targetFirst, firstSpeedBasisKnown);
+      if (paired) return paired;
+    }
+  }
+  if (direct) return normalizedRpmInterpolation(ownAnchors, ownRecords, row.section, key, targetSpeed, targetArea);
   const donorGroups = closestGroups(related, key);
   if (ownAnchors.length && key === 'extruder2') return { value: empiricalTrend(ownAnchors, row.section, key), used: ownAnchors,
-    speedBasisKnown: ownAnchors.every(record => positive(mergedSection(ownRecords, record.section).workingSpeed)),
+    speedBasisKnown: false,
     method: 'empirical-extrapolation', confidence: 'low' };
   const groups = ownAnchors.length ? [{ records: ownRecords, own: true }] : donorGroups;
   const estimates = [], used = [], speedBases = [];
@@ -396,7 +507,8 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
   };
   const setEstimate = (key, estimate) => {
     if (!estimate || !valid(key, estimate.value)) return;
-    result[key] = round(estimate.value, key); result.fieldMethods[key] = estimate.method; result.fieldConfidence[key] = estimate.confidence;
+    result[key] = estimate.method === 'measured-value' ? estimate.value : round(estimate.value, key);
+    result.fieldMethods[key] = estimate.method; result.fieldConfidence[key] = estimate.confidence;
     if (['extruder1', 'extruder2'].includes(key)) {
       const speedRecords = [...matchingOwn, ...linked];
       const knownDirectSpeed = (estimate.used ?? []).every(record => positive(mergedSection(speedRecords, record.section).workingSpeed));
@@ -435,11 +547,22 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
     || !anchorsFor('workingSpeed').length && closestGroups(related, 'workingSpeed').some(group => measuredCurve(group.records, 'workingSpeed'));
   for (const key of ['extruder1', 'extruder2']) {
     if (key === 'extruder2' && mode === 'single') continue;
-    setEstimate(key, rpmEstimate(key, anchorsFor(key), matchingOwn, related, row, targetArea, result.workingSpeed));
+    setEstimate(key, rpmEstimate(key, anchorsFor(key), matchingOwn, related, row, targetArea, result.workingSpeed,
+      result.extruder1, positive(result.rpmSpeedBasis.extruder1), result.fieldMethods.extruder1 === 'measured-value'));
   }
   for (const key of ['colorLead1', 'colorLead2']) {
     if (key === 'colorLead2' && mode === 'single') continue;
     const anchors = anchorsFor(key), direct = interpolate(anchors, row.section, key), anchor = nearest(anchors, row.section);
+    if (key === 'colorLead2') {
+      const operator = estimateColorLead2({ conductorClass: card.conductorClass, section: row.section, mode, coreKind: card.coreKind,
+        practicalLead: direct?.method === 'measured-value' ? direct.value : null });
+      result.colorLead2Model = operator;
+      if (operator.value !== null) {
+        setEstimate(key, { value: operator.value, method: operator.method, confidence: operator.confidence,
+          used: direct?.method === 'measured-value' ? direct.used : [] });
+        continue;
+      }
+    }
     setEstimate(key, direct ?? (anchor ? { value: valueFor(anchor, key), used: [anchor], method: 'measured-lead', confidence: 'low' }
       : { value: key === 'colorLead1' ? DEFAULT_RULES.lead1 : DEFAULT_RULES.lead2, used: [], method: 'default-lead', confidence: 'low' }));
   }
@@ -459,25 +582,18 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
       }
     }
   }
-  // This limit applies only to calculated settings, never to recorded machine
-  // values. It must be checked after rescaling to the selected speed.
-  if (mode === 'dual' && positive(result.extruder1) && positive(result.extruder2)
-      && result.fieldMethods.extruder2 !== 'measured-value' && result.extruder2 > result.extruder1 + MAX_EXTRUDER_RPM_DIFFERENCE) {
-    result.rpmLimit = { key: 'extruder2', original: result.extruder2, maximumDifference: MAX_EXTRUDER_RPM_DIFFERENCE };
-    result.extruder2 = round(limitPredictedExtruder2(result.extruder1, result.extruder2), 'extruder2');
-    result.fieldMethods.extruder2 += '-limited-gap';
-    result.fieldConfidence.extruder2 = 'low';
-  }
   const bases = Object.values(result.rpmSpeedBasis);
   result.rpmWorkingSpeed = bases.length && bases.every(basis => positive(basis) && basis === bases[0]) ? bases[0] : null;
   result.anchors = [...allUsed.values()].sort((a, b) => a.section - b.section).map(record => ({ section: record.section, source: record.source,
     optionId: record.optionId ?? null, extruder1: record.extruder1, extruder2: record.extruder2, workingSpeed: record.maxSpeed }));
   const operatingMethods = ['extruder1', ...(mode === 'dual' ? ['extruder2'] : []), 'workingSpeed'].map(key => result.fieldMethods[key]);
-  result.method = operatingMethods.every(method => ['interpolation', 'measured-value'].includes(method?.replace('-at-selected-speed', ''))) ? 'interpolation'
+  const interiorMethods = ['interpolation', 'measured-value', 'speed-normalized-interpolation', 'paired-balance-interpolation'];
+  result.method = operatingMethods.every(method => interiorMethods.includes(method?.replace('-at-selected-speed', ''))) ? 'interpolation'
     : matchingOwn.some(record => positive(record.section)) ? 'extrapolation' : 'related-practical';
-  result.rpmMethod = ['extruder1', ...(mode === 'dual' ? ['extruder2'] : [])].every(key => ['interpolation', 'measured-value'].includes(result.fieldMethods[key]?.replace('-at-selected-speed', '')))
+  result.rpmMethod = ['extruder1', ...(mode === 'dual' ? ['extruder2'] : [])].every(key => interiorMethods.includes(result.fieldMethods[key]?.replace('-at-selected-speed', '')))
     ? 'measured-values' : 'adaptive-practical';
-  result.confidence = inferredMode || operatingMethods.some(method => !['interpolation', 'measured-value'].includes(method?.replace('-at-selected-speed', ''))) ? 'low' : 'high';
+  result.confidence = inferredMode || operatingMethods.some(method => !interiorMethods.includes(method?.replace('-at-selected-speed', '')))
+    || ['extruder1', ...(mode === 'dual' ? ['extruder2'] : []), 'workingSpeed'].some(key => result.fieldConfidence[key] === 'low') ? 'low' : 'high';
   result.reason = result.confidence === 'low' ? 'Орієнтовно: використано продовження практичної кривої або заміри схожих кабелів. Уточніть налаштування на лінії.' : null;
   result.speed1 = firstSpeed(result.workingSpeed); result.speed2 = secondSpeed(result.workingSpeed);
   return result;

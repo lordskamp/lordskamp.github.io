@@ -239,7 +239,7 @@ test('main cable changes preserve filled, edited, customized and generated plann
   }
 });
 
-test('compact queue rows always display color transition formula and default dye leads', () => {
+test('compact rows keep essential dye timing while formulas and explanations stay inside expanded details', () => {
   const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [
     oldDrum({ id: 'blue', cableId: globalCable.id, section: 2.5, name: '', breakdowns: '' }),
     oldDrum({ id: 'brown', cableId: globalCable.id, section: 2.5, color: 'brown', name: '', breakdowns: '' }),
@@ -253,9 +253,92 @@ test('compact queue rows always display color transition formula and default dye
     const head = planner.transitionText(state.drums[1], 1);
     assert.match(head, /№1 — за 300 м до кінця, на 14\s?700 м/);
     assert.match(head, /розсікач/);
-    assert.ok(element('drums').innerHTML.includes(`<p class="drum-transition" data-transition="blue" >${first}</p>`), 'the countdown is outside the collapsed details');
+    const html = element('drums').innerHTML;
+    assert.ok(html.includes(`<p class="drum-transition" data-transition="blue" >${first}</p>`));
     assert.ok(element('drums').innerHTML.includes(`<p class="drum-transition" data-transition="brown" >${head}</p>`));
+    const blue = html.slice(html.indexOf('data-drum="blue"'), html.indexOf('data-drum="brown"'));
+    assert.ok(blue.indexOf('data-transition="blue"') < blue.indexOf('</details>'), 'the complete transition belongs to expanded details');
+    const summary = blue.slice(blue.indexOf('<summary class="drum-summary">'), blue.indexOf('</summary>'));
+    assert.match(summary, /class="queue-alert">Барвник №2: 13\s?000 м/);
+    assert.match(summary, /Екран 15\s?850 м/);
+    assert.doesNotMatch(summary, /− 150|до кінця|розсікач|data-splice-label/);
+    assert.doesNotMatch(html, /class="status-label"/);
   });
+});
+
+test('per-drum modes survive restoration and undo while invalid metadata stays automatic', () => {
+  const single = oldDrum({ id: 'single', mode: 'single' });
+  const dual = oldDrum({ id: 'dual', mode: 'dual' });
+  const invalid = oldDrum({ id: 'invalid', mode: 'other' });
+  const state = initialState();
+  restorePlanner({ drums: [single, dual, invalid], previousPlan: { drums: [single], planJobs: [] } }, state);
+  assert.deepEqual(state.drums.map(drum => drum.mode), ['single', 'dual', undefined]);
+  assert.equal(state.previousPlan.drums[0].mode, 'single');
+});
+
+test('new jobs and manually added drums inherit the main mode preference without changing filled tasks', () => {
+  const state = { ...initialState(), color: 'brown', rules: { ...DEFAULT_RULES }, modePreferences: { [globalCable.id]: 'dual' } };
+  restorePlanner(null, state);
+  assert.equal(state.jobs[0].mode, 'dual');
+  state.modePreferences[globalCable.id] = 'single';
+  assert.equal(syncPlannerSelection(state), true);
+  assert.equal(state.jobs[0].mode, 'single');
+  state.jobs[0].lengthsText = '15';
+  state.modePreferences[globalCable.id] = 'dual';
+  assert.equal(syncPlannerSelection(state), false);
+  assert.equal(state.jobs[0].mode, 'single');
+  withPlannerHarness(state, ({ element }) => {
+    element('add-job').listeners.get('click')();
+    assert.equal(state.jobs[1].mode, 'dual');
+    element('add-drum').listeners.get('click')();
+    assert.equal(state.drums.at(-1).mode, 'dual');
+  });
+  const restored = initialState();
+  restorePlanner({ jobs: state.jobs, planJobs: state.jobs, drums: state.drums }, restored);
+  assert.deepEqual(restored.jobs.map(job => job.mode), ['single', 'dual']);
+  assert.deepEqual(restored.planJobs.map(job => job.mode), ['single', 'dual']);
+});
+
+test('planner setup forwards explicit modes in its fifth argument and invalidates each cached variant', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES }, jobs: [], planJobs: [], drums: [] };
+  const calls = [];
+  const lookup = (...args) => { calls.push(args); return { mode: args[4] ?? 'dual', stored: {}, effective: {} }; };
+  withPlannerHarness(state, ({ planner }) => {
+    const drum = oldDrum({ cableId: globalCable.id, section: 2.5, color: 'brown', mode: 'single' });
+    assert.equal(planner.setup(drum).mode, 'single');
+    assert.equal(calls.at(-1)[4], 'single');
+    drum.mode = 'dual';
+    assert.equal(planner.setup(drum).mode, 'dual');
+    assert.equal(calls.length, 2);
+    delete drum.mode;
+    planner.setup(drum); assert.equal(calls.at(-1)[4], undefined);
+    drum.color = 'black'; drum.mode = 'single';
+    planner.setup(drum); assert.equal(calls.at(-1)[4], 'dual');
+    drum.color = 'yellow-green';
+    planner.setup(drum); assert.equal(calls.at(-1)[4], 'dual');
+    drum.cableId = 'thread-bundle'; drum.finalDiameter = '1,8'; drum.mode = 'dual';
+    planner.setup(drum); assert.equal(calls.at(-1)[4], 'single'); assert.equal(calls.at(-1)[3], '1,8');
+  }, lookup);
+});
+
+test('drum mode controls are only available for adjustable colours and editing them changes the saved drum', () => {
+  const drums = [
+    oldDrum({ id: 'brown', cableId: globalCable.id, section: 2.5, color: 'brown', name: '', breakdowns: '' }),
+    oldDrum({ id: 'black', cableId: globalCable.id, section: 2.5, color: 'black', name: '', breakdowns: '' }),
+    oldDrum({ id: 'striped', cableId: globalCable.id, section: 2.5, color: 'yellow-green', name: '', breakdowns: '' }),
+    oldDrum({ id: 'thread', cableId: 'thread-bundle', section: 1, color: 'white', name: '', breakdowns: '' })
+  ];
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES }, jobs: [], planJobs: [], drums };
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.renderQueue();
+    const html = element('drums').innerHTML;
+    assert.equal((html.match(/data-mode-picker hidden/g) || []).length, 3);
+    assert.equal((html.match(/data-mode-picker >Екструдери/g) || []).length, 1);
+    const change = value => element('drums').listeners.get('input')({ target: { dataset: { field: 'mode' }, value, closest: () => ({ dataset: { drum: 'brown' } }) } });
+    change('single'); assert.equal(state.drums[0].mode, 'single');
+    change('dual'); assert.equal(state.drums[0].mode, 'dual');
+    change(''); assert.equal(Object.hasOwn(state.drums[0], 'mode'), false);
+  }, (id, section, color, diameter, mode) => ({ mode: mode ?? 'dual', noDye: id === 'thread-bundle', stored: {}, effective: { matrix: 3 } }));
 });
 
 test('done rows keep their positions, expose undo and still participate in manual movement', () => {
@@ -330,6 +413,35 @@ test('the queue uses practical lead measurements for each extruder and falls bac
   } finally {
     if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument;
     if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow;
+  }
+});
+
+test('operator colour-lead anchors reach the drum calculation without replacing custom rules with generic forecasts', () => {
+  const cases = [
+    { method: 'operator-anchor', effective: 800, expected: 800 },
+    { method: 'operator-interpolation', effective: 650, expected: 650 },
+    { method: 'default-lead', effective: 2000, expected: 2222 },
+    { method: 'measured-lead', effective: 900, expected: 2222 },
+    { method: 'related-practical', effective: 900, expected: 2222 },
+    { method: 'operator-anchor', effective: -1, expected: 2222 },
+    { method: 'operator-anchor', effective: 800, stored: 600, expected: 600 },
+    { method: 'operator-interpolation', effective: 650, practical: 950, expected: 950 },
+    { method: 'operator-anchor', effective: 800, stored: 0, expected: 0 },
+  ];
+  for (const testCase of cases) {
+    const drums = [
+      oldDrum({ id: 'blue', cableId: globalCable.id, section: 2.5, color: 'blue', breakdowns: '' }),
+      oldDrum({ id: 'brown', cableId: globalCable.id, section: 2.5, color: 'brown', breakdowns: '' })
+    ];
+    const state = { ...initialState(), jobs: [], planJobs: [], drums, rules: { ...DEFAULT_RULES, lead1: 111, lead2: 2222 } };
+    const info = { mode: 'dual', stored: { colorLead2: testCase.stored }, practical: { colorLead2: testCase.practical },
+      effective: { colorLead2: testCase.effective }, forecast: { fieldMethods: { colorLead2: testCase.method } } };
+    withPlannerHarness(state, ({ planner }) => {
+      const event = planner.result(drums[0], 0).events[0];
+      assert.equal(event.lead, testCase.expected, JSON.stringify(testCase));
+      assert.equal(event.at, 15000 - testCase.expected, JSON.stringify(testCase));
+      assert.equal(state.rules.lead2, 2222, 'using an operator model cannot overwrite saved manual rules');
+    }, () => info);
   }
 });
 

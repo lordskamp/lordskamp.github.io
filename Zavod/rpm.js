@@ -1,4 +1,4 @@
-import { number, positive, limitPredictedExtruder2 } from './core.js?v=25';
+import { number, positive } from './core.js?v=27';
 import { TRIAL_LIMIT, OPERATOR_REFERENCE, OPERATOR_HANDWRITTEN } from './operator-data.js';
 import { referenceFor } from './reference-data.js';
 
@@ -10,12 +10,12 @@ export function trialRpm(recipe, target, color) {
   if (!speed) return empty('Вкажи швидкість більшу за нуль.');
   if (!baseSpeed || number(recipe.extruder1)===null) return empty('Немає запису обертів і швидкості для цього режиму.');
   if (recipe.mode==='unknown' || recipe.cableId==='pv3'&&recipe.mode==='dual'&&recipe.origin!=='measurement') return empty('Спочатку уточни режим екструдерів і колір.');
-  if (recipe.mode==='single'&&color==='yellow-green') return empty('Режим для жовто-зеленого ще не уточнено.');
+  if (recipe.mode==='single'&&!recipe.noDye&&['black','yellow-green'].includes(color)) return empty('Для чорного та жовто-зеленого потрібні два екструдери.');
   if (speed>baseSpeed) return empty('Швидкість перевищує записаний максимум.');
   if (Math.abs(speed/baseSpeed-1)>TRIAL_LIMIT+1e-9) return empty('Для більшої зміни швидкості потрібен замір.');
   const scale = value => number(value)===null ? null : Math.round(number(value)*speed/baseSpeed*10)/10;
   const first = scale(recipe.extruder1), rawSecond = recipe.mode==='single'?null:scale(recipe.extruder2);
-  return {first,second:limitPredictedExtruder2(first,rawSecond),message:'Той самий режим · орієнтир для проби.'};
+  return {first,second:rawSecond,message:'Той самий режим · орієнтир для проби.'};
 }
 
 /** Approximate feed adjustment for one unchanged wire, insulation and machine mode. */
@@ -26,7 +26,7 @@ export function speedRpm(recipe, target) {
   if (!['single', 'dual'].includes(recipe.mode) || !baseSpeed || !positive(recipe.extruder1)
       || recipe.mode === 'dual' && !positive(recipe.extruder2)) return empty('Для перерахунку потрібні оберти та швидкість цього режиму.');
   const scale = value => Math.round(number(value) * speed / baseSpeed * 10) / 10;
-  const first = scale(recipe.extruder1), second = recipe.mode === 'dual' ? limitPredictedExtruder2(first,scale(recipe.extruder2)) : null;
+  const first = scale(recipe.extruder1), second = recipe.mode === 'dual' ? scale(recipe.extruder2) : null;
   if (![first, second ?? first].every(value => Number.isFinite(value) && value > 0)) return empty('Вкажи швидкість, за якої оберти більші за нуль.');
   return { first, second, message: 'Орієнтовно · за твоєю швидкістю' };
 }

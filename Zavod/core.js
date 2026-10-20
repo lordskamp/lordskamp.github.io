@@ -11,7 +11,6 @@ export const COLORS = [
 ];
 
 export const DEFAULT_RULES = Object.freeze({ bath: 150, reserve: 1000, lead2: 2000, lead1: 300, splice: 30, sikoraOffset: 0.15 });
-export const MAX_EXTRUDER_RPM_DIFFERENCE = 40;
 
 export function number(value) {
   if (value === null || value === undefined || typeof value === 'boolean' || String(value).trim() === '') return null;
@@ -22,12 +21,6 @@ export function number(value) {
 export function positive(value) {
   const parsed = number(value);
   return parsed !== null && parsed > 0 ? parsed : null;
-}
-
-/** Limit derived RPM only; recorded measurements retain their original values. */
-export function limitPredictedExtruder2(firstRpm, secondRpm) {
-  const first = positive(firstRpm), second = positive(secondRpm);
-  return first === null || second === null ? second : Math.min(second, first + MAX_EXTRUDER_RPM_DIFFERENCE);
 }
 
 export function firstSpeed(workingSpeed) {
@@ -74,7 +67,7 @@ export function dyePlan(color, mode, options = {}) {
   if (options.noDye) return { first: 'Без барвника', second: 'Вимкнений', valid: true, note: 'Джгут — один екструдер, без барвника.' };
   if (!COLORS.some(item => item.id === color)) return null;
   if (mode === 'single') {
-    if (color === 'yellow-green') return { first: 'Потрібне уточнення', second: 'Вимкнений', valid: false, note: 'Схему жовто-зеленого для одного екструдера не описано.' };
+    if (['black', 'yellow-green'].includes(color)) return { first: 'Потрібні два екструдери', second: 'Вимкнений', valid: false, note: 'Чорний і жовто-зелений потребують двох екструдерів.' };
     return { first: colorName(color), second: 'Вимкнений', valid: true, note: 'Увесь колір подає екструдер №1.' };
   }
   if (mode !== 'dual') return { first: 'Уточніть режим', second: 'Уточніть режим', valid: false, note: 'Порожня колонка у записі не означає автоматично вимкнений екструдер.' };

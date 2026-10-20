@@ -1,4 +1,4 @@
-import { positive, firstSpeed, secondSpeed } from './core.js?v=25';
+import { positive, firstSpeed, secondSpeed } from './core.js?v=27';
 
 export const THREAD_DORN = .95;
 export const THREAD_MATRIX_OFFSET = .2;

@@ -1,4 +1,4 @@
-import { fmt, planSplices } from './core.js?v=25';
+import { fmt, planSplices } from './core.js?v=27';
 
 const STORAGE_KEY = 'zavod-splice-plan-v1';
 const instances = new WeakMap();

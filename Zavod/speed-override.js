@@ -1,9 +1,9 @@
-import { number, positive, firstSpeed, secondSpeed } from './core.js?v=25';
-import { speedRpm } from './rpm.js?v=25';
+import { number, positive, firstSpeed, secondSpeed } from './core.js?v=27';
+import { speedRpm } from './rpm.js?v=27';
 
 export const SPEED_STORAGE = 'zavod-working-speeds-v1';
 
-/** The setting belongs to the physical mode, so blue and yellow/green share it. */
+/** Local speed belongs to the physical mode, independent of the chosen dye. */
 export function speedKey(info) {
   return `${info.option.id}:${number(info.row.section)}:${info.mode}${info.option.coreKind === 'thread' ? `:d${number(info.finalDiameter) ?? 'unknown'}` : ''}`;
 }
@@ -15,9 +15,9 @@ export function speedLimit(info) {
 
 /** Always take an unmodified setup; never scale a previous local adjustment. */
 export function speedSetup(info, target) {
-  const speed = positive(target), limit = speedLimit(info);
+  const speed = positive(target);
   if (!speed) return { info, error: 'Вкажи швидкість більшу за нуль.' };
-  if (limit !== null && speed > limit) return { info, error: `У таблиці максимальна швидкість — ${limit} м/хв.` };
+  if (speed > 100000) return { info, error: 'Вкажи швидкість не більшу за 100 000 м/хв.' };
   if (speed === positive(info.effective.workingSpeed)) return { info, error: null };
   const thread = info.option.coreKind === 'thread';
   const baseSpeed = thread ? positive(info.rpmSpeedBasis && Object.hasOwn(info.rpmSpeedBasis, 'extruder1')
