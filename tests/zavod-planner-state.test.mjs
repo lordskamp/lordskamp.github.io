@@ -71,7 +71,7 @@ test('thread jobs follow the main selection, generate and restore without displa
     planner.render();
     assert.equal(planner.drumTitle(state.drums[0]), 'Джгути');
     assert.match(element('jobs').innerHTML, /<label hidden>Переріз жили/);
-    assert.match(element('jobs').innerHTML, /<label hidden>Кількість жил/);
+    assert.doesNotMatch(element('jobs').innerHTML, /data-job-field="cores"/);
     assert.match(element('jobs').innerHTML, /<fieldset class="job-colors" hidden>/);
     assert.match(element('jobs').innerHTML, /<label class="check job-priority" hidden>/);
     assert.match(element('jobs').innerHTML, /Довжини барабанів, км/);
@@ -276,7 +276,7 @@ test('per-drum modes survive restoration and undo while invalid metadata stays a
   assert.equal(state.previousPlan.drums[0].mode, 'single');
 });
 
-test('new jobs and manually added drums inherit the main mode preference without changing filled tasks', () => {
+test('new jobs repeat the previous task while manually added drums use the main mode preference', () => {
   const state = { ...initialState(), color: 'brown', rules: { ...DEFAULT_RULES }, modePreferences: { [globalCable.id]: 'dual' } };
   restorePlanner(null, state);
   assert.equal(state.jobs[0].mode, 'dual');
@@ -289,14 +289,16 @@ test('new jobs and manually added drums inherit the main mode preference without
   assert.equal(state.jobs[0].mode, 'single');
   withPlannerHarness(state, ({ element }) => {
     element('add-job').listeners.get('click')();
-    assert.equal(state.jobs[1].mode, 'dual');
+    assert.equal(state.jobs[1].mode, 'single');
+    assert.equal(state.jobs[1].lengthsText, '15');
+    assert.notEqual(state.jobs[1].id, state.jobs[0].id);
     element('add-drum').listeners.get('click')();
     assert.equal(state.drums.at(-1).mode, 'dual');
   });
   const restored = initialState();
   restorePlanner({ jobs: state.jobs, planJobs: state.jobs, drums: state.drums }, restored);
-  assert.deepEqual(restored.jobs.map(job => job.mode), ['single', 'dual']);
-  assert.deepEqual(restored.planJobs.map(job => job.mode), ['single', 'dual']);
+  assert.deepEqual(restored.jobs.map(job => job.mode), ['single', 'single']);
+  assert.deepEqual(restored.planJobs.map(job => job.mode), ['single', 'single']);
 });
 
 test('planner setup forwards explicit modes in its fifth argument and invalidates each cached variant', () => {
@@ -557,6 +559,39 @@ test('the previous plan keeps its own queue, metadata and task links for undo af
   assert.ok(state.previousPlan.drums.every(drum => drum.jobId === state.previousPlan.planJobs[0].id));
   state.previousPlan.drums[0].name = 'Після відновлення';
   assert.deepEqual(saved, snapshot, 'undo data must be restored independently from the saved snapshot');
+});
+
+test('resource inputs update the current result immediately, preserve input nodes and are included in copied plans', () => {
+  const task = newJob(optionFor('pv3').id, 2.5, { coreClass: 3, colors: ['white', 'blue'], lengthsText: '15' });
+  const state = { ...initialState(), jobs: [task], planJobs: [task], drums: scheduleJobs([task]).drums, rules: { ...DEFAULT_RULES } };
+  withPlannerHarness(state, ({ planner, element }) => {
+    const container = element('plan-resources'), shiftOutput = { innerHTML: '' }, stockOutput = { innerHTML: '' };
+    container.querySelector = selector => selector === '[data-shift-result]' ? shiftOutput : null;
+    planner.render();
+    const initialHTML = container.innerHTML;
+    assert.match(initialHTML, /30 <small>км жили на завдання/);
+    assert.match(initialHTML, /ще <b>2<\/b> повних барабанів/);
+    const stockGroup = { dataset: { stockKey: '2.5:3' }, querySelector: () => stockOutput };
+    const stockInput = { dataset: { stockField: 'piecesText' }, value: '10000, 1500', closest: () => stockGroup };
+    container.listeners.get('input')({ target: stockInput });
+    assert.match(stockOutput.innerHTML, /ще <b>1<\/b> повних барабанів/);
+    assert.equal(state.coreStock['2.5:3'].piecesText, '10000, 1500');
+    assert.equal(container.innerHTML, initialHTML, 'editing pieces does not replace the focused input');
+    const shiftInput = { dataset: { shiftField: 'alarms' }, value: '600', setAttribute() {} };
+    container.listeners.get('input')({ target: shiftInput });
+    assert.match(shiftOutput.innerHTML, /0 \/ 2 барабанів повністю/);
+    assert.equal(state.shiftSettings.alarms, 600);
+    shiftInput.value = '-1';
+    container.listeners.get('input')({ target: shiftInput });
+    assert.equal(state.shiftSettings.alarms, 600, 'invalid downtime cannot replace a saved value');
+    const copied = planner.resourcesText().join('\n');
+    assert.match(copied, /Повітряні тривоги: 600/);
+    assert.match(copied, /ще повних барабанів: 1/);
+    assert.match(copied, /Інструмент на все завдання/);
+    stockInput.value = '10000,';
+    container.listeners.get('input')({ target: stockInput });
+    assert.match(stockOutput.innerHTML, /class="error"/);
+  }, () => ({ mode: 'single', stored: {}, reference: { workingSpeed: 100 }, effective: { dorn: 2.15, matrix: 3.7 }, sources: {} }));
 });
 
 test('production statuses survive a reload while legacy and invalid values return to the queue', () => {

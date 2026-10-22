@@ -2,8 +2,8 @@
 <html lang="uk"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=23">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=27"></script>
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=24">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=28"></script>
 </head><body>
   <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
@@ -35,6 +35,7 @@
         <div class="actions job-actions"><button class="primary" id="generate-plan" type="button">Скласти чергу</button><button class="secondary" id="undo-plan" type="button" hidden>Повернути попередню чергу</button></div>
         <p id="job-message" class="form-message" role="status"></p>
       </details>
+      <div id="plan-resources"></div>
       <div id="plan-summary" aria-live="polite"></div>
       <p id="plan-order-status" class="quiet" role="status"></p>
       <div class="queue-heading"><div><h2>Черга</h2><p class="quiet">☰ — перетягнути</p></div><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Порядок</button><button class="secondary" id="clear-plan" type="button">Очистити</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>

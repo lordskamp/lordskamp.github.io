@@ -1,7 +1,7 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
-import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=27';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=27';
-import { drumStatus } from './planner.js?v=27';
+import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=28';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=28';
+import { drumStatus } from './planner.js?v=28';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=27';
 import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=27';
@@ -274,7 +274,7 @@ function renderPlan() {
 function renderOutputs() { planner.renderOutputs(); }
 function renderSplice() { const result = spliceTarget(state.currentTarget, state.rules.splice); $('splice-result').textContent = result === null ? 'Введи цілі метри' : fmt(result) + ' м'; }
 async function copyPlan() {
-  const lines = ['План барабанів'];
+  const lines = ['План барабанів', ...planner.resourcesText()];
   state.drums.forEach((drum, i) => {
     const result = planner.result(drum, i), info = planner.setup(drum), r = { mode: info.mode };
     const labeled = key => `${display(info.effective[key])} (${info.sources[key] === 'manual' ? 'орієнтовно · за твоєю швидкістю' : VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;

@@ -12,6 +12,8 @@ const validDiameter = value => blankDiameter(value) || (typeof value === 'number
   || typeof value === 'string' && /^(?:\d+(?:[.,]\d+)?|[.,]\d+)$/u.test(value.trim())) && number(value) > 0;
 const finalDiameter = record => isThread(record) ? number(record.finalDiameter) : null;
 const sameDiameter = (a, b) => !isThread(b) || validDiameter(a?.finalDiameter) && finalDiameter(a) === finalDiameter(b);
+const conductorClass = record => !isThread(record) && [1, 2, 3, 4, 5, 6].includes(number(record?.coreClass)) ? number(record.coreClass) : null;
+const sameClass = (a, b) => conductorClass(a) === conductorClass(b);
 
 /** Older saved drums without a status are still waiting in the queue. */
 export function drumStatus(drum) {
@@ -87,8 +89,8 @@ function validateJobs(jobs) {
     // The colour is an internal queue marker for undyed thread, not another
     // strand to produce. Older saved tasks can still contain three colours.
     const thread = isThread(source);
-    const cores = thread ? 1 : number(source.cores);
     const colors = thread ? ['white'] : Array.isArray(source.colors) ? [...source.colors] : [];
+    const cores = colors.length;
     const batchSize = source.batchSize === undefined ? 3 : number(source.batchSize);
     const diameter = finalDiameter(source);
     if (!id.trim() || ids.has(id)) errors.push(prefix + 'ідентифікатор має бути непорожнім і унікальним.');
@@ -98,7 +100,7 @@ function validateJobs(jobs) {
     if (section === null || section <= 0) errors.push(prefix + 'переріз має бути числом, більшим за нуль.');
     if (!Number.isSafeInteger(cores) || cores < 1) errors.push(prefix + 'кількість жил має бути цілим числом, більшим за нуль.');
     if (!colors.length || colors.some(color => !validColors.has(color)) || unique(colors).length !== colors.length) errors.push(prefix + 'оберіть різні відомі кольори жил.');
-    if (cores !== colors.length) errors.push(prefix + 'кількість обраних кольорів має відповідати кількості жил.');
+    if (!thread && !blankDiameter(source.coreClass) && conductorClass(source) === null) errors.push(prefix + 'клас жили має бути від 1 до 6.');
     if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > MAX_DRUMS) errors.push(prefix + `розмір першої партії має бути від 1 до ${MAX_DRUMS} барабанів.`);
     const parsed = parseJobLengths(source.lengthsText);
     errors.push(...parsed.errors.map(error => prefix + error));
@@ -118,6 +120,7 @@ function expandValidated(jobs) {
     jobId: job.id,
     cableId: job.cableId,
     section: job.section,
+    ...(conductorClass(job) !== null ? { coreClass: conductorClass(job) } : {}),
     ...(isThread(job) ? { finalDiameter: job.finalDiameter } : {}),
     ...(isThread(job) ? { mode: 'single' } : ['black', 'yellow-green'].includes(color) ? { mode: 'dual' } : ['single', 'dual'].includes(job.mode) ? { mode: job.mode } : {}),
     color,
@@ -216,16 +219,17 @@ export function scheduleJobs(jobs, existingDrums = []) {
     }
     if (saved) retained.add(saved.id);
     const unchanged = saved?.cableId === drum.cableId && number(saved?.section) === drum.section && (isThread(drum) || saved?.color === drum.color)
-      && number(saved?.length) === number(drum.length) && sameDiameter(saved, drum);
+      && number(saved?.length) === number(drum.length) && sameDiameter(saved, drum) && sameClass(saved, drum);
     const status = unchanged ? drumStatus(saved) : 'queued';
     if (saved && drumStatus(saved) !== 'queued' && !unchanged) resetStarted = true;
     const mode = isThread(drum) ? 'single' : ['black', 'yellow-green'].includes(drum.color) ? 'dual'
       : unchanged && ['single', 'dual'].includes(saved?.mode) ? saved.mode : drum.mode;
     const restored = { ...saved, ...drum, name: saved?.name ?? '', breakdowns: saved?.breakdowns ?? '', status };
+    if (!Object.hasOwn(drum, 'coreClass')) delete restored.coreClass;
     if (['single', 'dual'].includes(mode)) restored.mode = mode; else delete restored.mode;
     return restored;
   });
-  const warnings = resetStarted ? ['Позначки «В роботі» та «Готово» скинуто для барабанів зі зміненим типом кабелю, перерізом, кінцевим діаметром, кольором або довжиною.'] : [];
+  const warnings = resetStarted ? ['Позначки «В роботі» та «Готово» скинуто для барабанів зі зміненим типом кабелю, перерізом, класом жили, кінцевим діаметром, кольором або довжиною.'] : [];
   const threadJobs = new Set(validated.jobs.filter(isThread).map(job => job.id));
   if ([...existing.values()].some(drum => threadJobs.has(drum.jobId) && isThread(drum) && !retained.has(drum.id) && drumStatus(drum) !== 'queued')) {
     warnings.push('Новий план джгутів має один потік без кольорів. Старі розпочаті барабани, яких немає в новому плані, не перенесено; перевір їх перед заміною черги.');
@@ -271,7 +275,7 @@ function summarizePlan(drums, jobs, plannedDrums) {
       if ((!isThread(drum) && drum.color === striped) !== (!isThread(previous) && previous.color === striped)) summary.headChanges++;
       if (!isThread(drum) && !isThread(previous) && drum.color !== previous.color) summary.colorChanges++;
     }
-    if (drum.cableId !== previous.cableId || number(drum.section) !== number(previous.section) || !sameDiameter(previous, drum)) summary.cableChanges++;
+    if (drum.cableId !== previous.cableId || number(drum.section) !== number(previous.section) || !sameDiameter(previous, drum) || !sameClass(previous, drum)) summary.cableChanges++;
   });
   if (!Number.isSafeInteger(summary.totalMetres)) summary.errors.push('Загальна довжина плану завелика.');
   const provided = Array.isArray(jobs) && jobs.length > 0;
@@ -283,6 +287,7 @@ function summarizePlan(drums, jobs, plannedDrums) {
     const colors = thread ? ['white'] : unique(group.map(drum => drum.color).filter(color => validColors.has(color)));
     const perColor = colors.map(color => group.filter(drum => thread || drum.color === color).reduce((sum, drum) => sum + (number(drum.length) ?? 0), 0));
     return { id, cableId: group[0]?.cableId, section: number(group[0]?.section), colors, lengths: [Math.max(0, ...perColor)],
+      ...(conductorClass(group[0]) !== null ? { coreClass: conductorClass(group[0]) } : {}),
       ...(isThread(group[0]) ? { finalDiameter: finalDiameter(group[0]) } : {}) };
   });
   const knownJobs = new Set(definitions.map(job => job.id));
@@ -301,7 +306,7 @@ function summarizePlan(drums, jobs, plannedDrums) {
       const color = isThread(job) ? 'white' : drum.color;
       if (!totals.has(color)) return;
       // A differently configured cable cannot supply this job's twisting step.
-      if (drum.cableId !== job.cableId || number(drum.section) !== job.section || !sameDiameter(drum, job)) return;
+      if (drum.cableId !== job.cableId || number(drum.section) !== job.section || !sameDiameter(drum, job) || !sameClass(drum, job)) return;
       totals.set(color, totals.get(color) + length);
       const readyMetres = Math.min(...totals.values());
       if (readyMetres > progress.readyMetres) {
@@ -321,7 +326,7 @@ function summarizePlan(drums, jobs, plannedDrums) {
         if (actual !== totalMetres) summary.warnings.push(`Завдання ${definitions.indexOf(job) + 1}${isThread(job) ? '' : `, ${COLORS.find(item => item.id === color)?.label ?? color}`}: у плані ${actual} м, у завданні ${totalMetres} м.`);
       }
       if (!isThread(job) && items.some(drum => drum?.jobId === job.id && !job.colors.includes(drum.color))) summary.warnings.push(`Завдання ${definitions.indexOf(job) + 1}: у плані є колір, якого немає в завданні.`);
-      if (items.some(drum => drum?.jobId === job.id && (drum.cableId !== job.cableId || number(drum.section) !== job.section))) summary.warnings.push(`Завдання ${definitions.indexOf(job) + 1}: тип кабелю або переріз барабана відрізняється від завдання.`);
+      if (items.some(drum => drum?.jobId === job.id && (drum.cableId !== job.cableId || number(drum.section) !== job.section || !sameClass(drum, job)))) summary.warnings.push(`Завдання ${definitions.indexOf(job) + 1}: тип кабелю, переріз або клас жили барабана відрізняється від завдання.`);
     }
     summary.ready.push(progress);
   }

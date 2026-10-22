@@ -86,7 +86,8 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
   const supplied = value => value !== null && value !== undefined;
   const cableChange = Boolean(nextDrum && (
     supplied(drum.cableId) && supplied(nextDrum.cableId) && drum.cableId !== nextDrum.cableId ||
-    supplied(drum.section) && supplied(nextDrum.section) && (number(drum.section) ?? drum.section) !== (number(nextDrum.section) ?? nextDrum.section)
+    supplied(drum.section) && supplied(nextDrum.section) && (number(drum.section) ?? drum.section) !== (number(nextDrum.section) ?? nextDrum.section) ||
+    !drum.noDye && !nextDrum.noDye && number(drum.coreClass) !== number(nextDrum.coreClass)
   ));
   const headChange = Boolean(nextDrum && (!drum.noDye && drum.color === 'yellow-green') !== (!nextDrum.noDye && nextDrum.color === 'yellow-green'));
   const modeChange = Boolean(nextDrum && supplied(drum.mode) && supplied(nextDrum.mode) && drum.mode !== nextDrum.mode);

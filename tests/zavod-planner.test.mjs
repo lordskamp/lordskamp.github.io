@@ -275,7 +275,7 @@ test('job validation rejects ambiguous colors, quantities, cable settings and to
   const cases = [
     [], null, [null], [job({ id: '' })], [job(), job()],
     [job({ cableId: ' ' })], [job({ section: 0 })], [job({ section: Infinity })],
-    [job({ cores: 2 })], [job({ cores: 1.5 })],
+    [job({ coreClass: 0 })], [job({ coreClass: 7 })], [job({ coreClass: 3.5 })],
     [job({ colors: [] })], [job({ colors: ['blue', 'blue', 'brown'] })],
     [job({ colors: ['blue', 'brown', 'unknown'] })],
     [job({ batchSize: 0 })], [job({ batchSize: 1.5 })], [job({ batchSize: 501 })],
