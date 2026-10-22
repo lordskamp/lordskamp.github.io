@@ -1,6 +1,6 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=28';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=28';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=29';
 import { drumStatus } from './planner.js?v=28';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=27';
@@ -266,12 +266,7 @@ function openRecord(id) {
 
 function renderPlan() {
   planner.render();
-  $('rules').innerHTML = RULES.map(([key, label]) => `<label>${esc(label)}<input data-rule="${key}" inputmode="numeric" value="${esc(state.rules[key])}" maxlength="8"></label>`).join('');
-  const r = recipe();
-  const leads = [1,2].filter(n => number(r['colorLead' + n]) != null).map(n => `№${n} — за ${fmt(r['colorLead' + n])} м`);
-  if (leads.length) $('rules').insertAdjacentHTML('beforeend', `<p class="quiet">Практичні поправки ${esc(cableLabel(state.cableId))}: ${leads.join('; ')}. Застосовуються до барабанів цього режиму автоматично.</p>`);
 }
-function renderOutputs() { planner.renderOutputs(); }
 function renderSplice() { const result = spliceTarget(state.currentTarget, state.rules.splice); $('splice-result').textContent = result === null ? 'Введи цілі метри' : fmt(result) + ' м'; }
 async function copyPlan() {
   const lines = ['План барабанів', ...planner.resourcesText()];
@@ -557,7 +552,6 @@ $('open-plan').addEventListener('click', () => showView('plan'));
 $('return-to-plan').addEventListener('click', () => showView('plan'));
 $('open-splice').addEventListener('click', () => { $('current-target').value = state.currentTarget; renderSplice(); $('splice-dialog').showModal(); });
 $('current-target').addEventListener('input', () => { state.currentTarget = $('current-target').value; persist(); renderSplice(); });
-$('rules').addEventListener('input', event => { if (!event.target.dataset.rule) return; state.rules[event.target.dataset.rule] = event.target.value; persist(); renderOutputs(); });
 $('copy-plan').addEventListener('click', () => void copyPlan()); $('print-plan').addEventListener('click', () => window.print());
 $('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions(); $('table-filter').value = state.cableId;
 $('table-filter').addEventListener('change', renderTable); $('refresh-table').addEventListener('click', () => void syncCatalog(true));

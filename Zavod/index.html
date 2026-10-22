@@ -3,7 +3,8 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
   <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=24">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=28"></script>
+  <link rel="stylesheet" href="./plan.css?v=1">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=29"></script>
 </head><body>
   <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
@@ -16,33 +17,31 @@
     </section>
     <section id="view-plan" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>План барабанів</h1></div><button class="secondary" id="add-drum" type="button">＋ Барабан</button></div>
-      <details class="card splice-planner" id="splice-planner">
-        <summary>Планування скрутки</summary>
-        <div class="splice-rows">
-          <label class="splice-row"><span>Потрібна довжина, м</span><input id="splice-length" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="15000" aria-describedby="splice-message"></label>
-          <label class="splice-row"><span>Пробої на лічильнику, м</span><textarea id="splice-breakdowns" rows="1" maxlength="2000" placeholder="5385, 8459" aria-describedby="splice-help splice-message"></textarea></label>
-          <div id="splice-preview" class="splice-preview" aria-live="polite"><div class="splice-row"><span>Записати на лейбл</span><strong id="splice-label" class="splice-value">—</strong></div><div class="splice-row"><span>Ввести на екрані, м</span><strong id="splice-screen" class="splice-value">—</strong></div></div>
-        </div>
-        <p id="splice-help" class="quiet">Декілька пробоїв — через кому або з нового рядка. Позначки округлюються вниз до 10 м.</p>
-        <p id="splice-message" class="form-message" role="status"></p>
-      </details>
       <p id="plan-title" class="quiet" hidden></p>
       <details class="card job-builder" id="job-builder" open>
         <summary>Завдання</summary>
-        <details class="plan-help"><summary>Як вказати довжини</summary><p>3×15 + 3×15 + 11 — це 6 барабанів по 15 км і 1 на 11 км кожного кольору. Для джгутів — один потік без кольорів.</p><p>Черга врахує розсікач і потребу скрутки. Проводи можна переставляти стрілками, барабани — перетягуванням.</p></details>
         <div id="jobs"></div>
-        <div class="job-toolbar"><button class="secondary" id="add-job" type="button">＋ Ще провід</button><button class="back" id="load-plan-example" type="button">Приклад із фото</button></div>
-        <div class="actions job-actions"><button class="primary" id="generate-plan" type="button">Скласти чергу</button><button class="secondary" id="undo-plan" type="button" hidden>Повернути попередню чергу</button></div>
+        <div class="actions job-actions"><button class="secondary" id="add-job" type="button">＋ Провід</button><button class="primary" id="generate-plan" type="button">Скласти чергу</button></div>
+        <button class="back" id="undo-plan" type="button" hidden>Скасувати зміну черги</button>
         <p id="job-message" class="form-message" role="status"></p>
       </details>
       <div id="plan-resources"></div>
       <div id="plan-summary" aria-live="polite"></div>
       <p id="plan-order-status" class="quiet" role="status"></p>
-      <div class="queue-heading"><div><h2>Черга</h2><p class="quiet">☰ — перетягнути</p></div><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Порядок</button><button class="secondary" id="clear-plan" type="button">Очистити</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>
+      <div class="queue-heading"><h2>Черга</h2><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Порядок</button><button class="secondary" id="clear-plan" type="button">Очистити</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>
       <div id="drums" class="drums"></div>
       <p id="plan-live" class="sr-only" role="status" aria-live="polite"></p>
       <div class="actions"><button class="secondary" id="copy-plan" type="button">Копіювати план</button><button class="secondary" id="print-plan" type="button">Друк</button></div>
-      <details class="extra"><summary>Поправки до довжини</summary><div id="rules" class="form-grid"></div><p class="quiet">Зміна барвника — приблизно. Відлік від нуля кожного барабана. Перекидання — за кольором у 4-му рядку ванни.</p></details>
+      <details class="card splice-planner" id="splice-planner">
+        <summary>Калькулятор скрутки</summary>
+        <div class="splice-rows">
+          <label class="splice-row"><span>Довжина, м</span><input id="splice-length" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="15000" aria-describedby="splice-message"></label>
+          <label class="splice-row"><span>Пробої, м</span><textarea id="splice-breakdowns" rows="1" maxlength="2000" placeholder="5385, 8459" aria-describedby="splice-help splice-message"></textarea></label>
+          <div id="splice-preview" class="splice-preview" aria-live="polite"><div class="splice-row"><span>На лейбл</span><strong id="splice-label" class="splice-value">—</strong></div><div class="splice-row"><span>На екрані, м</span><strong id="splice-screen" class="splice-value">—</strong></div></div>
+        </div>
+        <p id="splice-help" class="quiet">Пробої — через кому, в метрах.</p>
+        <p id="splice-message" class="form-message" role="status"></p>
+      </details>
     </section>
     <section id="view-table" hidden>
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Таблиця налаштувань</h1></div><button class="secondary" id="refresh-table" type="button">Оновити</button></div>
@@ -68,6 +67,6 @@
   </main>
   <dialog id="record-dialog"><div class="dialog-head"><h2>Запис</h2><button class="close" type="button" data-close="record-dialog" aria-label="Закрити">×</button></div><div id="record-content"></div></dialog>
   <dialog id="working-speed-dialog" aria-labelledby="working-speed-title"><div class="dialog-head"><h2 id="working-speed-title">Робоча швидкість</h2><button class="close" type="button" data-close="working-speed-dialog" aria-label="Закрити">×</button></div><form id="working-speed-form"><label>Швидкість, м/хв<input id="working-speed-input" inputmode="decimal" autocomplete="off" maxlength="12" aria-describedby="working-speed-limit working-speed-message"></label><p id="working-speed-limit" class="quiet"></p><output id="working-speed-preview" class="speed-preview" aria-live="polite"></output><p class="quiet">Оберти — приблизний перерахунок для цього проводу й режиму.</p><p id="working-speed-message" class="form-message error" role="status"></p><div class="actions"><button class="primary" id="apply-working-speed" type="submit">Застосувати</button><button class="secondary" id="reset-working-speed" type="button">Повернути початкову</button></div></form></dialog>
-  <dialog id="splice-dialog"><div class="dialog-head"><h2>Додати запас</h2><button class="close" type="button" data-close="splice-dialog" aria-label="Закрити">×</button></div><label>Зараз на екрані, м<input id="current-target" inputmode="numeric" autocomplete="off" value="15000"></label><div class="splice-number"><span>Постав на екрані</span><strong id="splice-result"></strong></div><p class="quiet">Напис для лейбла розрахуй у «Плануванні скрутки» вгорі плану барабанів.</p></dialog>
+  <dialog id="splice-dialog"><div class="dialog-head"><h2>Додати запас</h2><button class="close" type="button" data-close="splice-dialog" aria-label="Закрити">×</button></div><label>Зараз на екрані, м<input id="current-target" inputmode="numeric" autocomplete="off" value="15000"></label><div class="splice-number"><span>Постав на екрані</span><strong id="splice-result"></strong></div><p class="quiet">Лейбл — у калькуляторі скрутки в плані барабанів.</p></dialog>
   <div id="toast" class="toast" role="status" hidden></div><noscript>Увімкніть JavaScript, щоб обрати провід. <a href="./catalog.json">Таблиця даних</a>.</noscript>
 </body></html>

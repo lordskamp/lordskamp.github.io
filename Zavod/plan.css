@@ -1,0 +1,115 @@
+/* Drum planning: short summaries first, working details on demand. */
+#view-plan{max-width:720px;margin-inline:auto}
+#view-plan .page-heading{margin:8px 0 20px;align-items:center}
+#view-plan .page-heading h1{font-size:25px;letter-spacing:-.7px}
+#view-plan .page-heading .back{font-size:12px;min-height:28px}
+#view-plan .page-heading>.secondary{font-size:12px;min-height:40px;padding:8px 12px}
+#view-plan .job-builder{padding:4px 18px 16px;border-radius:16px;margin:0 0 16px}
+#view-plan .job-builder>summary{display:flex;align-items:center;justify-content:space-between;list-style:none;min-height:54px;padding:12px 0;font-size:15px;font-weight:650}
+#view-plan .job-builder>summary::after{content:'⌄';color:var(--muted);font-weight:400}
+#view-plan .job-builder[open]>summary::after{transform:rotate(180deg)}
+#view-plan .job-builder:not([open]){padding-bottom:4px}
+#view-plan .job-builder>summary::-webkit-details-marker{display:none}
+#view-plan .job-card{background:transparent;border:0;border-top:1px solid var(--line);border-radius:0;padding:16px 0;margin:0}
+#view-plan .job-heading{margin-bottom:12px;gap:8px}
+#view-plan .job-heading h2{font-size:13px;font-weight:600;color:var(--muted)}
+#view-plan .job-heading>div{display:flex;gap:2px}
+#view-plan .job-heading .icon-button{height:30px;width:30px;font-size:18px;border-radius:7px}
+#view-plan .job-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#view-plan .job-fields>label:first-child{grid-column:1/-1}
+#view-plan .job-fields label,#view-plan .stock-group label{font-size:12px;gap:5px;font-weight:500;color:var(--muted)}
+#view-plan .job-fields input,#view-plan .job-fields select,#view-plan .stock-group input{min-height:44px;height:44px;padding:8px 10px;font-size:15px;color:var(--ink);border-radius:9px;background:var(--paper)}
+#view-plan .job-colors{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;margin:14px 0 0;max-width:380px}
+#view-plan .job-colors legend{font-size:12px;color:var(--muted);font-weight:500;margin-bottom:5px}
+#view-plan .color-choice{position:relative;display:flex;justify-content:center;align-items:center;min-width:0;width:100%;height:36px;min-height:36px;padding:5px;border-radius:9px}
+#view-plan .color-choice input{position:absolute;opacity:0;width:1px;height:1px;min-height:0;margin:0;padding:0}
+#view-plan .color-choice .color-dot{height:23px;width:23px}
+#view-plan .color-choice:has(input:checked){background:var(--soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--green) 30%,var(--line))}
+#view-plan .color-choice:has(input:checked)::after{content:'✓';position:absolute;color:white;font-size:14px;font-weight:700;text-shadow:0 1px 3px #000b;pointer-events:none}
+#view-plan .color-choice:has(input:focus-visible){outline:3px solid #ba7b24;outline-offset:2px}
+#view-plan .job-total{font-size:12px;line-height:1.4;text-align:right;margin:10px 0 0;color:var(--muted);font-variant-numeric:tabular-nums}
+#view-plan .job-total:empty,#view-plan .form-message:empty{display:none}
+#view-plan .job-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:10px;margin:2px 0 0}
+#view-plan .job-actions button{min-height:44px;font-size:13px;padding:8px 12px;border-radius:10px}
+#view-plan #undo-plan{margin-top:6px;font-size:12px;min-height:32px}
+#view-plan .plan-metrics{border:1px solid var(--line);border-radius:16px;background:var(--paper);overflow:hidden;margin:0 0 18px}
+#view-plan .resource-panel+.resource-panel{border-top:1px solid var(--line)}
+#view-plan .resource-panel>summary{display:flex;align-items:center;gap:12px;min-height:66px;padding:14px 18px;list-style:none}
+#view-plan .resource-panel>summary::before{display:none}
+#view-plan .resource-panel>summary::after{content:'⌄';color:var(--muted);font-size:15px;width:12px;flex:none;line-height:1}
+#view-plan .resource-panel[open]>summary::after{transform:rotate(180deg)}
+#view-plan .resource-panel>summary::-webkit-details-marker{display:none}
+#view-plan .resource-panel>summary>.resource-heading{font-size:13px;font-weight:500;margin:0 auto 0 0;color:var(--ink)}
+#view-plan .resource-number{display:flex;align-items:baseline;gap:6px;font-size:22px;font-weight:650;letter-spacing:-.65px;line-height:1.2;font-variant-numeric:tabular-nums}
+#view-plan .resource-number small{font-size:11px;font-weight:400;letter-spacing:0;color:var(--muted)}
+#view-plan .resource-body{padding:0 18px 16px}
+#view-plan .resource-body .quiet{font-size:12px;line-height:1.5;margin:10px 0 0}
+#view-plan .shift-detail{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:13px;margin:5px 0}
+#view-plan .shift-detail>span{color:var(--muted)}
+#view-plan .shift-detail strong{font-size:13px;font-weight:550;font-variant-numeric:tabular-nums}
+#view-plan .stock-group{padding:0;margin:0}
+#view-plan .stock-group+.stock-group{border-top:1px solid var(--line);padding-top:14px;margin-top:16px}
+#view-plan .stock-group h3{font-size:13px;font-weight:600;margin:0 0 12px}
+#view-plan .stock-group .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 12px}
+#view-plan .stock-result-line{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px 12px;font-size:12px}
+#view-plan .stock-result-line>strong{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+#view-plan .stock-result-line small{font-size:12px;font-weight:400;color:var(--muted)}
+#view-plan .resource-table{font-size:12px;width:100%;min-width:0;border-collapse:collapse}
+#view-plan .resource-table th,#view-plan .resource-table td{min-width:0;padding:9px 4px;border-bottom:1px solid var(--line);white-space:normal;text-align:left;vertical-align:top}
+#view-plan .resource-table th:first-child{width:52%}
+#view-plan .resource-table th{font-weight:500}
+#view-plan .resource-table thead th{font-size:11px;color:var(--muted)}
+#view-plan .resource-table tr:last-child>*{border-bottom:0}
+#view-plan .queue-progress{border:0;background:none;border-radius:0;padding:0;margin:0 0 14px;font-size:12px}
+#view-plan .queue-progress>div{margin-bottom:7px;gap:8px}
+#view-plan .queue-progress>div>span{color:var(--muted)}
+#view-plan .queue-progress progress{height:4px}
+#view-plan .queue-heading{margin:16px 0 10px;gap:10px;align-items:center;flex-wrap:nowrap}
+#view-plan .queue-heading h2{font-size:16px;font-weight:650}
+#view-plan .queue-tools{width:auto;gap:4px;justify-content:flex-end}
+#view-plan .queue-tools>.secondary{border:0;background:none;padding:6px 8px;min-height:36px;font-size:11px;font-weight:500}
+#view-plan #plan-order-status{font-size:12px;margin:0 0 10px;color:var(--muted)}
+#view-plan .drums{gap:8px;margin-top:0}
+#view-plan .queue-card{grid-template-columns:minmax(0,1fr);background:var(--paper);padding:10px 12px;border-radius:13px;margin:0;box-shadow:none;gap:4px}
+#view-plan .queue-card.is-active{border-color:var(--green);box-shadow:inset 3px 0 var(--green)}
+#view-plan .queue-card.is-done{background:color-mix(in srgb,var(--soft) 35%,var(--paper));border-color:var(--line);box-shadow:inset 3px 0 var(--done-color,var(--muted))}
+#view-plan .queue-row{gap:7px}
+#view-plan .drag-handle{width:25px;min-width:25px;height:40px;min-height:40px;font-size:16px}
+#view-plan .drum-summary{min-height:40px;gap:8px;padding:2px 0}
+#view-plan .drum-summary .color-dot{width:16px;height:16px}
+#view-plan .drum-title b{font-size:14px;font-weight:600}
+#view-plan .drum-title small,#view-plan .drum-length small{font-size:10px}
+#view-plan .drum-length{font-size:16px}
+#view-plan .drum-actions{margin-left:32px;gap:5px;justify-content:flex-end}
+#view-plan .queue-status{border:0;border-radius:7px;background:var(--bg);min-height:34px;height:34px;min-width:68px;font-size:11px;padding:5px 10px;font-weight:500}
+#view-plan .queue-status[aria-pressed=true]{color:var(--green);background:var(--soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--green) 30%,var(--line))}
+#view-plan .cable-info,#view-plan .queue-more>summary{width:34px;min-height:34px;height:34px}
+#view-plan .drum-fields{padding-top:14px;margin-top:10px}
+#view-plan .drum-fields label{font-size:12px}
+#view-plan .drum-fields input,#view-plan .drum-fields select{min-height:42px;font-size:14px}
+#view-plan>.actions{gap:8px;margin:16px 0}
+#view-plan>.actions button{min-height:40px;font-size:12px;border-radius:10px}
+#view-plan .splice-planner{border:0;background:none;border-top:1px solid var(--line);padding:4px 0;margin:20px 0 0;border-radius:0}
+#view-plan .splice-planner>summary{font-size:12px;min-height:42px;color:var(--muted)}
+#view-plan #jobs:not(:has(.job-card+.job-card)) .job-heading{display:none}
+@media(min-width:560px){
+  #view-plan .job-fields{grid-template-columns:minmax(0,2fr) repeat(2,minmax(0,1fr))}
+  #view-plan .job-fields>label:first-child{grid-column:auto}
+}
+@media(max-width:360px){
+  #view-plan .job-builder{padding-inline:14px}
+  #view-plan .resource-panel>summary{padding-inline:14px;gap:8px}
+  #view-plan .resource-body{padding-inline:14px}
+  #view-plan .resource-number{font-size:20px}
+  #view-plan .queue-tools>.secondary{font-size:10px;padding-inline:5px}
+  #view-plan .queue-card{padding:8px 10px}
+  #view-plan .drum-title b{font-size:12px}
+  #view-plan .drum-length{font-size:14px}
+}
+@media print{
+  #view-plan .resource-body{display:block!important}
+  #view-plan .resource-panel>summary::after{display:none}
+  #view-plan .stock-group .form-grid{display:none}
+  #view-plan .plan-metrics{break-inside:avoid}
+  #view-plan .resource-number{font-size:18px}
+}
