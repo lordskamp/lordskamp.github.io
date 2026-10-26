@@ -39,7 +39,7 @@ export function initSplicePlanner({ toast = () => {}, initialDraft } = {}) {
 
   function refresh() {
     const hasLength = state.length.trim().length > 0;
-    const result = hasLength ? planSplices(state.length, state.breakdowns) : null;
+    const result = hasLength ? planSplices(state.length, state.breakdowns, 0) : null;
     const valid = Boolean(result && !result.errors.length);
     label.innerHTML = valid ? `(${result.parts.join('+<wbr>')})` : '—';
     screen.textContent = valid ? fmt(result.target) : '—';
@@ -53,7 +53,7 @@ export function initSplicePlanner({ toast = () => {}, initialDraft } = {}) {
       message.textContent = result.errors.join(' ');
     } else if (result.spliceCount) {
       const rounding = result.marks.map((mark, i) => `${fmt(mark)} → ${fmt(result.roundedMarks[i])}`).join('; ');
-      message.textContent = `${rounding} м. +${fmt(result.target - result.length)} м на скрутку — тільки на екрані.`;
+      message.textContent = `${rounding} м. Пробій не додає запас до довжини.`;
     } else {
       message.textContent = 'Додай пробої через кому, коли вони з’являться.';
     }

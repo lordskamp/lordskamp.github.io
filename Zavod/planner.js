@@ -126,7 +126,8 @@ function expandValidated(jobs) {
     color,
     length: String(length),
     name: '',
-    breakdowns: ''
+    breakdowns: '',
+    ...(job.coiling === true ? { coiling: true } : {})
   }))));
 }
 
@@ -143,64 +144,43 @@ function generatedIndex(drum) {
 }
 
 /**
- * A practical grouping heuristic, not a claim of global optimality. Normal
- * jobs favor fewer head/color changes, while urgent jobs expose a first batch
- * of every color earlier. The shorter final striped drum bridges into the
- * next cable with the striped head still installed.
+ * Group waiting metallic drums by splitter, colour and then conductor.
+ * Started/completed drums, invalid records and thread bundles stay at their positions: thread
+ * splitter requirements are not known. Within each block the encounter order
+ * is retained as the tie-breaker, making repeated recommendations stable.
  */
-function orderGroup(drums, job, previousColor) {
-  // Retain actual saved thread rows and their encounter order. Their legacy
-  // colour markers do not require any dye or splitter changes.
-  if (isThread(job) || drums.length && drums.every(isThread)) return [...drums];
-  const actualColors = unique(drums.map(drum => drum.color));
-  const colors = unique([...(Array.isArray(job.colors) ? job.colors : []), ...actualColors]).filter(color => actualColors.includes(color));
-  const byColor = new Map(colors.map(color => [color, drums.filter(drum => drum.color === color).map((drum, index) => ({ drum, index })).sort((a, b) => {
-    const aIndex = generatedIndex(a.drum), bIndex = generatedIndex(b.drum);
-    if (aIndex !== null && bIndex !== null) return aIndex - bIndex;
-    if (aIndex !== null) return -1;
-    if (bIndex !== null) return 1;
-    return a.index - b.index;
-  }).map(item => item.drum)]));
-  const stripedDrums = byColor.get(striped) ?? [];
-  const solids = colors.filter(color => color !== striped);
-  const bridgeColor = !stripedDrums.length && solids.includes(previousColor) ? previousColor : solids.includes('blue') ? 'blue' : solids[0];
-  const solidOrder = solids.length ? [bridgeColor, ...solids.filter(color => color !== bridgeColor)] : [];
-  const rawBatch = number(job.batchSize);
-  const batchSize = Number.isSafeInteger(rawBatch) && rawBatch > 0 ? Math.min(rawBatch, MAX_DRUMS) : 3;
-  if (job.urgent === true) {
-    const first = [...stripedDrums.slice(0, batchSize), ...solidOrder.flatMap(color => byColor.get(color).slice(0, batchSize))];
-    return [...first, ...[...solidOrder].reverse().flatMap(color => byColor.get(color).slice(batchSize)), ...stripedDrums.slice(batchSize)];
-  }
-  const finalStriped = stripedDrums.at(-1);
-  const reserveStriped = stripedDrums.length > 1 && number(finalStriped.length) < Math.max(...stripedDrums.map(drum => number(drum.length) ?? 0));
-  const firstStriped = reserveStriped ? stripedDrums.slice(0, -1) : stripedDrums;
-  const bridgeDrums = byColor.get(bridgeColor) ?? [];
-  return [...firstStriped, ...bridgeDrums.slice(0, batchSize), ...solidOrder.slice(1).flatMap(color => byColor.get(color)), ...bridgeDrums.slice(batchSize), ...(reserveStriped ? [finalStriped] : [])];
-}
-
-/** Restore the waiting order while retaining started work at its actual position. */
-export function recommendOrder(drums, jobs = []) {
+export function recommendOrder(drums) {
   if (!Array.isArray(drums)) return [];
-  const queued = drums.filter(drum => drumStatus(drum) === 'queued');
-  const definitions = Array.isArray(jobs) ? jobs.filter(job => job && typeof job === 'object') : [];
-  const ordered = [];
-  const consumed = new Set();
-  for (const job of definitions) {
-    if (typeof job.id !== 'string' || consumed.has(job.id)) continue;
-    consumed.add(job.id);
-    const group = queued.filter(drum => drum?.jobId === job.id);
-    ordered.push(...orderGroup(group, job, ordered.at(-1)?.color));
-  }
-  if (!definitions.length) {
-    // With no definitions, existing job groups still retain their encounter order.
-    for (const jobId of unique(queued.filter(drum => drum?.jobId).map(drum => drum.jobId))) {
-      consumed.add(jobId);
-      ordered.push(...orderGroup(queued.filter(drum => drum?.jobId === jobId), {}, ordered.at(-1)?.color));
+  const result = [...drums];
+  let start = 0;
+  while (start < result.length) {
+    if (drumStatus(result[start]) !== 'queued' || isThread(result[start]) || !validColors.has(result[start]?.color)) { start++; continue; }
+    let end = start;
+    while (end < result.length && drumStatus(result[end]) === 'queued' && !isThread(result[end]) && validColors.has(result[end]?.color)) end++;
+    const block = result.slice(start, end);
+    const previous = start > 0 && !isThread(result[start - 1]) && validColors.has(result[start - 1]?.color) ? result[start - 1] : null;
+    const heads = unique(block.map(drum => drum.color === striped ? 'striped' : 'plain'));
+    const initialHead = previous ? (previous.color === striped ? 'striped' : 'plain') : 'striped';
+    if (heads.includes(initialHead)) heads.sort((a, b) => (a === initialHead ? -1 : b === initialHead ? 1 : 0));
+    const ordered = [];
+    for (const head of heads) {
+      const group = block.filter(drum => (drum.color === striped ? 'striped' : 'plain') === head);
+      const colors = unique(group.map(drum => drum.color));
+      const priorColor = ordered.at(-1)?.color ?? (previous && (previous.color === striped ? 'striped' : 'plain') === head ? previous.color : null);
+      if (colors.includes(priorColor)) colors.sort((a, b) => a === priorColor ? -1 : b === priorColor ? 1 : 0);
+      for (const color of colors) {
+        const colorGroup = group.filter(drum => drum.color === color);
+        const keys = unique(colorGroup.map(drum => JSON.stringify([drum.cableId, number(drum.section), conductorClass(drum)])));
+        const prior = ordered.at(-1) ?? previous;
+        const priorKey = prior && JSON.stringify([prior.cableId, number(prior.section), conductorClass(prior)]);
+        if (keys.includes(priorKey)) keys.sort((a, b) => a === priorKey ? -1 : b === priorKey ? 1 : 0);
+        for (const key of keys) ordered.push(...colorGroup.filter(drum => JSON.stringify([drum.cableId, number(drum.section), conductorClass(drum)]) === key));
+      }
     }
+    result.splice(start, end - start, ...ordered);
+    start = end;
   }
-  ordered.push(...queued.filter(drum => !consumed.has(drum?.jobId)));
-  let next = 0;
-  return drums.map(drum => drumStatus(drum) === 'queued' ? ordered[next++] : drum);
+  return result;
 }
 
 export function scheduleJobs(jobs, existingDrums = []) {
@@ -225,6 +205,7 @@ export function scheduleJobs(jobs, existingDrums = []) {
     const mode = isThread(drum) ? 'single' : ['black', 'yellow-green'].includes(drum.color) ? 'dual'
       : unchanged && ['single', 'dual'].includes(saved?.mode) ? saved.mode : drum.mode;
     const restored = { ...saved, ...drum, name: saved?.name ?? '', breakdowns: saved?.breakdowns ?? '', status };
+    if (!drum.coiling) delete restored.coiling;
     if (!Object.hasOwn(drum, 'coreClass')) delete restored.coreClass;
     if (['single', 'dual'].includes(mode)) restored.mode = mode; else delete restored.mode;
     return restored;
@@ -234,7 +215,9 @@ export function scheduleJobs(jobs, existingDrums = []) {
   if ([...existing.values()].some(drum => threadJobs.has(drum.jobId) && isThread(drum) && !retained.has(drum.id) && drumStatus(drum) !== 'queued')) {
     warnings.push('Новий план джгутів має один потік без кольорів. Старі розпочаті барабани, яких немає в новому плані, не перенесено; перевір їх перед заміною черги.');
   }
-  return { drums: recommendOrder(drums, validated.jobs), errors: [], warnings };
+  const positions = new Map((Array.isArray(existingDrums) ? existingDrums : []).map((drum, index) => [drum?.id, index]));
+  drums.sort((left, right) => (positions.get(left.id) ?? Infinity) - (positions.get(right.id) ?? Infinity));
+  return { drums: recommendOrder(drums), errors: [], warnings };
 }
 
 /** targetIndex is the desired final zero-based position, clamped to the array. */
@@ -272,7 +255,7 @@ function summarizePlan(drums, jobs, plannedDrums) {
     const previous = items[index - 1];
     if (!drum || !previous) return;
     if (validColors.has(drum.color) && validColors.has(previous.color)) {
-      if ((!isThread(drum) && drum.color === striped) !== (!isThread(previous) && previous.color === striped)) summary.headChanges++;
+      if (!isThread(drum) && !isThread(previous) && (drum.color === striped) !== (previous.color === striped)) summary.headChanges++;
       if (!isThread(drum) && !isThread(previous) && drum.color !== previous.color) summary.colorChanges++;
     }
     if (drum.cableId !== previous.cableId || number(drum.section) !== number(previous.section) || !sameDiameter(previous, drum) || !sameClass(previous, drum)) summary.cableChanges++;

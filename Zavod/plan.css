@@ -113,3 +113,37 @@
   #view-plan .plan-metrics{break-inside:avoid}
   #view-plan .resource-number{font-size:18px}
 }
+
+/* Focused production card; navigation never changes a drum's status. */
+#view-plan .drum-player{margin:16px 0 22px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--paper)}
+#view-plan .drum-player[hidden]{display:none}
+#view-plan .player-top{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+#view-plan .player-title{display:flex;align-items:center;gap:12px;margin:15px 0 18px}
+#view-plan .player-title .color-dot{width:20px;height:20px;flex:none}
+#view-plan .player-title h2{margin:0;font-size:21px;line-height:1.2;letter-spacing:-.4px}
+#view-plan .player-title p{margin:4px 0 0;color:var(--muted);font-size:13px}
+#view-plan .player-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:10px}
+#view-plan .player-grid>div{min-width:0;background:var(--paper);padding:10px}
+#view-plan .player-grid span{display:block;color:var(--muted);font-size:11px;line-height:1.25;margin-bottom:5px}
+#view-plan .player-grid strong{display:block;font-size:16px;font-weight:650;line-height:1.25;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+#view-plan .player-grid strong small{font-size:10px;color:var(--muted);font-weight:400}
+#view-plan .player-tools>div{background:var(--soft)}
+#view-plan .player-dye,#view-plan .player-next{font-size:12px;line-height:1.5;margin:12px 0 0}
+#view-plan .player-next{padding:10px 12px;border-left:2px solid var(--green);background:var(--soft);border-radius:0 8px 8px 0}
+#view-plan .player-source{font-size:10px;color:var(--muted);margin:12px 0}
+#view-plan .player-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#view-plan .player-controls button{min-height:44px;font-size:12px}
+@media(max-width:380px){#view-plan .drum-player{padding:15px}#view-plan .player-grid>div{padding:8px}#view-plan .player-grid strong{font-size:14px}}
+@media print{#view-plan .drum-player{display:none}}
+
+#view-plan .queue-changes{font-size:11px;color:var(--muted);line-height:1.5;margin:0 0 12px}
+#view-plan .queue-changes b{color:var(--ink);font-weight:650}
+
+#view-plan .player-value-source{display:block;color:var(--muted);font-size:10px;font-weight:400;margin-top:4px;line-height:1.25}
+
+#view-plan .player-restart{margin:14px 0 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+#view-plan .player-restart label{display:grid;gap:7px;font-size:12px;color:var(--muted)}
+#view-plan .player-restart input{min-height:42px;font-size:16px}
+#view-plan .player-restart p{margin:10px 0 0;font-size:13px}
+#view-plan .player-restart strong{font-size:19px;font-variant-numeric:tabular-nums}
+#view-plan .player-restart small{font-size:11px;color:var(--muted)}

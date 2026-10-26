@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { CATALOG_CABLES, optionFor } from '../Zavod/catalog-base.js';
-import { createPlannerUI, newJob, restorePlanner, syncPlannerSelection } from '../Zavod/plan-ui.js';
+import { createPlannerUI, newJob, restartTarget, restorePlanner, syncPlannerSelection } from '../Zavod/plan-ui.js';
 import { DEFAULT_RULES } from '../Zavod/core.js';
 import { number } from '../Zavod/core.js';
 import { scheduleJobs } from '../Zavod/planner.js';
@@ -188,7 +188,7 @@ test('restored drum fault records do not control the independent splice module',
     element('splice-label').textContent = '(6830+4170)';
     planner.renderQueue();
     assert.equal(element('splice-label').textContent, '(6830+4170)', 'the queue cannot replace the independent result');
-    assert.equal(planner.result(state.drums[0], 0).target, 15060);
+    assert.equal(planner.result(state.drums[0], 0).target, 15000);
     assert.match(element('drums').innerHTML, /data-splice-label>\(5380\+3070\+6550\)/);
     state.rules.splice = 45;
     planner.renderOutputs();
@@ -200,7 +200,7 @@ test('restored drum fault records do not control the independent splice module',
 });
 
 test('splice reserves combine with transitions while labels and production totals use nominal metres', () => {
-  const first = oldDrum({ id: 'spliced', cableId: globalCable.id, section: 2.5, breakdowns: '6838' });
+  const first = oldDrum({ id: 'spliced', cableId: globalCable.id, section: 2.5, breakdowns: '', joints: '6838' });
   const next = oldDrum({ id: 'next', cableId: globalCable.id, section: 2.5, color: 'brown', breakdowns: '' });
   const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [first, next] };
   withPlannerHarness(state, ({ planner }) => {
@@ -211,9 +211,9 @@ test('splice reserves combine with transitions while labels and production total
     assert.equal(first.length, '15000');
     next.section = 1.5;
     assert.equal(planner.result(first, 0).target, 14880);
-    first.breakdowns = '5385; 8459';
+    first.joints = '5385; 8459';
     assert.equal(planner.result(first, 0).target, 14910);
-    first.breakdowns = '8459; 8450';
+    first.joints = '8459; 8450';
     const invalid = planner.result(first, 0);
     assert.equal(invalid.target, null);
     assert.equal(invalid.splice.label, '');
@@ -249,9 +249,9 @@ test('compact rows keep essential dye timing while formulas and explanations sta
     planner.renderQueue();
     const first = planner.transitionText(state.drums[0], 0);
     assert.match(first, /15\s?000 − 150 \+ 1\s?000 = 15\s?850 м/);
-    assert.match(first, /№2 — за 2\s?000 м до кінця, на 13\s?000 м/);
+    assert.match(first, /№2 — за 2\s?000 м до кінця \(старе налаштування\), на 13\s?000 м/);
     const head = planner.transitionText(state.drums[1], 1);
-    assert.match(head, /№1 — за 300 м до кінця, на 14\s?700 м/);
+    assert.match(head, /№1 — за 300 м до кінця \(старе налаштування\), на 14\s?700 м/);
     assert.match(head, /розсікач/);
     const html = element('drums').innerHTML;
     assert.ok(html.includes(`<p class="drum-transition" data-transition="blue" >${first}</p>`));
@@ -441,7 +441,7 @@ test('operator colour-lead anchors reach the drum calculation without replacing 
     withPlannerHarness(state, ({ planner }) => {
       const event = planner.result(drums[0], 0).events[0];
       assert.equal(event.lead, testCase.expected, JSON.stringify(testCase));
-      assert.equal(event.at, 15000 - testCase.expected, JSON.stringify(testCase));
+      assert.equal(event.at, 15000 - testCase.expected - (event.fromStop ? 150 : 0), JSON.stringify(testCase));
       assert.equal(state.rules.lead2, 2222, 'using an operator model cannot overwrite saved manual rules');
     }, () => info);
   }
@@ -652,4 +652,74 @@ test('a cleared queue restores its full previous work and a valid undo reason af
   const invalidReasonState = initialState();
   restorePlanner({ previousPlan: { ...saved.previousPlan, reason: 'untrusted' } }, invalidReasonState);
   assert.equal(invalidReasonState.previousPlan.reason, 'edit');
+});
+
+test('coiling mode and joint positions survive local plan restoration and show compensation', () => {
+  const cable = CATALOG_CABLES.find(item => item.brand === 'ПВ3');
+  const job = newJob(cable.id, 2.5, { id: 'coil-job', lengthsText: '1', colors: ['blue'], coiling: true });
+  const drum = { id: 'coil-drum', jobId: job.id, cableId: cable.id, section: 2.5, color: 'blue', length: '1000', breakdowns: '250', joints: '', coiling: true };
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  restorePlanner({ ...initialState(), jobs: [job], planJobs: [job], drums: [drum] }, state);
+  assert.equal(state.jobs[0].coiling, true);
+  assert.equal(state.drums[0].coiling, true);
+  state.drums[0].joints = '700';
+  withPlannerHarness(state, ({ planner, element }) => {
+    const result = planner.result(state.drums[0], 0);
+    assert.equal(result.production.coils, 10);
+    assert.equal(result.production.waste, 100);
+    assert.equal(result.production.target, 1100);
+    planner.renderQueue();
+    assert.match(element('drums').innerHTML, /Бухтовка/);
+    assert.match(element('drums').innerHTML, /Додатково/);
+  });
+});
+
+test('drum player shows tools and settings and navigation does not change production status', () => {
+  const cable = optionFor('pv3');
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES }, jobs: [], planJobs: [], drums: [
+    { id: 'first', cableId: cable.id, section: 2.5, color: 'yellow-green', length: '1000', status: 'active' },
+    { id: 'second', cableId: cable.id, section: 2.5, color: 'blue', length: '1000', status: 'queued' }
+  ] };
+  const getSetup = (cableId, section, color, diameter, mode) => setupFor(cableId, section, {}, color, { finalDiameter: diameter, mode });
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.renderQueue();
+    const panel = element('drum-player');
+    assert.match(panel.innerHTML, /Барабан 1 \/ 2/);
+    assert.match(panel.innerHTML, /Смугастий/);
+    assert.match(panel.innerHTML, /Дорн/);
+    assert.match(panel.innerHTML, /SIKORA/);
+    const button = { dataset: { player: 'next' }, disabled: false };
+    panel.listeners.get('click')({ target: { closest: () => button } });
+    assert.match(panel.innerHTML, /Барабан 2 \/ 2/);
+    assert.match(panel.innerHTML, /Звичайний/);
+    assert.deepEqual(state.drums.map(drum => drum.status), ['active', 'queued']);
+    button.dataset.player = 'previous';
+    panel.listeners.get('click')({ target: { closest: () => button } });
+    assert.match(panel.innerHTML, /Барабан 1 \/ 2/);
+  }, getSetup);
+});
+
+test('second extruder operator lead is measured from the planned manual stop', () => {
+  const drums = [
+    oldDrum({ id: 'blue', cableId: globalCable.id, section: 1.5, coreClass: 5, color: 'blue', breakdowns: '' }),
+    oldDrum({ id: 'brown', cableId: globalCable.id, section: 1.5, coreClass: 5, color: 'brown', breakdowns: '' })
+  ];
+  const state = { ...initialState(), jobs: [], planJobs: [], drums, rules: { ...DEFAULT_RULES } };
+  const info = { mode: 'dual', stored: {}, effective: {}, forecast: {} };
+  withPlannerHarness(state, ({ planner, element }) => {
+    const result = planner.result(drums[0], 0);
+    assert.equal(result.target, 15850, 'the temporary screen setting still prevents automatic transfer');
+    assert.equal(result.stopAt, 14850);
+    assert.deepEqual(result.events[0], { extruder: 2, at: 13250, lead: 1600, dye: 'Коричневий', fromStop: true });
+    planner.renderQueue();
+    assert.match(element('drums').innerHTML, /Планова зупинка/);
+    assert.match(element('drum-player').innerHTML, /Показ після запуску/);
+    assert.match(element('drums').innerHTML, /через байпас, потім через головку/);
+  }, () => info);
+});
+
+test('restart transfer uses the actual counter after good cable appears', () => {
+  assert.equal(restartTarget('14871'), 15041);
+  assert.equal(restartTarget('14863'), 15033);
+  for (const input of ['', '10.5', '-1', '1e3', '9007199254740991']) assert.equal(restartTarget(input), null);
 });

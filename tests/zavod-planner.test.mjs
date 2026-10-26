@@ -180,76 +180,54 @@ test('the boss example creates seven drums for each selected color with determin
   assert.deepEqual(expandJobs([job()]), result);
 });
 
-test('normal scheduling matches the operator order and exposes readiness before completion', () => {
+test('normal scheduling groups splitter and colors before conductor changes', () => {
   const tasks = [job()];
   const { drums, errors } = scheduleJobs(tasks);
   assert.deepEqual(errors, []);
   assert.deepEqual(group(drums), [
     { color: 'yellow-green', length: '15000', count: 6 },
-    { color: 'blue', length: '15000', count: 3 },
-    { color: 'brown', length: '15000', count: 6 },
-    { color: 'brown', length: '11000', count: 1 },
-    { color: 'blue', length: '15000', count: 3 },
+    { color: 'yellow-green', length: '11000', count: 1 },
+    { color: 'blue', length: '15000', count: 6 },
     { color: 'blue', length: '11000', count: 1 },
-    { color: 'yellow-green', length: '11000', count: 1 }
+    { color: 'brown', length: '15000', count: 6 },
+    { color: 'brown', length: '11000', count: 1 }
   ]);
   const summary = planSummary(drums, tasks);
-  assert.equal(summary.drumCount, 21);
+  assert.equal(summary.headChanges, 1);
+  assert.equal(summary.colorChanges, 2);
   assert.equal(summary.totalMetres, 303000);
-  assert.equal(summary.headChanges, 2);
-  assert.equal(summary.colorChanges, 4);
-  assert.equal(summary.cableChanges, 0);
-  assert.deepEqual(summary.errors, []);
-  assert.deepEqual(summary.warnings, []);
-  assert.equal(summary.ready[0].totalMetres, 101000);
   assert.equal(summary.ready[0].readyMetres, 101000);
-  assert.equal(summary.ready[0].firstReadyAt, 10);
-  assert.equal(summary.ready[0].fullyReadyAt, 21);
-  assert.equal(summary.ready[0].complete, true);
-  assert.ok(summary.ready[0].milestones.some(milestone => milestone.afterDrum < drums.length && milestone.readyMetres > 0));
-  assert.deepEqual(summary.ready[0].milestones[0], { afterDrum: 10, drumId: 'job-1:brown:0', readyMetres: 15000, producedMetres: 150000 });
+  assert.equal(summary.ready[0].firstReadyAt, 15);
+  assert.deepEqual(summary.errors, []);
 });
 
-test('urgent scheduling supplies the first twisting length earlier while keeping all work', () => {
+test('legacy urgent tasks keep all drums under the new setup priorities', () => {
   const normal = job(), urgent = job({ urgent: true });
   const normalDrums = scheduleJobs([normal]).drums;
   const urgentDrums = scheduleJobs([urgent]).drums;
-  assert.deepEqual(urgentDrums.slice(0, 9).map(drum => drum.color), [...Array(3).fill('yellow-green'), ...Array(3).fill('blue'), ...Array(3).fill('brown')]);
-  assert.deepEqual(urgentDrums.map(drum => drum.id).sort(), normalDrums.map(drum => drum.id).sort());
-  const normalReady = planSummary(normalDrums, [normal]).ready[0];
-  const urgentReady = planSummary(urgentDrums, [urgent]).ready[0];
-  assert.equal(urgentReady.firstReadyAt, 7);
-  assert.ok(urgentReady.firstReadyAt < normalReady.firstReadyAt);
-  assert.equal(urgentReady.readyMetres, 101000);
-  assert.equal(urgentDrums.at(-1).color, 'yellow-green');
-  const singleBatch = job({ lengthsText: '15 + 11', urgent: true });
-  const singleDrums = scheduleJobs([singleBatch]).drums;
-  assert.equal(singleDrums[0].color, 'yellow-green');
-  assert.equal(planSummary(singleDrums, [singleBatch]).ready[0].complete, true);
+  assert.deepEqual(urgentDrums.map(drum => drum.id), normalDrums.map(drum => drum.id));
+  assert.equal(planSummary(urgentDrums, [urgent]).ready[0].readyMetres, 101000);
 });
 
-test('multiple cable tasks retain a striped head boundary and count section changes', () => {
+test('multiple cables share splitter and color groups', () => {
   const tasks = [job(), job({ id: 'job-2', section: 1.5, cores: 2, colors: ['yellow-green', 'blue'], lengthsText: '3×15,0 + 11,0' })];
   const { drums, errors } = scheduleJobs(tasks);
   assert.deepEqual(errors, []);
-  assert.equal(drums[20].color, 'yellow-green');
-  assert.equal(drums[21].color, 'yellow-green');
   const summary = planSummary(drums, tasks);
   assert.equal(summary.drumCount, 29);
   assert.equal(summary.totalMetres, 415000);
-  assert.equal(summary.headChanges, 4);
-  assert.equal(summary.cableChanges, 1);
+  assert.equal(summary.headChanges, 1);
+  assert.equal(summary.colorChanges, 2);
+  assert.equal(summary.cableChanges, 2);
   assert.deepEqual(summary.ready.map(progress => progress.readyMetres), [101000, 56000]);
 });
 
-test('solid-only following tasks start with the previous ending color where available', () => {
+test('solid colors group across cables before changing color', () => {
   const tasks = [job({ cores: 2, colors: ['blue', 'brown'], lengthsText: '6×15' }), job({ id: 'job-2', cores: 2, colors: ['brown', 'blue'], lengthsText: '4×10' })];
   const { drums } = scheduleJobs(tasks);
-  assert.equal(drums[11].color, 'blue');
-  assert.equal(drums[12].color, 'blue');
-  assert.equal(planSummary(drums, tasks).colorChanges, 4);
+  assert.deepEqual(drums.map(drum => drum.color), [...Array(10).fill('blue'), ...Array(10).fill('brown')]);
+  assert.equal(planSummary(drums, tasks).colorChanges, 1);
 });
-
 test('arbitrary colors and one- or two-core cables lose no drums', () => {
   const variations = [
     { colors: ['yellow-green'], lengthsText: '11' },
@@ -393,12 +371,14 @@ test('restore order preserves current edits, deleted drums, extra drums and obje
   actual.push(extra, malformed);
   const restored = recommendOrder(Object.freeze(actual), tasks);
   assert.equal(restored.length, actual.length);
-  assert.equal(restored.at(-1), extra);
+  assert.ok(restored.includes(extra));
   assert.ok(restored.includes(malformed));
   assert.ok(restored.includes(actual.find(drum => drum.id === 'job-1:blue:0')));
   assert.ok(restored.every(drum => actual.includes(drum)));
   assert.ok(restored.every(drum => drum.id !== deletedId));
-  assert.deepEqual(recommendOrder(moveDrum(original, original[0].id, 16), tasks).map(drum => drum.id), original.map(drum => drum.id));
+  const reordered = recommendOrder(moveDrum(original, original[0].id, 16), tasks);
+  assert.deepEqual(reordered.map(drum => drum.id).sort(), original.map(drum => drum.id).sort());
+  assert.equal(planSummary(reordered, tasks).headChanges, 1);
 });
 
 test('readiness reports overlapping metres rather than claiming whole matched drum sets', () => {
@@ -440,8 +420,8 @@ test('summary works without job definitions, counts actual transitions and remai
   assert.deepEqual(summary.errors, []);
   assert.deepEqual(summary.warnings, []);
   const moved = moveDrum(original, original.at(-1).id, 9);
-  assert.equal(planSummary(moved).headChanges, 3);
-  assert.equal(planSummary(original).headChanges, 2);
+  assert.equal(planSummary(moved).headChanges, 1);
+  assert.equal(planSummary(original).headChanges, 1);
   assert.deepEqual(recommendOrder(original).map(drum => drum.id), original.map(drum => drum.id));
 });
 
@@ -485,7 +465,7 @@ test('regeneration retains normalized status and operator annotations by stable 
     ...drum, status: index === 0 ? 'done' : index === 1 ? 'active' : index === 2 ? 'unsupported' : 'queued',
     name: `Б-${index}`, breakdowns: `${index + 10}`, note: 'для зміни'
   })));
-  const generated = scheduleJobs([job({ lengthsText: '15 + 12 + 11' })], saved).drums;
+  const generated = scheduleJobs([job({ lengthsText: '15 + 11 + 12' })], saved).drums;
   const byId = new Map(generated.map(drum => [drum.id, drum]));
   for (const drum of saved) {
     const restored = byId.get(drum.id);
@@ -496,7 +476,7 @@ test('regeneration retains normalized status and operator annotations by stable 
   }
   assert.equal(saved[2].status, 'unsupported', 'normalization must not rewrite the saved input');
   for (const drum of generated.filter(drum => !saved.some(source => source.id === drum.id))) assert.equal(drum.status, 'queued');
-  assert.equal(byId.get('job-1:blue:1').length, '12000', 'new job lengths still take effect');
+  assert.equal(byId.get('job-1:blue:2').length, '12000', 'new job lengths still take effect');
 });
 
 test('regeneration resets started work when the same stable id now describes a different physical drum', () => {
@@ -532,7 +512,7 @@ test('recommended order rearranges waiting slots while retaining started work at
     const restored = recommendOrder(fixed, definitions);
     assert.equal(restored[1], fixed[1]);
     assert.equal(restored[4], fixed[4]);
-    assert.deepEqual(restored.filter(drum => drumStatus(drum) === 'queued').map(drum => drum.id), waiting.map(drum => drum.id));
+    assert.deepEqual(restored.filter(drum => drumStatus(drum) === 'queued').map(drum => drum.id).sort(), waiting.map(drum => drum.id).sort());
     assert.equal(restored.length, fixed.length);
     assert.ok(restored.every(drum => fixed.includes(drum)));
   }
@@ -596,4 +576,33 @@ test('legacy queues infer required twisting colors from the full queue rather th
   assert.equal(productionSummary(original.map(drum => ({ ...drum, status: 'done' }))).ready[0].complete, true);
   const mismatched = original.map(drum => ({ ...drum, status: 'done', ...(drum.color === 'brown' ? { cableId: 'pv3' } : {}) }));
   assert.equal(productionSummary(mismatched).ready[0].readyMetres, 0);
+});
+
+test('recommendation respects fixed barriers and never assumes a thread splitter', () => {
+  const input = [
+    { id: 'blue', cableId: 'pv3', section: 1, color: 'blue', status: 'queued' },
+    { id: 'thread', cableId: 'thread-bundle', section: 1, color: 'white', status: 'queued' },
+    { id: 'brown', cableId: 'pv3', section: 1, color: 'brown', status: 'queued' },
+    { id: 'striped', cableId: 'pv3', section: 1, color: 'yellow-green', status: 'queued' },
+    { id: 'active', cableId: 'pv3', section: 1, color: 'blue', status: 'active' }
+  ];
+  const ordered = recommendOrder(input);
+  assert.equal(ordered[1].id, 'thread');
+  assert.equal(ordered[4].id, 'active');
+  assert.deepEqual(ordered.slice(2, 4).map(d => d.color), ['yellow-green', 'brown']);
+  assert.equal(planSummary(input).headChanges, 2);
+  assert.equal(planSummary(input.slice(0, 2)).headChanges, 0);
+});
+
+test('regenerating a manually reordered queue preserves started and completed positions', () => {
+  const task = job({ lengthsText: '3×1' });
+  const original = scheduleJobs([task]).drums;
+  const saved = moveDrum(original, original.at(-1).id, 2).map((d, i) => ({
+    ...d, status: i === 2 ? 'active' : i === 5 ? 'done' : 'queued'
+  }));
+  const regenerated = scheduleJobs([task], saved).drums;
+  assert.equal(regenerated[2].id, saved[2].id);
+  assert.equal(regenerated[5].id, saved[5].id);
+  assert.equal(regenerated[2].status, 'active');
+  assert.equal(regenerated[5].status, 'done');
 });

@@ -1,12 +1,12 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=28';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=29';
-import { drumStatus } from './planner.js?v=28';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=32';
+import { drumStatus } from './planner.js?v=30';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=27';
 import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=27';
 import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
-import { initSplicePlanner } from './splice-ui.js?v=27';
+import { initSplicePlanner } from './splice-ui.js?v=28';
 import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=27';
 import { SPEED_STORAGE, speedKey, speedLimit, speedSetup } from './speed-override.js?v=27';
 import { modeFor } from './pv3-modes.js?v=27';
@@ -275,9 +275,10 @@ async function copyPlan() {
     const labeled = key => `${display(info.effective[key])} (${info.sources[key] === 'manual' ? 'орієнтовно · за твоєю швидкістю' : VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;
     const sikora = isThread(drum.cableId) ? '' : ` Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}.`;
     lines.push(`\nБарабан ${i + 1}${drum.name ? ' №' + drum.name : ''}: ${planner.drumTitle(drum)} · ${isThread(drum.cableId) ? 'без барвника' : colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв.${sikora} Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — ${fmt(info.stages.first)}, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `Стан: ${drumStatus(drum) === 'done' ? 'готово' : drumStatus(drum) === 'active' ? 'в роботі' : 'у черзі'}. ${result.target > 0 ? `На екрані: ${fmt(result.target)} м.` : 'Завдання зупинки потребує уточнення.'}`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
-    if (result.transition) lines.push('Стравити та перекинути вручну за потрібним кольором у 4-му рядку ванни.');
+    if (result.transition) lines.push(`Планова зупинка: ${fmt(result.stopAt)} м. Стравити через байпас і головку, запустити лінію; після появи якісного кабелю додати 170 м до поточного показу для перекидання. Відмотати неякісну ділянку.`);
     if (result.setupChange) lines.push(planner.transitionText(drum, i));
-    if (result.splice.spliceCount && !result.splice.errors.length) lines.push('На лейбл: ' + result.splice.label);
+    if (result.splice?.spliceCount && !result.splice.errors.length) lines.push('На лейбл: ' + result.splice.label);
+    if (drum.coiling && !result.errors.length) lines.push(`Бухтовка: ${result.production.coils} × ${result.production.size} м; додатково ${result.production.waste} м.`);
   });
   try { await navigator.clipboard.writeText(lines.join('\n')); toast('План скопійовано'); } catch { toast('Копіювання недоступне. Скористайся кнопкою «Друк».'); }
 }
