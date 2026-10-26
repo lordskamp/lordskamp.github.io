@@ -121,34 +121,24 @@ test('verified ПВ1/H07V-U family is an explicit fallback and own measurements 
   assert.deepEqual(result.fieldAnchors.workingSpeed.map(anchor => anchor.optionId), ['pv1--pv1', 'pv1--pv1']);
 });
 
-test('own geometry interpolates and missing SIKORA follows the predicted matrix with a positive allowance', () => {
+test('SIKORA prediction uses selected matrix plus operator allowance, and exact measurements stay intact', () => {
   const records = [measured(2.5, { matrix: 3, dorn: 2, sikoraOuter: 3.2 }), measured(6, { matrix: 4.4, dorn: 3.4, sikoraOuter: 4.6 })];
-  const result = predict('h07v-k', 4, records, { optionId: h07 });
-  assert.deepEqual([result.matrix, result.dorn, result.sikoraOuter], [3.73, 2.63, 3.93]);
-  const missing = predict('h07v-k', 4, records.map(record => ({ ...record, sikoraOuter: null })), { optionId: h07 });
-  const changedMatrix = predict('h07v-k', 4, records.map(record => ({ ...record, sikoraOuter: null, matrix: 20 })), { optionId: h07 });
-  assert(finitePositive(missing.sikoraOuter));
-  assert.equal(missing.sikoraOuter, 3.88);
-  assert.equal(changedMatrix.sikoraOuter, 20.15);
-  assert.equal(missing.fieldMethods.sikoraOuter, 'matrix-related-allowance');
+  const result = predict('h07v-k', 4, records, { optionId: h07, mode: 'single', matrix: 4 });
+  assert.equal(result.sikoraOuter, 4.15);
+  assert.equal(result.fieldMethods.sikoraOuter, 'matrix-operator-allowance');
+  assert.equal(result.fieldConfidence.sikoraOuter, 'low');
+  const exact = predict('h07v-k', 2.5, records, { optionId: h07, mode: 'single', matrix: 3 });
+  assert.equal(exact.sikoraOuter, 3.2);
+  assert.equal(exact.fieldMethods.sikoraOuter, 'measured-value');
 });
 
-test('forecast SIKORA uses the selected practical or reference matrix and a learned positive measured allowance', () => {
-  const training = [measured(2.5, { matrix: 3, sikoraOuter: 3.25 }), measured(6, { matrix: 4.4, sikoraOuter: 4.65 })];
-  const result = predict('h07v-k', 4, training, { optionId: h07, mode: 'single', matrix: 4 });
-  assert.equal(result.matrix, 3.73);
-  assert.equal(result.sikoraOuterMatrix, 4);
-  assert.equal(result.sikoraOuter, 4.25);
-  assert.equal(result.fieldMethods.sikoraOuter, 'matrix-measured-allowance');
-  assert.deepEqual(result.fieldAnchors.sikoraOuter.map(anchor => anchor.section), [2.5, 6]);
-});
-
-test('a thinner core has a smaller SIKORA allowance below the actual measured range', () => {
+test('the operator allowance is approximately 0.15 mm for thin and thick cores', () => {
   const training = [measured(2.5, { matrix: 3, sikoraOuter: 3.15 })];
-  const thin = predict('h07v-k', .75, training, { optionId: h07, mode: 'single', matrix: 3 });
-  const medium = predict('h07v-k', 1.5, training, { optionId: h07, mode: 'single', matrix: 3 });
-  const actual = predict('h07v-k', 2.5, training, { optionId: h07, mode: 'single', matrix: 3 });
-  assert.deepEqual([thin.sikoraOuter, medium.sikoraOuter, actual.sikoraOuter], [3.08, 3.12, 3.15]);
+  for (const section of [.75, 1.5]) {
+    const result = predict('h07v-k', section, training, { optionId: h07, mode: 'single', matrix: 3 });
+    assert.equal(result.sikoraOuter, 3.15);
+    assert.equal(result.fieldMethods.sikoraOuter, 'matrix-operator-allowance');
+  }
 });
 
 test('exact admin and handwritten SIKORA settings remain actual values even if another matrix is selected', () => {
@@ -158,37 +148,15 @@ test('exact admin and handwritten SIKORA settings remain actual values even if a
   const handwritten = predict('pv3', 1, [], { optionId: 'pv3--pv3', mode: 'dual', matrix: 20 });
   assert.equal(handwritten.sikoraOuter, 2.5);
   assert.equal(handwritten.fieldMethods.sikoraOuter, 'measured-value');
-  const otherSections = [.75, 2.5].map(section => measured(section, { matrix: 3, sikoraOuter: 3.4 },
-    { optionId: 'pv3--pv3', cableId: 'pv3', mode: 'dual' }));
-  const keptHandwritten = predict('pv3', 1, otherSections, { optionId: 'pv3--pv3', mode: 'dual', matrix: 20 });
-  assert.equal(keptHandwritten.sikoraOuter, 2.5);
-  assert.equal(keptHandwritten.fieldMethods.sikoraOuter, 'measured-value');
 });
 
-test('nonpositive outer-minus-matrix pairs cannot train a predicted SIKORA target', () => {
-  const training = [measured(2.5, { matrix: 3, sikoraOuter: 2.9 }), measured(6, { matrix: 4.4, sikoraOuter: 4.6 })];
-  const result = predict('h07v-k', 4, training, { optionId: h07, mode: 'single', matrix: 4 });
-  assert.equal(result.sikoraOuter, 4.16);
-  assert.equal(result.fieldMethods.sikoraOuter, 'matrix-measured-allowance');
-  assert.deepEqual(result.fieldAnchors.sikoraOuter.map(anchor => anchor.section), [6]);
-});
-
-test('related allowances use actual compatible positive pairs and ignore missing, negative, flat and other-mode pairs', () => {
+test('unrelated and implausible measured allowances do not replace the operator rule', () => {
   const source = { optionId: 'h07v-k--h05v-k', cableId: 'h07v-k--h05v-k', mode: 'dual' };
   const training = [measured(1, { matrix: 2, sikoraOuter: 2.22 }, source),
-    measured(.75, { matrix: 2, sikoraOuter: 1.9 }, source),
-    measured(.5, { sikoraOuter: 9 }, source)];
-  const options = { optionId: h07, mode: 'dual', matrix: 4 };
-  const result = predict('h07v-k', 4, training, options);
-  assert.equal(result.sikoraOuter, 4.22);
-  assert.equal(result.fieldMethods.sikoraOuter, 'matrix-related-allowance');
-  assert.deepEqual(result.fieldAnchors.sikoraOuter.map(anchor => anchor.section), [1]);
-  assert(result.borrowedFrom.includes('H05V-K'));
-  const thin = predict('h07v-k', 1.5, training, options);
-  assert.equal(thin.sikoraOuter, 4.17);
-  const unusable = [measured(1.5, { matrix: 1, sikoraOuter: 99 }, { ...source, mode: 'single' }),
-    measured(1, { matrix: 1, sikoraOuter: 99 }, { optionId: 'speaker--speaker', cableId: 'speaker', mode: 'dual' })];
-  assert.deepEqual(predict('h07v-k', 4, [...training, ...unusable], options), result);
+    measured(.75, { matrix: 2, sikoraOuter: 1.9 }, source)];
+  const result = predict('h07v-k', 4, training, { optionId: h07, mode: 'dual', matrix: 4 });
+  assert.equal(result.sikoraOuter, 4.15);
+  assert.equal(result.fieldMethods.sikoraOuter, 'matrix-operator-allowance');
 });
 
 test('corrected SIKORA geometry is used by load and annular-flow predictions', () => {
@@ -210,7 +178,7 @@ test('deleted measurements are excluded from calibration', () => {
 
 test('original handwritten values can fill gaps by measured-value interpolation', () => {
   const result = predict('pvs-380', 1);
-  assert.deepEqual([result.extruder1, result.extruder2, result.workingSpeed], [58, 109.8, 500]);
+  assert.deepEqual([result.extruder1, result.extruder2, result.workingSpeed], [62.4, 109.8, 500]);
   assert.equal(result.rpmMethod, 'measured-values');
   assert(finitePositive(predict('pvs-380', 6).workingSpeed));
 });
@@ -245,7 +213,7 @@ test('H07V-K 4 follows the measured speed curve instead of multiplying RPM by th
   const records = realRecords.map(record => ({ ...record, baseId: baseFor(h07, record.section).id }));
   const result = setupFor(h07, 4, { calibrations: records }, 'blue', { mode: 'dual' });
   const actual = setupFor(h07, 6, { calibrations: records }, 'blue', { mode: 'dual' });
-  assert.deepEqual([result.effective.extruder1, result.effective.extruder2, result.effective.workingSpeed], [61.1, 84.2, 137]);
+  assert.deepEqual([result.effective.extruder1, result.effective.extruder2, result.effective.workingSpeed], [60.3, 84.2, 137]);
   assert.deepEqual([actual.effective.extruder1, actual.effective.extruder2, actual.effective.workingSpeed], [59, 95, 120]);
   assert.equal(result.sources.workingSpeed, 'forecast');
   assert.equal(result.reference.workingSpeed, 250, 'printed maximum remains available for comparison');
@@ -346,8 +314,9 @@ test('an estimated second RPM follows the paired balance at an exact practical m
   const result = setupFor(h07, 4, { calibrations: records }, 'black');
   assert.equal(result.effective.extruder1, 25);
   assert.equal(result.sources.extruder1, 'practical');
-  assert.equal(result.effective.extruder2, 30);
-  assert.equal(result.sources.extruder2, 'forecast');
+  assert.equal(result.forecast.extruder2, 30);
+  assert.equal(result.effective.extruder2, null);
+  assert.equal(result.forecast.rpmSpeedBasis.extruder2, null);
   assert.equal(result.forecast.fieldMethods.extruder2, 'paired-balance-interpolation');
   assert.equal(result.rpmConflict, undefined);
 });
@@ -359,7 +328,8 @@ test('actual and reference paired RPM remain intact even when their difference e
   assert.deepEqual([actual.effective.extruder1, actual.effective.extruder2], [40, 120]);
   assert.equal(actual.rpmConflict, undefined);
   const printed = setupFor('pvs-380--pvsng', 4, {}, 'black');
-  assert.deepEqual([printed.effective.extruder1, printed.effective.extruder2], [122, 244]);
+  assert.deepEqual([printed.reference.extruder1, printed.reference.extruder2], [122, 244]);
+  assert.deepEqual([printed.effective.extruder1, printed.effective.extruder2], [printed.forecast.extruder1, printed.forecast.extruder2]);
   assert.equal(printed.rpmConflict, undefined);
 });
 
@@ -414,7 +384,7 @@ test('selected-speed RPM uses the same own admin speed anchors and legacy base-b
   const raw = predict('pv1', 4, training, { optionId, mode: 'single' });
   assert.equal(raw.workingSpeed, 200);
   const result = predict('pv1', 4, training, { optionId, mode: 'single', workingSpeed: 160 });
-  assert.equal(result.extruder1, 100.6);
+  assert.equal(result.extruder1, 99.8);
   assert.deepEqual(result.fieldAnchors.workingSpeed.map(anchor => anchor.section), [1.5, 6]);
   const borrowed = predict('pv1', 4, [], { optionId, mode: 'single' });
   assert.equal(borrowed.method, 'related-practical');
@@ -509,4 +479,39 @@ test('speed stages start at 80 or 40 and use a round intermediate speed', () => 
   assert.deepEqual(speedStages(100), { speed1: 40, speed2: 80, workingSpeed: 100 });
   assert.deepEqual(speedStages(20), { speed1: 20, speed2: 20, workingSpeed: 20 });
   assert.deepEqual(speedStages(null), { speed1: null, speed2: null, workingSpeed: null });
+});
+
+test('held-out ПВС 0.75 blends paired load after training-only comparison', () => {
+  const target = RECIPES.find(row => row.cableId === 'pvs-shvvp' && row.section === 0.75);
+  const training = RECIPES.filter(row => !(row.cableId === 'pvs-shvvp' && row.section === target.section));
+  const reference = card('pvs-380'), row = reference.rows.find(item => item.section === target.section);
+  const result = forecastFor(reference, row, [], {
+    optionId: 'pvs-380--pvs', mode: 'dual', workingSpeed: target.maxSpeed, baselineRecords: training
+  });
+  assert.equal(target.extruder2, 100);
+  assert.equal(result.extruder2, 128.1);
+  assert.equal(result.fieldMethods.extruder2, 'validated-secondary-blend-at-selected-speed');
+  assert.equal(result.fieldConfidence.extruder2, 'low');
+  assert(result.fieldAnchors.extruder2.every(anchor => anchor.section !== target.section));
+  assert.equal(result.rpmSpeedBasis.extruder2, target.maxSpeed);
+});
+
+test('out-of-sample interpolation is not labelled high confidence', () => {
+  const records = realRecords.filter(record => record.section !== 2.5);
+  const result = predict('h07v-k', 2.5, records, { optionId: h07, mode: 'dual', workingSpeed: 150 });
+  assert.equal(result.fieldConfidence.extruder1, 'low');
+  assert.equal(result.fieldConfidence.extruder2, 'low');
+  assert.notEqual(result.confidence, 'high');
+});
+
+test('ПВ3 dual interpolation exposes uncertainty when a hidden practical measurement disagrees', () => {
+  const target = RECIPES.find(row => row.cableId === 'pv3' && row.section === 0.75);
+  const baselineRecords = RECIPES.filter(row => !(row.cableId === 'pv3' && row.section === 0.75));
+  const training = [{ id: 'pv3-thin', optionId: 'pv3--pv3', cableId: 'pv3--pv3', section: 0.5, mode: 'dual',
+    origin: 'measurement', extruder1: 47, extruder2: 90, maxSpeed: 350 }];
+  const result = predict('pv3', 0.75, training, { optionId: 'pv3--pv3', mode: 'dual', workingSpeed: 350, baselineRecords });
+  assert.equal(result.extruder2, 120.8);
+  assert.equal(result.fieldConfidence.extruder2, 'low');
+  assert(Math.abs(result.extruder2 / 85 - 1) > 0.4, 'the 85 RPM handwritten dual setting is deliberately hidden');
+  assert(result.fieldAnchors.extruder2.every(anchor => anchor.section !== target.section));
 });

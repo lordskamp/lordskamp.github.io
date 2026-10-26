@@ -45,14 +45,17 @@ test('reference specifications do not borrow practical values from similarly nam
   assert.equal(h05.practical.extruder2, null);
   assert(h05.forecast.extruder1 > 0);
   assert(h05.forecast.borrowedFrom.length > 0);
-  assert.equal(h05.effective.extruder1, 92);
-  assert.equal(h05.sources.extruder1, 'reference');
+  assert.equal(h05.effective.extruder1, h05.forecast.extruder1);
+  assert.equal(h05.sources.extruder1, 'forecast');
+  assert.equal(h05.reference.extruder1, 92);
   assert.equal(h05.stages.working, 500);
   assert.equal(h05.stages.second, 300);
   const ysly = setup('ysly-1000', 'YSLY-JZ', 2.5);
   assert.equal(ysly.practical.extruder1, null);
-  assert.equal(ysly.effective.extruder1, 87);
-  assert.equal(ysly.effective.extruder2, 100);
+  assert.equal(ysly.effective.extruder1, ysly.forecast.extruder1);
+  assert.equal(ysly.effective.extruder2, ysly.forecast.extruder2);
+  assert.equal(ysly.reference.extruder1, 87);
+  assert.equal(ysly.reference.extruder2, 100);
   assert.equal(ysly.sources.workingSpeed, 'reference');
 });
 
@@ -110,15 +113,15 @@ test('known practical settings remain primary while reference and forecast stay 
   assert.deepEqual(result.stages, { first: 80, second: 200, working: 320, source: 'practical' });
 });
 
-test('reference values stay primary where practical values are absent and forecasts remain visible', () => {
+test('forecast RPM is primary when it matches the selected speed and practical values are absent', () => {
   const result = setup('pvs-380', 'ПВС', 1);
   assert.deepEqual([result.practical.extruder1, result.practical.extruder2, result.practical.workingSpeed], [null, null, null]);
-  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2, result.forecast.workingSpeed], [52.2, 98.8, 500]);
+  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2, result.forecast.workingSpeed], [56.2, 98.8, 500]);
   assert.equal(result.forecast.rpmWorkingSpeed,450);
-  assert.equal(result.sources.extruder1, 'reference');
+  assert.equal(result.sources.extruder1, 'forecast');
   assert.equal(result.sources.workingSpeed, 'reference');
   assert.deepEqual(result.stages, { first: 80, second: 260, working: 450, source: 'reference' });
-  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source,item.value]), [['reference',117], ['forecast',52.2]]);
+  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.source,item.value]), [['forecast',56.2], ['reference',117]]);
   assert.deepEqual(VALUE_LABELS, { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю', rule: 'За налаштуванням' });
 });
 
@@ -195,9 +198,10 @@ test('partial speed measurement scales only estimated RPM using actual operating
   const result = setup('pvs-380', 'ПВС', 1, records);
   assert.equal(result.practical.workingSpeed, 200);
   assert.equal(result.forecast.workingSpeed, 200);
-  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2], [23.2, 43.9]);
-  assert.deepEqual([result.effective.extruder1, result.effective.extruder2], [117, 233]);
-  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.value,item.label]), [[117,'Довідкові'], [23.2,'Прогнозовані']]);
+  assert.deepEqual([result.forecast.extruder1, result.forecast.extruder2], [25, 43.9]);
+  assert.deepEqual([result.effective.extruder1, result.effective.extruder2], [25, 43.9]);
+  assert.deepEqual([result.reference.extruder1, result.reference.extruder2], [117, 233]);
+  assert.deepEqual(metricValues(result, 'extruder1').map(item => [item.value,item.label]), [[25,'Прогнозовані'], [117,'Довідкові']]);
   assert.deepEqual(result.stages, { first: 40, second: 120, working: 200, source: 'practical' });
 });
 
@@ -290,6 +294,7 @@ test('every selectable cable, section and production color has sourced values fo
     for (const key of ['extruder1','extruder2','workingSpeed','sikoraWire','sikoraOuter','dorn','matrix']) {
       if (key==='extruder2'&&result.mode==='single') { assert.equal(result.effective[key],null); continue; }
       const value=result.effective[key], label=`${option.id} ${section} ${color} ${key}`;
+      if (value == null && ['extruder1', 'extruder2'].includes(key)) { assert.equal(result.reference[key], null, label); assert.equal(result.forecast.rpmSpeedBasis?.[key] ?? null, null, label); continue; }
       assert(typeof value==='number'&&Number.isFinite(value)&&value>0 || ['sikoraOuter','dorn','matrix'].includes(key)&&typeof value==='string'&&value.trim(),label);
       assert(['practical','reference','forecast'].includes(result.sources[key]),label+' source');
     }
@@ -425,4 +430,19 @@ test('partial measurements merge previous colours only within the same extruder 
   assert.equal(recipeIdFor(base.id,'black',optionId,'dual'),recipeIdFor(base.id,'yellow-green',optionId,'dual'));
   assert.notEqual(recipeIdFor(base.id,'all',optionId,'single'),recipeIdFor(base.id,'all',optionId,'dual'));
   assert.equal(recipeIdFor(base.id,'all',optionId,'dual'),`${optionId}::${base.id}~dual`);
+});
+
+test('all primary predicted RPM use the displayed speed and physical extruder mode', () => {
+  const records = catalog();
+  for (const option of CATALOG_OPTIONS.filter(row => row.coreKind !== 'thread')) {
+    for (const section of option.sections) for (const color of ['blue', 'black', 'yellow-green']) {
+      const info = setupFor(option.id, section, records, color);
+      for (const key of ['extruder1', 'extruder2']) {
+        if (info.sources[key] !== 'forecast') continue;
+        assert.equal(info.forecast.mode, info.mode, `${option.id} ${section} ${color} ${key}: mode`);
+        assert.equal(info.forecast.rpmSpeedBasis[key], info.effective.workingSpeed, `${option.id} ${section} ${color} ${key}: speed`);
+        assert.equal(info.effective[key], info.forecast[key]);
+      }
+    }
+  }
 });

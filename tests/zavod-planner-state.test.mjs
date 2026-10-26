@@ -723,3 +723,26 @@ test('restart transfer uses the actual counter after good cable appears', () => 
   assert.equal(restartTarget('14863'), 15033);
   for (const input of ['', '10.5', '-1', '1e3', '9007199254740991']) assert.equal(restartTarget(input), null);
 });
+
+test('coiling is determined by the confirmed brand, regardless of old manual choices', () => {
+  for (const [brand, section, expectedSize] of [
+    ['ПВ1', 1.5, 200], ['ПВ3', 1, 300], ['H05V-U', 0.5, 200],
+    ['H05V-K', 0.75, 100], ['H07V-U', 2.5, 100], ['H07V-K', 6, 100]
+  ]) {
+    const cable = CATALOG_CABLES.find(item => item.brand === brand);
+    const drums = [{ id: 'coil', cableId: cable.id, section, color: 'blue', length: '1000', breakdowns: '50', coiling: false }];
+    const state = { ...initialState(), rules: { ...DEFAULT_RULES }, jobs: [], planJobs: [], drums };
+    withPlannerHarness(state, ({ planner, element }) => {
+      const result = planner.result(drums[0], 0);
+      assert.equal(result.coiling, true, brand);
+      assert.equal(result.production.size, expectedSize, brand);
+      assert.equal(result.production.waste, 50, brand);
+      planner.renderQueue();
+      assert.doesNotMatch(element('jobs').innerHTML, /data-job-field="coiling"/);
+      assert.doesNotMatch(element('drums').innerHTML, /data-field="coiling"/);
+    }, () => ({ mode: 'dual', stored: {}, effective: {}, forecast: {} }));
+  }
+  const other = { id: 'plain', cableId: globalCable.id, section: 1.5, color: 'blue', length: '1000', coiling: true, breakdowns: '50' };
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES }, jobs: [], planJobs: [], drums: [other] };
+  withPlannerHarness(state, ({ planner }) => assert.equal(planner.result(other, 0).coiling, false));
+});

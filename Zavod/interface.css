@@ -1,0 +1,73 @@
+/* Operator interface: quiet surfaces, strong numbers, and clear actions. */
+:root,:root[data-wire-color]{--bg:#f2f1ed;--paper:#fffefa;--ink:#202826;--muted:#66716b;--line:#d9ded7;--green:#215a48;--soft:#e8eee9;--danger:#a13b32}
+:root[data-telegram-theme="dark"],:root[data-telegram-theme="dark"][data-wire-color]{color-scheme:dark;--bg:#171d1b;--paper:#222a27;--ink:#edf2ec;--muted:#aab9ae;--line:#3c4a43;--green:#a7d9bf;--soft:#2d3b34;--danger:#ffaaa0}
+body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.4}
+.header{max-width:800px;padding:14px 24px;border-bottom:1px solid var(--line);gap:16px}
+.brand{font-size:16px;font-weight:700;letter-spacing:-.025em;gap:10px;color:var(--ink)}
+.brand-mark{width:23px;height:23px;display:inline-block;flex:none;border:2px solid var(--green);border-radius:50%;position:relative}
+.brand-mark::after{content:"";position:absolute;inset:5px;border:2px solid var(--green);border-radius:50%}
+.header nav{gap:2px}.header nav button{font-size:13px;font-weight:600;color:var(--muted);border-radius:8px;padding:8px 11px}.header nav button[data-active]{background:var(--soft);color:var(--ink)}
+main{max-width:800px;padding:26px 24px 52px}.work-view{max-width:720px}
+.workspace-heading{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:2px 0 18px}
+.workspace-heading p,.workspace-heading>span{margin:0 0 4px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.1em}
+.workspace-heading h1{margin:0;font-size:25px;line-height:1.1;letter-spacing:-.04em}.workspace-heading>span{margin:0;white-space:nowrap}
+.pickers{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr);gap:10px;margin-bottom:10px}.color-picker{grid-column:auto}
+label{color:var(--ink)}.pickers label,.form-grid label,.table-toolbar label{font-size:12px;font-weight:650;gap:6px}
+input,select,textarea{border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);min-height:46px;font-size:15px;box-shadow:none}
+input:hover,select:hover,textarea:hover{border-color:var(--muted)}
+button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #d9955e;outline-offset:2px}
+button:disabled{opacity:.45;cursor:not-allowed}
+.card{border:1px solid var(--line);background:var(--paper);border-radius:12px;box-shadow:none}
+.primary,:root[data-wire-color="yellow-green"] .primary{background:#245845;color:#fff;border:1px solid #245845;border-radius:9px;font-weight:700}
+.primary:hover{background:#194738}.secondary{background:var(--paper);border:1px solid var(--line);border-radius:9px;color:var(--ink);font-weight:650}.secondary:hover{background:var(--soft)}
+:root[data-telegram-theme="dark"] .primary,:root[data-telegram-theme="dark"][data-wire-color="yellow-green"] .primary{background:#a7d9bf;border-color:#a7d9bf;color:#15271e}
+#view-setup #values{display:grid;gap:10px}
+#view-setup .production,:root[data-wire-color="yellow-green"] #view-setup .production{background:#24332d;color:#f7faf5;border:1px solid #24332d;border-radius:12px;padding:16px;margin:0}
+#view-setup .production h1{font-size:13px;letter-spacing:.02em;margin:0 0 12px;font-weight:700}
+#view-setup .production h1>span{color:#b8c9bd;font-size:11px;font-weight:500}
+#view-setup .production .extruders{gap:8px}
+#view-setup .production .extruder{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:2px 8px;min-width:0;padding:12px;border-radius:8px;background:#34463d;color:#f8fbf7;border:1px solid #506258}
+#view-setup .production .extruder.base-white{background:#f8faf6;color:#24332d;border-color:#e4e9e2}
+#view-setup .production .extruder.base-yellow{background:#e9d561;color:#263026;border-color:#dfcd64}
+#view-setup .production .extruder.is-off{background:#35423c;color:#bac7bd;border:1px dashed #728077}
+#view-setup .production .extruder>span{font-size:13px;font-weight:700;align-self:start}
+#view-setup .production .extruder strong{justify-self:end;font-size:36px;letter-spacing:-.04em;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums}
+#view-setup .production .extruder strong.off{font-size:17px;letter-spacing:0}
+#view-setup .production .rpm-source{grid-column:1/-1;justify-self:end;line-height:1.2;font-size:11px}
+#view-setup .rpm-alternatives{grid-column:1/-1;border-top:1px solid currentColor;padding-top:8px;margin-top:7px;gap:4px;font-size:11px}
+#view-setup .rpm-alternatives>div{display:flex;justify-content:space-between;gap:8px}
+#view-setup .rpm-alternatives b{font-variant-numeric:tabular-nums}.rpm-basis-warning{grid-column:1/-1}
+#view-setup .setup-geometry{padding:14px 16px;margin:0}.setup-geometry .readings{padding:0;margin:0;border:0;background:none}.readings .pair{gap:12px}.readings .pair>div+div{padding-left:14px}
+#view-setup .readings .pair>div>span,#view-setup .tool-row span,#view-setup .speed-stages>div>span{font-size:11px;color:var(--muted);line-height:1.3}
+#view-setup .readings strong,#view-setup .tool-row strong{font-size:28px;line-height:1.15;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+#view-setup .tool-row{padding:12px 0 0;margin:12px 0 0;border:0;border-top:1px solid var(--line);background:none;gap:12px}
+#view-setup .tool-row>div{display:grid;grid-template-columns:30px minmax(0,1fr);align-items:center;column-gap:9px}#view-setup .tool-row img{width:28px;height:40px;grid-row:span 2;margin:0}
+#view-setup .speeds{padding:14px 16px;margin:0}.speeds h2{font-size:13px;margin:0 0 12px}.speed-stages{gap:8px}.speed-stages strong{font-size:28px;line-height:1.15;letter-spacing:-.03em;font-variant-numeric:tabular-nums}.speed-edit{color:var(--green);min-height:38px}
+#view-setup>.actions{display:block;margin:10px 0 0}#view-setup>.actions .primary{width:100%;min-height:48px;font-size:14px}
+.setup-footer{display:flex;gap:8px 16px;justify-content:space-between;align-items:center;margin-top:6px}.setup-footer>.source-details{flex:1;border:0;margin:0;padding:0}.setup-footer>.source-details>summary{min-height:40px;font-size:12px}.setup-footer>#connection{font-size:11px;max-width:50%;white-space:normal;text-align:right;overflow:visible}
+.page-heading{margin:0 0 20px;align-items:center}.page-heading h1{font-size:26px;letter-spacing:-.04em}.back{color:var(--green);font-weight:600;min-height:40px}.quiet{color:var(--muted)}
+#view-plan{max-width:720px}#view-plan .page-heading{margin:0 0 20px}#view-plan .page-heading h1{font-size:26px;letter-spacing:-.04em}#view-plan .page-heading>.secondary{min-height:44px;font-size:13px}
+#view-plan .job-builder{padding:4px 18px 18px;border-radius:12px;margin-bottom:12px}#view-plan .job-builder>summary{min-height:56px;font-size:16px;font-weight:700}#view-plan .job-intro{font-size:12px;line-height:1.45;color:var(--muted);margin:0 0 12px}
+#view-plan .job-card{border-top:1px solid var(--line);padding:15px 0 4px}.job-heading h2{font-size:13px;color:var(--muted)}
+#view-plan .job-fields{gap:12px}#view-plan .job-fields label,#view-plan .stock-group label{font-size:12px;font-weight:650;color:var(--ink)}#view-plan .job-fields input,#view-plan .job-fields select,#view-plan .stock-group input{min-height:46px;height:46px;font-size:15px;background:var(--paper)}
+#view-plan .job-colors{max-width:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:16px 0 0}#view-plan .job-colors legend{font-size:12px;font-weight:650;color:var(--ink);margin-bottom:7px}
+#view-plan .color-choice{justify-content:flex-start;gap:8px;height:auto;min-height:44px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--ink)}#view-plan .color-choice .color-dot{width:18px;height:18px}#view-plan .color-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#view-plan .color-choice:has(input:checked){background:var(--soft);border-color:var(--green);box-shadow:none;font-weight:700}#view-plan .color-choice:has(input:checked)::after{content:'✓';position:static;margin-left:auto;color:var(--green);font-size:14px;text-shadow:none}
+#view-plan .job-actions{margin-top:14px}#view-plan .job-actions button{min-height:46px;font-size:13px}
+#view-plan .plan-metrics{border-radius:12px;margin:0 0 14px}#view-plan .resource-panel>summary{min-height:58px;padding:12px 16px}#view-plan .resource-number{font-size:21px}#view-plan .resource-heading{font-weight:650!important}
+#view-plan .drum-player{border-radius:12px;background:var(--paper);border:1px solid var(--line);padding:18px;margin:16px 0}
+#view-plan .player-top{color:var(--green);font-size:11px;letter-spacing:.06em}#view-plan .player-title{margin:14px 0 16px}#view-plan .player-title h2{font-size:23px;letter-spacing:-.04em}#view-plan .player-title p{font-size:13px}
+#view-plan .player-grid{border-radius:8px}#view-plan .player-grid>div{padding:11px}#view-plan .player-grid span{font-size:11px}#view-plan .player-grid strong{font-size:17px}#view-plan .player-tools>div{background:var(--soft)}#view-plan .player-next{background:var(--soft);border-left:3px solid var(--green);padding:12px;font-size:13px}#view-plan .player-controls button{min-height:46px;font-size:13px}
+#view-plan .queue-heading{margin:22px 0 10px}#view-plan .queue-heading h2{font-size:18px}#view-plan .queue-tools>.secondary{min-height:44px;font-size:12px}#view-plan .drums{gap:8px}#view-plan .queue-card{padding:10px 12px;border-radius:10px}#view-plan .queue-status{min-height:44px;height:44px;font-size:12px}#view-plan .cable-info,#view-plan .queue-more>summary{min-height:44px;height:44px;width:44px}#view-plan .drum-title b{font-size:14px}#view-plan .drum-length{font-size:16px}
+#view-plan .splice-planner{border-top:1px solid var(--line);margin-top:22px}#view-plan .splice-planner>summary{font-size:13px;min-height:48px}
+#view-table,#view-admin{max-width:720px;margin:auto}.table-toolbar{padding:14px;background:var(--paper);border:1px solid var(--line);border-radius:12px;margin-bottom:12px}.table-scroll{border:1px solid var(--line);border-radius:12px;background:var(--paper)}.table-scroll th{background:var(--soft)}.table-scroll td,.table-scroll th{border-color:var(--line)}
+.admin-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.admin-tabs .secondary{min-height:46px;font-size:13px}#measurement-form{max-width:none;padding:18px}#measurement-form .form-grid{gap:12px}#measurement-fields label{font-size:12px}#measurement-form .save{min-height:48px;margin-top:12px}.measurement-rpm-heading{margin:20px 0 12px}.measurement-rpm-heading h2{font-size:15px}.measurement-color-heading{margin-top:8px;padding-top:16px}.journal-entry{max-width:none;padding:16px;border-radius:10px}.journal-entry h2{font-size:16px}.journal-actions button{min-height:44px}
+dialog{background:var(--paper);color:var(--ink);border-color:var(--line);border-radius:12px}dialog::backdrop{background:#101b18aa}
+@media(max-width:600px){.header{padding:8px 14px}.brand{font-size:15px}.header nav button{padding:7px 9px}main{padding:18px 14px 40px}.workspace-heading{margin-bottom:14px}.workspace-heading h1{font-size:23px}.workspace-heading>span{display:none}.pickers{padding:12px;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:10px}.color-picker{grid-column:1/-1}#view-setup .production{padding:14px}#view-setup .production .extruder{padding:10px}#view-setup .production .extruder strong{font-size:32px}#view-setup .setup-geometry,#view-setup .speeds{padding:13px 14px}#view-setup .readings strong,#view-setup .tool-row strong,.speed-stages strong{font-size:25px}#view-plan .job-colors{grid-template-columns:repeat(3,minmax(0,1fr))}#view-plan .job-builder{padding-inline:14px}#view-plan .player-grid>div{padding:9px}#view-plan .player-grid strong{font-size:15px}.table-scroll{margin-right:0}.page-heading h1,#view-plan .page-heading h1{font-size:23px}}
+@media(max-width:360px){.brand{font-size:13px}.header nav button{font-size:12px;padding-inline:7px}.workspace-heading h1{font-size:21px}#view-setup .production .extruder strong{font-size:29px}#view-setup .production .extruder strong.off{font-size:14px}#view-plan .job-colors{grid-template-columns:repeat(2,minmax(0,1fr))}#view-plan .queue-tools>.secondary{font-size:11px;padding-inline:5px}#view-plan .player-grid strong{font-size:14px}}
+@media print{.workspace-heading,.header{display:none!important}body{background:white;color:black}}
+/* Keep color names legible on narrow screens. */
+.color-picker select{border-left:4px solid var(--wire)}
+@media(max-width:500px){#view-plan .job-colors{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#view-plan .color-name{white-space:normal;overflow:visible;line-height:1.2;overflow-wrap:anywhere}
+.admin-tabs .secondary[aria-pressed="true"]{background:var(--soft);border-color:var(--green);color:var(--ink)}
+@media(max-width:360px){#view-setup .production .extruder{padding:8px}#view-setup .rpm-alternatives>div{gap:2px}#view-setup .rpm-alternatives span,#view-setup .rpm-alternatives b{font-size:10px;letter-spacing:-.02em}}

@@ -1,5 +1,7 @@
 import { number, parseBreakdowns, planSplices } from './core.js?v=28';
 
+export const isCoilingBrand = brand => ['ПВ1', 'ПВ3', 'H07V-K', 'H05V-K', 'H05V-U', 'H07V-U'].includes(brand);
+
 export function coilLength(brand, section) {
   const size = number(section);
   if (['ПВ1', 'ПВ3'].includes(brand)) {

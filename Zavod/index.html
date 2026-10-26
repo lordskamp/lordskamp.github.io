@@ -2,17 +2,19 @@
 <html lang="uk"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
-  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=24">
+  <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=25">
   <link rel="stylesheet" href="./plan.css?v=3">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=32"></script>
+  <link rel="stylesheet" href="./interface.css?v=1">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=36"></script>
 </head><body>
-  <header class="header"><button type="button" class="brand" data-view="setup">◎ <span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
+  <header class="header"><button type="button" class="brand" data-view="setup"><span class="brand-mark" aria-hidden="true"></span><span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
     <section id="view-setup" class="work-view">
       <button class="back" id="return-to-plan" type="button" hidden>← До черги</button>
-      <div class="pickers"><label>Провід<select id="cable"></select></label><label>Переріз, мм²<select id="section"></select></label><label id="thread-diameter-picker" hidden>Фінальний діаметр, мм<input id="thread-final-diameter" inputmode="decimal" maxlength="12" autocomplete="off" placeholder="Із завдання"></label><label class="color-picker">Колір<select id="color"></select></label><label id="extruder-mode-picker">Екструдери<select id="extruder-mode" aria-label="Режим екструдерів"><option value="single">Тільки №1</option><option value="dual">№1 + №2</option></select></label></div>
+      <div class="workspace-heading"><h1>Налаштування лінії</h1></div>
+      <div class="pickers"><label>Провід<select id="cable"></select></label><label>Переріз, мм²<select id="section"></select></label><label id="thread-diameter-picker" hidden>Фінальний діаметр, мм<input id="thread-final-diameter" inputmode="decimal" maxlength="12" autocomplete="off" placeholder="Із завдання"></label><label class="color-picker">Колір<select id="color"></select></label></div>
       <div id="values" aria-live="polite"></div>
-      <div class="actions"><button class="primary" id="open-plan" type="button">План барабанів</button><button class="secondary" id="open-splice" type="button">Вхідний закінчився · +30 м</button></div>
+      <div class="actions"><button class="primary" id="open-plan" type="button">План барабанів</button></div>
       <div class="setup-footer"><details id="source-details" class="source-details"><summary>Деталі та джерела</summary><div id="source-content"></div></details><p id="connection" class="quiet" role="status">Оновлюю таблицю…</p></div>
     </section>
     <section id="view-plan" hidden>
@@ -20,6 +22,7 @@
       <p id="plan-title" class="quiet" hidden></p>
       <details class="card job-builder" id="job-builder" open>
         <summary>Завдання</summary>
+
         <div id="jobs"></div>
         <div class="actions job-actions"><button class="secondary" id="add-job" type="button">＋ Провід</button><button class="primary" id="generate-plan" type="button">Скласти чергу</button></div>
         <button class="back" id="undo-plan" type="button" hidden>Скасувати зміну черги</button>
@@ -68,6 +71,6 @@
   </main>
   <dialog id="record-dialog"><div class="dialog-head"><h2>Запис</h2><button class="close" type="button" data-close="record-dialog" aria-label="Закрити">×</button></div><div id="record-content"></div></dialog>
   <dialog id="working-speed-dialog" aria-labelledby="working-speed-title"><div class="dialog-head"><h2 id="working-speed-title">Робоча швидкість</h2><button class="close" type="button" data-close="working-speed-dialog" aria-label="Закрити">×</button></div><form id="working-speed-form"><label>Швидкість, м/хв<input id="working-speed-input" inputmode="decimal" autocomplete="off" maxlength="12" aria-describedby="working-speed-limit working-speed-message"></label><p id="working-speed-limit" class="quiet"></p><output id="working-speed-preview" class="speed-preview" aria-live="polite"></output><p class="quiet">Оберти — приблизний перерахунок для цього проводу й режиму.</p><p id="working-speed-message" class="form-message error" role="status"></p><div class="actions"><button class="primary" id="apply-working-speed" type="submit">Застосувати</button><button class="secondary" id="reset-working-speed" type="button">Повернути початкову</button></div></form></dialog>
-  <dialog id="splice-dialog"><div class="dialog-head"><h2>Додати запас</h2><button class="close" type="button" data-close="splice-dialog" aria-label="Закрити">×</button></div><label>Зараз на екрані, м<input id="current-target" inputmode="numeric" autocomplete="off" value="15000"></label><div class="splice-number"><span>Постав на екрані</span><strong id="splice-result"></strong></div><p class="quiet">Лейбл — у калькуляторі скрутки в плані барабанів.</p></dialog>
+
   <div id="toast" class="toast" role="status" hidden></div><noscript>Увімкніть JavaScript, щоб обрати провід. <a href="./catalog.json">Таблиця даних</a>.</noscript>
 </body></html>

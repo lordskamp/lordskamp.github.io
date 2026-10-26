@@ -1,10 +1,10 @@
 import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=27';
 import { RECIPES } from './data.js';
 import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
-import { forecastFor } from './forecast.js?v=27';
+import { forecastFor } from './forecast.js?v=29';
 import { number, firstSpeed, secondSpeed } from './core.js?v=27';
 import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=27';
-import { threadSetup, threadDiameters } from './thread-settings.js?v=27';
+import { threadSetup, threadDiameters } from './thread-settings.js?v=28';
 
 export const VALUE_LABELS = { practical: 'Практичні', reference: 'Довідкові', forecast: 'Прогнозовані', manual: 'Орієнтовно · за твоєю швидкістю', rule: 'За налаштуванням' };
 const metric = row => ({
@@ -84,6 +84,7 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
   }
   const calibratedOperatingCurve = learnedSpeedCurve || forecast.calibratedSpeedCurve;
   const effective = {}, sources = {};
+  const selectedSpeed = practical.workingSpeed ?? (calibratedOperatingCurve ? forecast.workingSpeed ?? reference.workingSpeed : reference.workingSpeed ?? forecast.workingSpeed);
   for (const key of Object.keys(reference)) {
     const predicted = key === 'workingSpeed' ? forecast.workingSpeed : forecast[key];
     // A catalogue's nominal outside diameter is a comparison dimension, not
@@ -91,9 +92,14 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
     // remain their original reference text instead of a circular estimate.
     const nominal = key === 'sikoraWire' ? row.wireNom : key === 'sikoraOuter' ? row.outerNomText : null;
     const operating = ['extruder1', 'extruder2', 'workingSpeed'].includes(key);
-    const choices = calibratedOperatingCurve && operating
-      ? [['practical', practical[key]], ['forecast', predicted], ['reference', reference[key] ?? nominal]]
-      : [['practical', practical[key]], ['reference', reference[key] ?? nominal], ['forecast', predicted]];
+    const rpm = key === 'extruder1' || key === 'extruder2';
+    const basis = forecast.rpmSpeedBasis?.[key];
+    const compatibleForecast = !rpm || (number(basis) > 0 && number(selectedSpeed) > 0 && number(basis) === number(selectedSpeed));
+    const choices = rpm
+      ? [['practical', practical[key]], ['forecast', compatibleForecast ? predicted : null], ['reference', reference[key] ?? nominal]]
+      : calibratedOperatingCurve && operating
+        ? [['practical', practical[key]], ['forecast', predicted], ['reference', reference[key] ?? nominal]]
+        : [['practical', practical[key]], ['reference', reference[key] ?? nominal], ['forecast', predicted]];
     const chosen = choices.find(([,value]) => value !== null && value !== undefined && value !== '');
     sources[key] = chosen?.[0] ?? null; effective[key] = chosen?.[1] ?? null;
   }

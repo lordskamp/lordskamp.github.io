@@ -1,10 +1,10 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
-import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan, spliceTarget } from './core.js?v=28';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=32';
+import { COLORS, DEFAULT_RULES, number, fmt, colorName, dyePlan } from './core.js?v=28';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=36';
 import { drumStatus } from './planner.js?v=30';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=27';
-import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=27';
+import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=30';
 import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
 import { initSplicePlanner } from './splice-ui.js?v=28';
 import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=27';
@@ -54,7 +54,7 @@ const savedSpeeds = read(SPEED_STORAGE);
 const localSpeeds = savedSpeeds && typeof savedSpeeds === 'object' && !Array.isArray(savedSpeeds) ? savedSpeeds : {};
 let speedEditContext = null;
 const localSetup = (cableId, section, color, finalDiameter, mode) => {
-  const preferred = mode ?? state.modePreferences[cableId];
+  const preferred = mode;
   const original = setupFor(cableId, section, catalog, color, { finalDiameter, mode: preferred ? modeFor(optionFor(cableId), color, preferred) : undefined }), selected = localSpeeds[speedKey(original)];
   return selected == null ? original : speedSetup(original, selected).info;
 };
@@ -101,14 +101,15 @@ function renderSelectors() {
 function renderSetup() {
   const info = setup(), r = recipe(), thread = isThread(state.cableId);
   document.documentElement.dataset.wireColor = thread ? 'undyed' : state.color;
-  $('open-splice').textContent = `Стик +${fmt(state.rules.splice)} м`;
-  $('extruder-mode-picker').hidden = thread;
-  $('extruder-mode').value = info.mode;
-  $('extruder-mode').disabled = ['black', 'yellow-green'].includes(state.color);
   const dyes = dyePlan(state.color, info.mode, { noDye: info.noDye });
   const predicted = key => ['forecast', 'manual'].includes(info.sources[key]);
   const value = key => `<strong title="${esc(VALUE_LABELS[info.sources[key]] ?? '')}">${predicted(key) && info.effective[key] != null ? '<span class="estimate-mark" aria-label="Орієнтовно">≈</span>' : ''}${display(info.effective[key])}</strong>`;
-  const rpmValue = key => `${value(key)}<small class="rpm-source">${info.effective[key] == null ? 'Немає заміру' : info.sources[key] === 'manual' ? 'За твоєю швидкістю' : esc(VALUE_LABELS[info.sources[key]] ?? '')}</small>`;
+  const rpmValue = key => {
+    const values = [['Практичні', info.practical[key]], ['Прогнозовані', info.forecast[key]], ['Довідкові', info.reference[key]]];
+    const basis = number(info.forecast.rpmSpeedBasis?.[key]);
+    const mismatch = info.forecast[key] != null && (!basis || basis !== number(info.effective.workingSpeed));
+    return `${value(key)}<small class="rpm-source">${info.effective[key] == null ? 'Немає значення' : info.sources[key] === 'manual' ? 'За твоєю швидкістю' : esc(VALUE_LABELS[info.sources[key]] ?? '')}</small><div class="rpm-alternatives">${values.map(([label, v]) => `<div><span>${label}</span><b>${v == null ? '—' : display(v)}</b></div>`).join('')}</div>${mismatch ? '<small class="rpm-basis-warning">Прогноз: швидкість не збігається або не відома.</small>' : info.sources[key] === 'forecast' && info.forecast.fieldConfidence?.[key] === 'low' ? '<small class="rpm-basis-warning">Мало даних — перевір на лінії.</small>' : ''}`;
+  };
   const speeds = info.stages;
   $('values').innerHTML = `<section class="production"><h1>Оберти шнека <span>об/хв</span></h1>
     <div class="pair extruders"><div class="extruder ${info.mode === 'dual' ? dyes?.first === 'Біла основа' ? 'base-white' : dyes?.first === 'Жовтий' ? 'base-yellow' : '' : ''}"><span>№1</span>${rpmValue('extruder1')}</div><div class="extruder ${info.mode === 'single' ? 'is-off' : ''}"><span>№2</span>${info.mode === 'single' ? '<strong class="off">Вимкнено</strong>' : rpmValue('extruder2')}</div></div>
@@ -117,7 +118,7 @@ function renderSetup() {
       ${thread ? '' : `<div class="readings"><div class="pair"><div><span>SIKORA · жила, мм</span>${value('sikoraWire')}</div><div><span>SIKORA · ізоляція, мм</span>${value('sikoraOuter')}</div></div></div>`}
       <div class="tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн, мм</span><div class="tool-values">${value('dorn')}</div></div><div><img src="./MATRIX.svg" alt=""><span>Матриця, мм</span><div class="tool-values">${value('matrix')}</div></div></div>
     </section>
-    <section class="card speeds"><h2>Швидкість <small>м/хв</small></h2><div class="speed-stages"><div><span>Запуск</span><strong>${fmt(speeds.first)}</strong></div><div><span>Проміжна</span><strong>${fmt(speeds.second)}</strong></div><div><span>Робоча</span><button type="button" id="edit-working-speed" class="speed-edit" aria-label="Змінити робочу швидкість"><strong>${predicted('workingSpeed') ? '<span class="estimate-mark">≈</span>' : ''}${fmt(speeds.working)}</strong><span aria-hidden="true">✎</span></button></div></div></section>
+    <section class="card speeds"><h2>Швидкість <small>м/хв</small></h2><div class="speed-stages"><div><span>Запуск</span><strong>${fmt(speeds.first)}</strong></div><div><span>Проміжна</span><strong>${fmt(speeds.second)}</strong></div><div><span>Робоча</span><button type="button" id="edit-working-speed" class="speed-edit" aria-label="Змінити робочу швидкість"><strong>${predicted('workingSpeed') ? '<span class="estimate-mark">≈</span>' : ''}${fmt(speeds.working)}</strong><span aria-hidden="true">✎</span></button>${info.sources.workingSpeed === 'forecast' ? '<small class="rpm-basis-warning">Прогноз швидкості — перевір на лінії.</small>' : ''}</div></div></section>
     ${!dyes?.valid ? `<p class="notice">${esc(dyes?.note)}</p>` : ''}`;
   const comparisons = ['extruder1', ...(info.mode === 'dual' ? ['extruder2'] : []), ...(thread ? [] : ['sikoraWire', 'sikoraOuter']), 'dorn', 'matrix', 'workingSpeed'].map(key => {
     const label = FIELDS.find(([field]) => field === (key === 'workingSpeed' ? 'maxSpeed' : key))?.[1];
@@ -136,7 +137,7 @@ function previewWorkingSpeed() {
   $('apply-working-speed').disabled = Boolean(error);
 }
 function openWorkingSpeed() {
-  const info = setupFor(state.cableId, state.section, catalog, state.color, { finalDiameter: state.finalDiameter, mode: state.modePreferences[state.cableId] });
+  const info = setupFor(state.cableId, state.section, catalog, state.color, { finalDiameter: state.finalDiameter, mode: undefined });
   speedEditContext = { info, key: speedKey(info) };
   $('working-speed-input').value = String(localSpeeds[speedEditContext.key] ?? info.effective.workingSpeed ?? '');
   const limit = speedLimit(info);
@@ -189,12 +190,14 @@ function forecastContent(forecast) {
     'nominal-residual-interpolation': 'За конструкцією жили та поправками практичних замірів',
     'nearest-secondary-load': 'За найближчим заміром другого екструдера та швидкістю',
     'paired-balance': 'За співвідношенням обертів у парних замірах',
+    'validated-secondary-blend': 'Комбінація парних та найближчих замірів після перевірки на прихованих точках',
     'paired-balance-interpolation': 'Між парними замірами двох екструдерів',
     'measured-value': 'За заміром цього перерізу',
     'geometry-calibrated': 'Розміри уточнено за власними замірами',
     'related-geometry': 'Розміри за схожими кабелями',
     'nominal-geometry': 'За конструкцією жили',
     'matrix-measured-allowance': 'Матриця та поправка власних замірів',
+    'matrix-operator-allowance': 'Матриця + приблизно 0,15 мм',
     'matrix-related-allowance': 'Матриця та поправка схожих кабелів',
     'matrix-default-allowance': 'Матриця та поправка за перерізом жили',
     'load-extrapolation': 'Навантаження та швидкості схожих кабелів',
@@ -267,7 +270,6 @@ function openRecord(id) {
 function renderPlan() {
   planner.render();
 }
-function renderSplice() { const result = spliceTarget(state.currentTarget, state.rules.splice); $('splice-result').textContent = result === null ? 'Введи цілі метри' : fmt(result) + ' м'; }
 async function copyPlan() {
   const lines = ['План барабанів', ...planner.resourcesText()];
   state.drums.forEach((drum, i) => {
@@ -278,7 +280,7 @@ async function copyPlan() {
     if (result.transition) lines.push(`Планова зупинка: ${fmt(result.stopAt)} м. Стравити через байпас і головку, запустити лінію; після появи якісного кабелю додати 170 м до поточного показу для перекидання. Відмотати неякісну ділянку.`);
     if (result.setupChange) lines.push(planner.transitionText(drum, i));
     if (result.splice?.spliceCount && !result.splice.errors.length) lines.push('На лейбл: ' + result.splice.label);
-    if (drum.coiling && !result.errors.length) lines.push(`Бухтовка: ${result.production.coils} × ${result.production.size} м; додатково ${result.production.waste} м.`);
+    if (result.coiling && !result.errors.length) lines.push(`Бухтовка: ${result.production.coils} × ${result.production.size} м; додатково ${result.production.waste} м.`);
   });
   try { await navigator.clipboard.writeText(lines.join('\n')); toast('План скопійовано'); } catch { toast('Копіювання недоступне. Скористайся кнопкою «Друк».'); }
 }
@@ -329,6 +331,7 @@ function fillMeasurement(row, revision) {
   const base = RECIPES.find(r => r.id === row.baseId || r.id === row.id);
   if (!base) return;
   $('measurement-form').hidden = false; $('journal').hidden = true;
+  $('new-measurement').setAttribute('aria-pressed', 'true'); $('show-journal').setAttribute('aria-pressed', 'false');
   const option = row.optionId ? optionFor(row.optionId) : optionFor(base.cableId);
   $('measure-cable').innerHTML = cableOptions(); $('measure-cable').value = option.id;
   $('measure-section').innerHTML = sectionOptions(option.id); $('measure-section').value = String(base.section);
@@ -469,6 +472,7 @@ async function saveMeasurement(event) {
 }
 async function showJournal(more = false) {
   $('measurement-form').hidden = true; $('journal').hidden = false;
+  $('new-measurement').setAttribute('aria-pressed', 'false'); $('show-journal').setAttribute('aria-pressed', 'true');
   if (!more) { journal = []; $('journal-list').textContent = 'Завантажую…'; }
   $('more-journal').disabled = true;
   try {
@@ -538,11 +542,6 @@ document.addEventListener('click', event => {
 $('thread-final-diameter').addEventListener('input', () => {
   state.finalDiameter = $('thread-final-diameter').value; persist(); renderSetup();
 });
-$('extruder-mode').addEventListener('change', () => {
-  if (['black', 'yellow-green'].includes(state.color) || isThread(state.cableId)) return;
-  state.modePreferences[state.cableId] = $('extruder-mode').value;
-  persist(); renderSetup(); haptic();
-});
 for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change', () => {
   if (id === 'cable') { state.cableId = $('cable').value; if (!CABLES.find(c => c.id === state.cableId).sections.includes(state.section)) state.section = CABLES.find(c => c.id === state.cableId).sections[0]; }
   if (id === 'section') state.section = Number($('section').value);
@@ -551,8 +550,6 @@ for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change',
 });
 $('open-plan').addEventListener('click', () => showView('plan'));
 $('return-to-plan').addEventListener('click', () => showView('plan'));
-$('open-splice').addEventListener('click', () => { $('current-target').value = state.currentTarget; renderSplice(); $('splice-dialog').showModal(); });
-$('current-target').addEventListener('input', () => { state.currentTarget = $('current-target').value; persist(); renderSplice(); });
 $('copy-plan').addEventListener('click', () => void copyPlan()); $('print-plan').addEventListener('click', () => window.print());
 $('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions(); $('table-filter').value = state.cableId;
 $('table-filter').addEventListener('change', renderTable); $('refresh-table').addEventListener('click', () => void syncCatalog(true));

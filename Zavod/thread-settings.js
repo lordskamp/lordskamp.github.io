@@ -27,8 +27,8 @@ export function threadDiameter(value) {
   return diameter !== null && diameter <= 1000 ? diameter : null;
 }
 
-export function threadRecords(catalog = {}) {
-  return [...THREAD_OPERATOR_ANCHORS, ...(catalog.recipes ?? []), ...(catalog.calibrations ?? [])]
+export function threadRecords(catalog = {}, operatorAnchors = THREAD_OPERATOR_ANCHORS) {
+  return [...operatorAnchors, ...(catalog.recipes ?? []), ...(catalog.calibrations ?? [])]
     .filter(record => active(record) && threadDiameter(record.finalDiameter) !== null).sort(latestFirst);
 }
 
@@ -91,8 +91,8 @@ function estimateLoad(anchors, diameter) {
     method: 'thread-area-extrapolation' };
 }
 
-export function threadSettings(finalDiameter, catalog = {}) {
-  const diameter = threadDiameter(finalDiameter), records = threadRecords(catalog), anchors = pairedAnchors(records);
+export function threadSettings(finalDiameter, catalog = {}, options = {}) {
+  const diameter = threadDiameter(finalDiameter), records = threadRecords(catalog, options.operatorAnchors ?? THREAD_OPERATOR_ANCHORS), anchors = pairedAnchors(records);
   const exactRecords = diameter === null ? [] : records.filter(record => threadDiameter(record.finalDiameter) === diameter);
   const rpmRecord = exactRecords.find(record => positive(record.extruder1) !== null);
   const speedRecord = exactRecords.find(record => positive(record.maxSpeed) !== null);

@@ -1,5 +1,5 @@
 import { RECIPES } from './data.js';
-import { DEFAULT_RULES, firstSpeed, secondSpeed, sikoraAllowance } from './core.js?v=27';
+import { DEFAULT_RULES, firstSpeed, secondSpeed } from './core.js?v=27';
 import { CATALOG_OPTIONS } from './catalog-options.js?v=27';
 import { ALL_CARDS, SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
 import { operatingRecords } from './pv3-modes.js?v=27';
@@ -61,7 +61,7 @@ function interpolate(anchors, section, key) {
   const high = anchors.find(record => record.section >= section);
   const weight = (section - low.section) / (high.section - low.section);
   return { value: valueFor(low, key) + (valueFor(high, key) - valueFor(low, key)) * weight,
-    used: [low, high], method: 'interpolation', confidence: 'high' };
+    used: [low, high], method: 'interpolation', confidence: 'medium' };
 }
 
 function recordOption(record) {
@@ -143,7 +143,7 @@ function mergedSection(records, section) {
 function measuredGeometry(records, record) {
   const merged = mergedSection(records, record.section), sourceRow = recordCard(record)?.rows.find(row => row.section === record.section);
   const matrix = positive(merged.matrix) ? merged.matrix : sourceRow?.matrix;
-  const inferredOuter = positive(matrix) ? matrix + allowanceEstimate(records, [], record.section).value : sourceRow?.outerNom;
+  const inferredOuter = positive(matrix) ? matrix + allowanceEstimate().value : sourceRow?.outerNom;
   return { wire: positive(merged.sikoraWire) ? merged.sikoraWire : sourceRow?.wireNom,
     outer: positive(merged.sikoraOuter) ? merged.sikoraOuter : inferredOuter };
 }
@@ -219,39 +219,9 @@ function geometryEstimate(key, ownAnchors, related, ownRecords, card, row, estim
 // Only actual numeric tooling/diameter pairs establish the die allowance.
 // Printed cable diameters are nominal construction dimensions, not SIKORA
 // targets, and must never contribute an outer-minus-matrix training sample.
-function allowanceAnchors(records) {
-  const matrices = fieldAnchors(records, 'matrix');
-  return fieldAnchors(records, 'sikoraOuter').flatMap(record => {
-    const matrix = matrices.find(candidate => candidate.section === record.section)?.matrix;
-    const allowance = positive(matrix) ? record.sikoraOuter - matrix : null;
-    return positive(allowance) ? [{ ...record, matrix, allowance }] : [];
-  });
-}
 
-function allowanceEstimate(ownRecords, related, section) {
-  const ownAnchors = allowanceAnchors(ownRecords);
-  const project = (anchors, targetSection = section) => {
-    const direct = interpolate(anchors, targetSection, 'allowance');
-    if (direct) return direct.value;
-    const anchor = nearest(anchors, targetSection);
-    // Below the measured range use a smaller allowance for a thinner core;
-    // within the range an actual measured pair takes precedence over the rule.
-    return anchor ? anchor.allowance * Math.min(1, Math.sqrt(targetSection / anchor.section)) : null;
-  };
-  if (ownAnchors.length) return { value: project(ownAnchors), used: ownAnchors,
-    method: 'matrix-measured-allowance', confidence: 'low' };
-  const pairedGroups = related.map(group => ({ ...group, allowanceAnchors: allowanceAnchors(group.records) }))
-    .filter(group => group.allowanceAnchors.length);
-  const best = Math.max(0, ...pairedGroups.map(group => group.weight));
-  const donors = pairedGroups.filter(group => group.weight >= best * .8);
-  // A different cable's thin-section pair is not direct evidence for this
-  // cable. Transfer its allowance at the 2.5 mm² baseline, then make it smaller
-  // below that section instead of copying an unchanged thick-core allowance.
-  const borrowed = median(donors.map(group => project(group.allowanceAnchors, Math.max(section, 2.5))))
-    * Math.min(1, Math.sqrt(section / 2.5));
-  return positive(borrowed) ? { value: borrowed, used: donors.flatMap(group => group.allowanceAnchors), groups: donors,
-    method: 'matrix-related-allowance', confidence: 'low' }
-    : { value: sikoraAllowance(section), used: [], method: 'matrix-default-allowance', confidence: 'low' };
+function allowanceEstimate() {
+  return { value: 0.15, used: [], method: 'matrix-operator-allowance', confidence: 'low' };
 }
 
 function speedSlope(records) {
@@ -316,7 +286,7 @@ function normalizedRpmInterpolation(anchors, records, section, key, targetSpeed,
   const value = normalized[0][key] + (normalized[1][key] - normalized[0][key]) * weight;
   return { ...direct, value: value * targetSpeed,
     method: 'speed-normalized-interpolation', speedBasisKnown: true,
-    confidence: useArea && (areaWeight < 0 || areaWeight > 1) ? 'low' : direct.confidence };
+    confidence: 'low' };
 }
 
 function balanceAnchors(records) {
@@ -343,7 +313,29 @@ function pairedRpmEstimate(ownRecords, related, section, targetFirst, speedBasis
   return positive(ratio) ? { value: targetFirst * ratio, used: estimates.flatMap(estimate => estimate.used),
     groups: own.length ? [] : donors, speedBasisKnown,
     method: own.length && estimates.every(estimate => estimate.interior) ? 'paired-balance-interpolation' : 'paired-balance',
-    confidence: own.length && estimates.every(estimate => estimate.interior) ? 'high' : 'low' } : null;
+    confidence: 'low' } : null;
+}
+
+// Compare two existing secondary-extruder predictors only on same-mode
+// paired measurements. Each validation point is hidden from its predictor.
+function pairedBeatsNearest(records) {
+  const pairs = balanceAnchors(records).filter(record => positive(mergedSection(records, record.section).workingSpeed));
+  if (pairs.length < 2) return false;
+  let pairedError = 0, nearestError = 0;
+  for (const sample of pairs) {
+    const rest = pairs.filter(other => other.section !== sample.section);
+    if (!rest.length) return false;
+    const closest = nearest(rest, sample.section);
+    const ratio = median(rest.map(record => record.balance));
+    const actual = sample.extruder2;
+    const speed = mergedSection(records, sample.section).workingSpeed;
+    const otherSpeed = mergedSection(records, closest.section).workingSpeed;
+    const first = mergedSection(records, sample.section).extruder1;
+    pairedError += Math.abs(first * ratio - actual) / actual;
+    nearestError += Math.abs(closest.extruder2 * speed / otherSpeed - actual) / actual;
+  }
+  // Require a clear improvement; two measurements cannot establish high confidence.
+  return pairedError < nearestError * 0.8;
 }
 
 function nearestSecondaryLoad(ownRecords, related, section, targetSpeed) {
@@ -381,6 +373,11 @@ function rpmEstimate(key, ownAnchors, ownRecords, related, row, targetArea, targ
     if (ownAnchors.length && row.section < ownAnchors[0].section || !ownAnchors.length && !closestGroups(related, key)
       .some(group => balanceAnchors(group.records).some(record => record.section <= row.section))) {
       const nearestLoad = nearestSecondaryLoad(ownRecords, related, row.section, targetSpeed);
+      if (firstSpeedBasisKnown && nearestLoad && pairedBeatsNearest(ownRecords)) {
+        const paired = pairedRpmEstimate(ownRecords, [], row.section, targetFirst, firstSpeedBasisKnown);
+        if (paired) return { value: (paired.value + nearestLoad.value) / 2, used: [...paired.used, ...nearestLoad.used],
+          groups: [], speedBasisKnown: true, method: 'validated-secondary-blend', confidence: 'low' };
+      }
       if (nearestLoad) return nearestLoad;
     }
     if (!ownAnchors.length || pairs.length) {
@@ -469,7 +466,7 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
   if (!card || !row || !positive(row.section)) return empty('unknown', 'Немає вибраного перерізу.');
   const option = optionById(options.optionId) ?? defaultOption(card), optionId = option?.id;
   const legacy = options.cableId ?? option?.practicalCableId;
-  const records = operatingRecords([...RECIPES, ...speakerRecords(), ...practicalRecords])
+  const records = operatingRecords([...(options.baselineRecords ?? RECIPES), ...speakerRecords(), ...practicalRecords])
     .filter(record => !record.deletedAt && !record.withdrawnAt && !record.retired);
   const exact = record => record.optionId ? record.optionId === optionId : record.cableId === optionId
     || !option && sameCard(record, card)
@@ -534,7 +531,7 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
     // an actual outer-diameter setting already recorded for this section.
     setEstimate('sikoraOuter', { value: exactOuter.sikoraOuter, used: [exactOuter], method: 'measured-value', confidence: 'high' });
   } else if (!flat(card) && positive(selectedMatrix)) {
-    const allowance = allowanceEstimate([...matchingOwn, ...linked], related, row.section);
+    const allowance = allowanceEstimate();
     setEstimate('sikoraOuter', { ...allowance, value: selectedMatrix + Math.max(.01, allowance.value) });
     result.sikoraOuterMatrix = selectedMatrix;
   }
@@ -592,9 +589,12 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
     : matchingOwn.some(record => positive(record.section)) ? 'extrapolation' : 'related-practical';
   result.rpmMethod = ['extruder1', ...(mode === 'dual' ? ['extruder2'] : [])].every(key => interiorMethods.includes(result.fieldMethods[key]?.replace('-at-selected-speed', '')))
     ? 'measured-values' : 'adaptive-practical';
+  const operatingFields = ['extruder1', ...(mode === 'dual' ? ['extruder2'] : []), 'workingSpeed'];
   result.confidence = inferredMode || operatingMethods.some(method => !interiorMethods.includes(method?.replace('-at-selected-speed', '')))
-    || ['extruder1', ...(mode === 'dual' ? ['extruder2'] : []), 'workingSpeed'].some(key => result.fieldConfidence[key] === 'low') ? 'low' : 'high';
-  result.reason = result.confidence === 'low' ? 'Орієнтовно: використано продовження практичної кривої або заміри схожих кабелів. Уточніть налаштування на лінії.' : null;
+    || operatingFields.some(key => result.fieldConfidence[key] === 'low') ? 'low'
+    : operatingFields.every(key => result.fieldMethods[key] === 'measured-value') ? 'high' : 'medium';
+  result.reason = result.confidence === 'low' ? 'Орієнтовно: використано обмежені практичні дані або заміри схожих кабелів. Уточніть налаштування на лінії.'
+    : result.confidence === 'medium' ? 'Орієнтовно: значення між практичними замірами, потрібна перевірка на лінії.' : null;
   result.speed1 = firstSpeed(result.workingSpeed); result.speed2 = secondSpeed(result.workingSpeed);
   return result;
 }
