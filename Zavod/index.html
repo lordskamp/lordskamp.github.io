@@ -3,9 +3,9 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
   <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=25">
-  <link rel="stylesheet" href="./plan.css?v=5">
-  <link rel="stylesheet" href="./interface.css?v=8">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=50"></script>
+  <link rel="stylesheet" href="./plan.css?v=6">
+  <link rel="stylesheet" href="./interface.css?v=9">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=51"></script>
 </head><body>
   <main>
     <section id="view-setup" class="work-view">
@@ -22,7 +22,7 @@
       <details class="card job-builder" id="job-builder" open>
         <summary>Завдання</summary>
 
-        <details class="card" id="photo-import"><summary>Завдання з фото</summary><p class="quiet">Надішли боту фото або зображення як файл без стиснення (до 10 МБ). Після розпізнавання бот надішле посилання на завдання.</p><button type="button" class="secondary" id="photo-refresh">Завантажити список фото</button><div id="photo-list"></div><button type="button" class="secondary" id="photo-recognize" hidden>Розпізнати вибрані</button><progress id="photo-progress" hidden aria-label="Поступ розпізнавання фото"></progress><div id="photo-rows"></div><button type="button" class="primary" id="photo-apply" hidden>Підтвердити й скласти чергу</button><p id="photo-message" role="status"></p></details><div id="jobs"></div>
+        <details class="card" id="photo-import"><summary>Завдання з фото</summary><p class="quiet">Надішли боту фото або зображення як файл без стиснення (до 10 МБ). Після розпізнавання бот надішле посилання на завдання.</p><progress id="photo-progress" hidden aria-label="Поступ розпізнавання фото"></progress><div id="photo-rows"></div><div class="photo-actions"><button type="button" class="primary" id="photo-apply" hidden>Підтвердити й скласти чергу</button><button type="button" class="secondary" id="photo-clear" hidden>Очистити</button><button type="button" class="secondary" id="photo-undo" hidden>Скасувати</button></div><p id="photo-message" role="status"></p></details><div id="jobs"></div>
         <div class="actions job-actions"><button class="secondary" id="add-job" type="button">＋ Провід</button><button class="primary" id="generate-plan" type="button">Скласти чергу</button></div>
         <button class="back" id="undo-plan" type="button" hidden>Скасувати зміну черги</button>
         <p id="job-message" class="form-message" role="status"></p>

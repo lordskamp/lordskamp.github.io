@@ -206,10 +206,8 @@ dialog{background:var(--paper);color:var(--ink);border-color:var(--line);border-
 #view-plan #photo-import{padding:10px 12px;margin:0 0 14px;border:1px solid var(--line);border-radius:12px}
 #view-plan #photo-import>summary{font-size:13px;font-weight:650;cursor:pointer}
 #view-plan #photo-import>p.quiet{font-size:12px;line-height:1.4;margin:8px 0}
-#view-plan #photo-list label{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:12px}
 #view-plan #photo-rows{display:grid;gap:7px;margin:10px 0}
 #view-plan .photo-row{min-width:0;border:1px solid var(--line);border-radius:12px;background:var(--paper);overflow:hidden}
-#view-plan .photo-row.is-excluded{opacity:.65}
 #view-plan .photo-row-summary{display:flex;align-items:center;gap:10px;min-height:54px;padding:9px 11px;cursor:pointer;list-style:none}
 #view-plan .photo-row-summary::-webkit-details-marker{display:none}
 #view-plan .photo-row-number{display:grid;place-items:center;flex:none;width:25px;height:25px;border-radius:8px;background:var(--soft);font-size:12px;font-weight:650}
@@ -241,3 +239,15 @@ dialog{background:var(--paper);color:var(--ink);border-color:var(--line);border-
 #view-plan .photo-uncertain{font-size:11px;line-height:1.4;margin:0}
 #view-plan #photo-message{font-size:12px;line-height:1.4}
 @media(max-width:360px){#view-plan .photo-row-summary{gap:7px}#view-plan .photo-options{gap:7px}}
+
+/* Compact task conditions and reversible photo-row removal. */
+#view-plan .job-conditions-help{display:none;margin:0 0 8px;color:var(--muted);font-size:11px;line-height:1.4}
+#view-plan .job-conditions-help span{display:none}
+#view-plan .job-conditions:has([data-job-field="idealColor"]:checked)+.job-conditions-help,#view-plan .job-conditions:has([data-job-field="marking"]:checked)+.job-conditions-help{display:block}
+#view-plan .job-conditions:has([data-job-field="idealColor"]:checked)+.job-conditions-help .ideal-help,#view-plan .job-conditions:has([data-job-field="marking"]:checked)+.job-conditions-help .marking-help{display:inline}
+#view-plan .job-conditions-help span+span{margin-left:4px}
+#view-plan .photo-remove{flex:none;width:32px;height:32px;min-width:32px;padding:0;border-radius:8px;color:var(--muted);font-size:21px;line-height:1}
+#view-plan .photo-remove:hover{background:var(--soft);color:var(--danger)}
+#view-plan .photo-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+#view-plan .photo-actions button{min-height:40px;padding:8px 12px;font-size:12px}
+#view-plan .photo-actions .primary{flex:1 1 180px}
