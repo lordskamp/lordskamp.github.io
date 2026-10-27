@@ -28,7 +28,9 @@ test('unseen H05V-K measurements validate RPM and geometry at recorded line spee
     assert(Object.values(result.fieldAnchors).flat().every(anchor => !excluded.some(item => item.id === anchor.measurementId)));
   }
   const single = forecastFor(card, card.rows.find(row => row.section === .5), training, { optionId: id, mode: 'single', workingSpeed: 150 });
-  assert.equal(single.rpmSpeedBasis.extruder1, null, 'a speedless donor is not a 150 m/min prediction');
+  assert.equal(single.rpmSpeedBasis.extruder1, 150);
+  assert(Math.abs(single.extruder1 / 28 - 1) < .1, 'single-mode holdout at the recorded speed');
+  assert(single.fieldAnchors.extruder1.every(anchor => training.some(record => (record.measurementId ?? record.id) === anchor.measurementId && record.maxSpeed > 0)));
 });
 
 test('thread RPM is tested against each hidden bundled anchor at its actual speed', () => {

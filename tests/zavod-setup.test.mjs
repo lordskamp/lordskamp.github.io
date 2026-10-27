@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { RECIPES } from '../Zavod/data.js';
 import { CATALOG_OPTIONS, baseFor, practicalFor, measurementColor, recipeIdFor } from '../Zavod/catalog-base.js';
 import { setupFor, tableSetups, metricValues, VALUE_LABELS } from '../Zavod/setup-data.js';
+import { baseline } from '../Zavod/store.js';
 import { modeFor, supportsSingleColorMode } from '../Zavod/pv3-modes.js';
 
 const catalog = () => ({ recipes: RECIPES.map(record => ({ ...record, baseId: record.id, origin: 'handwritten', color: 'all', revision: 1, updatedAt: '2026-09-29T00:00:00Z' })) });
@@ -48,15 +49,18 @@ test('reference specifications do not borrow practical values from similarly nam
   assert.equal(h05.effective.extruder1, h05.forecast.extruder1);
   assert.equal(h05.sources.extruder1, 'forecast');
   assert.equal(h05.reference.extruder1, 92);
-  assert.equal(h05.stages.working, 500);
-  assert.equal(h05.stages.second, 300);
+  assert.equal(h05.sources.workingSpeed, 'forecast');
+  assert(h05.stages.working > 0 && h05.stages.working <= h05.reference.workingSpeed);
+  assert.equal(h05.forecast.rpmSpeedBasis.extruder1, h05.stages.working);
   const ysly = setup('ysly-1000', 'YSLY-JZ', 2.5);
   assert.equal(ysly.practical.extruder1, null);
   assert.equal(ysly.effective.extruder1, ysly.forecast.extruder1);
   assert.equal(ysly.effective.extruder2, ysly.forecast.extruder2);
   assert.equal(ysly.reference.extruder1, 87);
   assert.equal(ysly.reference.extruder2, 100);
-  assert.equal(ysly.sources.workingSpeed, 'reference');
+  assert.equal(ysly.sources.workingSpeed, 'forecast');
+  assert(ysly.reference.workingSpeed > 0);
+  assert.equal(ysly.effective.workingSpeed, ysly.forecast.workingSpeed);
 });
 
 test('SIKORA uses the selected matrix while nominal outside diameters stay comparison values', () => {
@@ -461,4 +465,78 @@ test('manual setup mode keeps single and dual practical values separate, includi
   assert.deepEqual([dual.effective.extruder1,dual.effective.extruder2],[24,60]);
   assert.equal(setupFor(id,.5,records,'yellow-green',{mode:'single',allowColorOverride:true}).mode,'single');
   assert.equal(setupFor(id,.5,records,'yellow-green',{mode:'single'}).mode,'dual');
+});
+
+
+test('PV1 forecasts both extruders from the compatible H07V-U measurement at each section', () => {
+  const records = baseline();
+  const measurement = records.calibrations.find(row => row.optionId === 'h07v-u--h07v-u' && row.section === 2.5 && row.mode === 'dual');
+  assert(measurement);
+  for (const section of [1, 1.5, 2.5, 4, 6]) {
+    const info = setupFor('pv1', section, records, 'blue', { mode: 'dual', allowColorOverride: true });
+    assert(info.effective.extruder1 > 0, 'first extruder at ' + section);
+    assert(info.effective.extruder2 > 0, 'second extruder at ' + section);
+    assert.equal(info.forecast.rpmSpeedBasis.extruder1, info.effective.workingSpeed);
+    assert(info.forecast.fieldAnchors.extruder1.some(anchor => anchor.measurementId === measurement.id));
+  }
+  const before = setupFor('pv1', 4, records, 'blue', { mode: 'dual', allowColorOverride: true });
+  measurement.extruder1 += 10;
+  const after = setupFor('pv1', 4, records, 'blue', { mode: 'dual', allowColorOverride: true });
+  assert(after.effective.extruder1 > before.effective.extruder1);
+});
+
+test('PV1 speed follows its practical section trend and keeps actual settings for each mode', () => {
+  const records = baseline();
+  for (const mode of ['single', 'dual']) {
+    const setups = [1, 1.5, 2.5, 4, 6].map(section => setupFor('pv1', section, records, 'blue', { mode, allowColorOverride: true }));
+    for (let i = 1; i < setups.length; i++) assert(setups[i].effective.workingSpeed < setups[i - 1].effective.workingSpeed, mode);
+    for (const info of setups) if (info.sources.extruder1 === 'forecast')
+      assert.equal(info.forecast.rpmSpeedBasis.extruder1, info.effective.workingSpeed);
+  }
+  assert.equal(setupFor('pv1', 1.5, records, 'blue', {mode: 'single', allowColorOverride: true}).effective.workingSpeed, 320);
+  const dual = setupFor('pv1', 2.5, records, 'blue', {mode: 'dual', allowColorOverride: true});
+  assert.deepEqual([dual.effective.extruder1, dual.effective.extruder2, dual.effective.workingSpeed], [46, 70.7, 150]);
+  const single = setupFor('pv1', 2.5, records, 'blue', {mode: 'single', allowColorOverride: true});
+  assert.deepEqual([single.effective.extruder1, single.effective.extruder2, single.effective.workingSpeed], [50, null, 150]);
+  assert(setupFor('pv1', 1, records, 'blue', {mode: 'single', allowColorOverride: true}).effective.workingSpeed <= 350);
+});
+
+
+test('all metal cable setups show the first extruder when a paired practical basis exists', () => {
+  const records = baseline(), unavailable = [];
+  for (const option of CATALOG_OPTIONS.filter(row => row.coreKind !== 'thread')) {
+    for (const mode of ['single', 'dual']) for (const section of option.sections) {
+      const info = setupFor(option.id, section, records, 'blue', { mode, allowColorOverride: true });
+      if (info.effective.extruder1 == null) { unavailable.push([option.id, section, mode]); continue; }
+      assert(info.effective.extruder1 > 0);
+      if (info.sources.extruder1 === 'forecast') assert.equal(info.forecast.rpmSpeedBasis.extruder1, info.effective.workingSpeed);
+      if (mode === 'single') assert.equal(info.effective.extruder2, null);
+    }
+  }
+  // These two handwritten speaker RPMs have no associated operating speed.
+  assert.deepEqual(unavailable, [['speaker--speaker', 1, 'dual'], ['speaker--speaker', 2.5, 'dual']]);
+});
+
+test('same-cable speed can inform the other extruder mode without copying RPM', () => {
+  const records = baseline(), id = 'h07v-k--h07v-k';
+  for (const section of [1.5, 2.5, 4, 6]) {
+    const dual = setupFor(id, section, records, 'blue', { mode: 'dual', allowColorOverride: true });
+    const single = setupFor(id, section, records, 'blue', { mode: 'single', allowColorOverride: true });
+    assert.equal(single.effective.workingSpeed, dual.effective.workingSpeed);
+    assert.equal(single.forecast.fieldMethods.workingSpeed, 'other-mode-speed');
+    assert.equal(single.practical.extruder1, null);
+    assert(single.effective.extruder1 > 0);
+    assert.equal(single.forecast.rpmSpeedBasis.extruder1, single.effective.workingSpeed);
+  }
+});
+
+test('speed forecasts account for section across different cable families', () => {
+  const records = baseline();
+  for (const [id, smaller, larger] of [['pv1--pv1ng', 1, 6], ['pv3--pv3ng', .5, 6],
+    ['h07v-k--h07v-k', 1.5, 6], ['h05-en--h05vv-f', .75, 6]]) {
+    for (const mode of ['single', 'dual']) {
+      const setup = section => setupFor(id, section, records, 'blue', { mode, allowColorOverride: true });
+      assert(setup(smaller).effective.workingSpeed > setup(larger).effective.workingSpeed, id + ' ' + mode);
+    }
+  }
 });

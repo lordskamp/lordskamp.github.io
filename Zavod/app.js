@@ -1,10 +1,10 @@
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName } from './core.js?v=28';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=39';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=41';
 import { drumStatus } from './planner.js?v=30';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=27';
-import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=31';
+import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=33';
 import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
 import { initSplicePlanner } from './splice-ui.js?v=28';
 import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=27';
@@ -111,7 +111,7 @@ function renderSetup() {
     const values = [['Практичні', info.practical[key]], ['Прогнозовані', info.forecast[key]], ['Довідкові', info.reference[key]]];
     const basis = number(info.forecast.rpmSpeedBasis?.[key]);
     const mismatch = info.forecast[key] != null && (!basis || basis !== number(info.effective.workingSpeed));
-    return `${value(key)}<small class="rpm-source">${info.effective[key] == null ? 'Немає значення' : info.sources[key] === 'manual' ? 'За твоєю швидкістю' : esc(VALUE_LABELS[info.sources[key]] ?? '')}</small><div class="rpm-alternatives">${values.map(([label, v]) => `<div><span>${label}</span><b>${v == null ? '—' : display(v)}</b></div>`).join('')}</div>${mismatch ? '<small class="rpm-basis-warning">Перевір швидкість прогнозу.</small>' : info.sources[key] === 'forecast' && info.forecast.fieldConfidence?.[key] === 'low' ? '<small class="rpm-basis-warning">Мало даних — перевір на лінії.</small>' : ''}`;
+    return `${value(key)}<small class="rpm-source">${info.effective[key] == null ? key === 'extruder1' ? 'Працює · немає даних' : 'Немає значення' : info.sources[key] === 'manual' ? 'За твоєю швидкістю' : esc(VALUE_LABELS[info.sources[key]] ?? '')}</small><div class="rpm-alternatives">${values.map(([label, v]) => `<div><span>${label}</span><b>${v == null ? '—' : display(v)}</b></div>`).join('')}</div>${mismatch ? `<small class="rpm-basis-warning">${basis ? 'Прогноз для іншої швидкості.' : 'Швидкість заміру невідома.'}</small>` : info.sources[key] === 'forecast' && info.forecast.fieldConfidence?.[key] === 'low' ? '<small class="rpm-basis-warning">Мало даних — перевір на лінії.</small>' : ''}`;
   };
   const speeds = info.stages;
   $('values').innerHTML = `<section class="production"><h1>Оберти шнека <span>об/хв</span></h1>

@@ -79,11 +79,11 @@ test('repeated colours and invalid numeric values cannot create two independent 
   const repeated = predict('h07v-k', 4, copies, { optionId: h07 });
   assert(finitePositive(repeated.workingSpeed));
   assert.equal(repeated.fieldMethods.workingSpeed, 'load-extrapolation');
-  assert.deepEqual([...new Set(repeated.fieldAnchors.workingSpeed.map(anchor => anchor.section))], [2.5]);
+  assert.deepEqual([...new Set(repeated.fieldAnchors.workingSpeed.filter(anchor => anchor.optionId === h07).map(anchor => anchor.section))], [2.5]);
   for (const maxSpeed of [NaN, Infinity, 0, -10, '400']) {
     const result = predict('h07v-k', 4, [measured(2.5, { maxSpeed: 220 }), measured(6, { maxSpeed })], { optionId: h07 });
     assert(finitePositive(result.workingSpeed));
-    assert.deepEqual(result.fieldAnchors.workingSpeed.map(anchor => anchor.section), [2.5]);
+    assert.deepEqual(result.fieldAnchors.workingSpeed.filter(anchor => anchor.optionId === h07).map(anchor => anchor.section), [2.5]);
   }
 });
 
@@ -173,7 +173,8 @@ test('deleted measurements are excluded from calibration', () => {
   const records = [measured(2.5, { extruder1: 70, maxSpeed: 220 }), measured(6, { extruder1: 56, maxSpeed: 80 }, { deletedAt: '2026-10-02T12:00:00Z' })];
   const result = predict('h07v-k', 4, records, { optionId: h07 });
   assert(finitePositive(result.workingSpeed));
-  assert.deepEqual(result.fieldAnchors.workingSpeed.map(anchor => anchor.section), [2.5]);
+  assert.deepEqual(result.fieldAnchors.workingSpeed.filter(anchor => anchor.optionId === h07).map(anchor => anchor.section), [2.5]);
+  assert(!result.fieldAnchors.workingSpeed.some(anchor => anchor.measurementId === 'sample-6'));
 });
 
 test('original handwritten values can fill gaps by measured-value interpolation', () => {

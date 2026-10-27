@@ -1,6 +1,6 @@
 import { calculateProduction, coilLength, isCoilingBrand } from './coiling.js?v=2';
 import { estimateColorLead2 } from './color-lead.js?v=27';
-import { VALUE_LABELS } from './setup-data.js?v=30';
+import { VALUE_LABELS } from './setup-data.js?v=33';
 import { normalizeDyeSlots, planDyeSlots, EMPTY_DYE } from './dye-slots.js?v=1';
 import { COLORS, colorName, dyePlan, fmt, number, planDrum, splitterFor } from './core.js?v=29';
 import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=33';

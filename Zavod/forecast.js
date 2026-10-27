@@ -231,14 +231,42 @@ function speedSlope(records) {
   }));
 }
 
-function speedEstimate(ownAnchors, ownRecords, related, row, targetArea) {
+function speedEstimate(ownAnchors, ownRecords, related, row, targetArea, otherModeRecords = []) {
   const direct = interpolate(ownAnchors, row.section, 'workingSpeed');
   if (direct) return direct;
+  // Line speed belongs to the cable and section. If this mode has no speed
+  // data, the same cable in the other mode is a stronger basis than a donor.
+  if (!ownAnchors.length) {
+    const otherAnchors = fieldAnchors(otherModeRecords, 'workingSpeed');
+    const otherDirect = interpolate(otherAnchors, row.section, 'workingSpeed');
+    if (otherDirect) return { ...otherDirect, method: 'other-mode-speed', confidence: 'low', speedTrendSupported: true };
+    if (otherAnchors.length) {
+      ownAnchors = otherAnchors;
+      ownRecords = otherModeRecords;
+      otherModeRecords = [];
+    }
+  }
   const donorGroups = closestGroups(related, 'workingSpeed');
   let slope = speedSlope(ownRecords);
   // A pair at the same printing limit says nothing about throughput at a larger
   // section. Borrow the load response, keeping the operator's own speed level.
-  if (slope === null || slope > -.05) slope = median(donorGroups.map(group => speedSlope(group.records)).filter(value => value !== null && value < 0));
+  let slopeRecords = [];
+  if (slope === null || slope > -.05) {
+    const otherSlope = speedSlope(otherModeRecords);
+    if (otherSlope !== null && otherSlope < -.05) {
+      slope = otherSlope;
+      slopeRecords = fieldAnchors(otherModeRecords, 'workingSpeed');
+    } else {
+      // Ignore sparse or flat donor groups when looking for a section trend;
+      // they cannot justify a constant speed for every size.
+      const trendGroups = closestGroups(related.filter(group => {
+        const candidate = speedSlope(group.records);
+        return candidate !== null && candidate < -.05;
+      }), 'workingSpeed');
+      slope = median(trendGroups.map(group => speedSlope(group.records)));
+      slopeRecords = trendGroups.flatMap(group => fieldAnchors(group.records, 'workingSpeed'));
+    }
+  }
   if (slope === null) slope = 0;
   slope = clamp(slope, -1.25, 0);
   const anchors = ownAnchors.length ? ownAnchors : donorGroups.flatMap(group => fieldAnchors(group.records, 'workingSpeed'));
@@ -250,7 +278,7 @@ function speedEstimate(ownAnchors, ownRecords, related, row, targetArea) {
   });
   const anchor = nearest(ownAnchors, row.section);
   const value = anchor ? projected[anchors.indexOf(anchor)] : median(projected);
-  return positive(value) ? { value, used: anchors, groups: donorGroups,
+  return positive(value) ? { value, used: [...anchors, ...slopeRecords], groups: donorGroups, speedTrendSupported: slope < -.05,
     method: ownAnchors.length ? 'load-extrapolation' : 'related-load', confidence: 'low' } : null;
 }
 
@@ -370,7 +398,7 @@ function rpmEstimate(key, ownAnchors, ownRecords, related, row, targetArea, targ
     // Thin-core dosing below the observed range has no established downward
     // response. Keep the nearest measured secondary RPM per metre rather than
     // extending a foreign balance or flow curve into unsupported small loads.
-    if (ownAnchors.length && row.section < ownAnchors[0].section || !ownAnchors.length && !closestGroups(related, key)
+    if (ownAnchors.length === 1 || ownAnchors.length && row.section < ownAnchors[0].section || !ownAnchors.length && !closestGroups(related, key)
       .some(group => balanceAnchors(group.records).some(record => record.section <= row.section))) {
       const nearestLoad = nearestSecondaryLoad(ownRecords, related, row.section, targetSpeed);
       if (firstSpeedBasisKnown && nearestLoad && pairedBeatsNearest(ownRecords)) {
@@ -387,7 +415,14 @@ function rpmEstimate(key, ownAnchors, ownRecords, related, row, targetArea, targ
     }
   }
   if (direct) return normalizedRpmInterpolation(ownAnchors, ownRecords, row.section, key, targetSpeed, targetArea);
-  const donorGroups = closestGroups(related, key);
+  // A closer donor without an RPM/speed pair cannot establish RPM at the
+  // selected line speed. Prefer the closest family with usable paired data.
+  const pairedDonors = related.filter(group => !flat(group.card) && fieldAnchors(group.records, key).some(record => {
+    const geometry = measuredGeometry(group.records, record);
+    return positive(mergedSection(group.records, record.section).workingSpeed) && positive(area(geometry.wire, geometry.outer));
+  }));
+  const donorGroups = closestGroups(!ownAnchors.length && positive(targetArea) && positive(targetSpeed) && pairedDonors.length
+    ? pairedDonors : related, key);
   if (ownAnchors.length && key === 'extruder2') return { value: empiricalTrend(ownAnchors, row.section, key), used: ownAnchors,
     speedBasisKnown: false,
     method: 'empirical-extrapolation', confidence: 'low' };
@@ -490,6 +525,9 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
   // A directly confirmed equivalent family retains its interior measured curve.
   const linkedIds = SHARED_OPTIONS.find(group => group.includes(optionId)) ?? [];
   const linked = records.filter(record => record.mode === mode && record.optionId !== optionId && linkedIds.includes(record.optionId));
+  const matchingRecords = [...matchingOwn, ...linked];
+  const otherModeRecords = records.filter(record => ['single', 'dual'].includes(record.mode) && record.mode !== mode
+    && (own(record) || linkedIds.includes(record.optionId)));
   const result = empty(mode, null), allUsed = new Map();
   result.inferredMode = inferredMode;
   result.rpmSpeedBasis = {};
@@ -539,12 +577,14 @@ export function forecastFor(card, row, practicalRecords = RECIPES, options = {})
   // round-core diameter can support only a coarse, explicitly borrowed load.
   const targetArea = area(result.sikoraWire, result.sikoraOuter) ?? (flat(card) && positive(result.sikoraWire)
     ? 2 * area(result.sikoraWire, result.sikoraWire + 2 * row.thicknessNom) : null);
-  setEstimate('workingSpeed', speedEstimate(anchorsFor('workingSpeed'), matchingOwn, related, row, targetArea));
+  const speedPrediction = speedEstimate(anchorsFor('workingSpeed'), matchingRecords, related, row, targetArea, otherModeRecords);
+  setEstimate('workingSpeed', speedPrediction);
+  result.speedTrendSupported = Boolean(!flat(card) && speedPrediction?.speedTrendSupported);
   result.calibratedSpeedCurve = measuredCurve([...matchingOwn, ...linked], 'workingSpeed')
     || !anchorsFor('workingSpeed').length && closestGroups(related, 'workingSpeed').some(group => measuredCurve(group.records, 'workingSpeed'));
   for (const key of ['extruder1', 'extruder2']) {
     if (key === 'extruder2' && mode === 'single') continue;
-    setEstimate(key, rpmEstimate(key, anchorsFor(key), matchingOwn, related, row, targetArea, result.workingSpeed,
+    setEstimate(key, rpmEstimate(key, anchorsFor(key), matchingRecords, related, row, targetArea, result.workingSpeed,
       result.extruder1, positive(result.rpmSpeedBasis.extruder1), result.fieldMethods.extruder1 === 'measured-value'));
   }
   for (const key of ['colorLead1', 'colorLead2']) {

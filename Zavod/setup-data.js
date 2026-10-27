@@ -1,7 +1,7 @@
 import { CATALOG_OPTIONS, optionFor, referenceCard, baseFor, practicalFor } from './catalog-base.js?v=27';
 import { RECIPES } from './data.js';
 import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
-import { forecastFor } from './forecast.js?v=29';
+import { forecastFor } from './forecast.js?v=31';
 import { number, firstSpeed, secondSpeed } from './core.js?v=27';
 import { hasPv3Modes, modeFor, supportsSingleColorMode } from './pv3-modes.js?v=27';
 import { threadSetup, threadDiameters } from './thread-settings.js?v=28';
@@ -80,10 +80,18 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
   let forecast = forecastFor(card, row, forecastRecords, forecastOptions);
   // An equally compatible measured donor curve is also a production speed
   // basis. Do not inflate its RPM back to a printed nominal maximum.
-  if (!learnedSpeedCurve && practical.workingSpeed == null && forecast.calibratedSpeedCurve) {
-    forecast = forecastFor(card, row, forecastRecords, { ...forecastOptions, workingSpeed: null });
+  if (!learnedSpeedCurve && practical.workingSpeed == null && (forecast.calibratedSpeedCurve || forecast.speedTrendSupported)) {
+    // A printed maximum can limit an estimate, but never replaces an actual measurement.
+    const limit = forecast.speedTrendSupported && number(reference.workingSpeed) > 0
+      && forecast.workingSpeed > number(reference.workingSpeed) ? number(reference.workingSpeed) : null;
+    forecast = forecastFor(card, row, forecastRecords, { ...forecastOptions, workingSpeed: limit });
+    if (limit) {
+      forecast.workingSpeed = limit;
+      forecast.fieldMethods.workingSpeed += '-reference-cap';
+      forecast.speed1 = firstSpeed(limit); forecast.speed2 = secondSpeed(limit);
+    }
   }
-  const calibratedOperatingCurve = learnedSpeedCurve || forecast.calibratedSpeedCurve;
+  const calibratedOperatingCurve = learnedSpeedCurve || forecast.calibratedSpeedCurve || forecast.speedTrendSupported;
   const effective = {}, sources = {};
   const selectedSpeed = practical.workingSpeed ?? (calibratedOperatingCurve ? forecast.workingSpeed ?? reference.workingSpeed : reference.workingSpeed ?? forecast.workingSpeed);
   for (const key of Object.keys(reference)) {
