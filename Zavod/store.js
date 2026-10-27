@@ -48,7 +48,7 @@ export async function api(path, { method = 'GET', body, admin = false } = {}) {
     headers['X-Telegram-Init-Data'] = initData;
   }
   let response;
-  try { response = await fetch(API_URL + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(12000), cache: 'no-store' }); }
+  try { response = await fetch(API_URL + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(path === '/photos/recognize' ? 180000 : 12000), cache: 'no-store' }); }
   catch { throw new Error('Немає зв’язку. Запис залишився у формі — спробуйте ще раз.'); }
   let result;
   try { result = await response.json(); } catch { throw new Error('Сервер не відповів. Спробуйте ще раз.'); }

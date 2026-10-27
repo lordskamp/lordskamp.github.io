@@ -77,7 +77,7 @@ export function restorePlanner(saved, state) {
   state.shiftSettings = shiftSettings(saved?.shiftSettings);
   state.coreStock = Object.fromEntries(Object.entries(saved?.coreStock ?? {}).filter(([key, entry]) => /^\d+(?:\.\d+)?:[1-6?]$/u.test(key) && entry && typeof entry === 'object')
     .slice(0, 200).map(([key, entry]) => [key, { ...(entry.fullLengthKm === undefined ? {} : { fullLengthKm: String(entry.fullLengthKm).slice(0, 20) }), piecesText: String(entry.piecesText ?? '').slice(0, 2000) }]));
-  const restoreJobs = rows => (Array.isArray(rows) ? rows : []).slice(0, 50).filter(j => j && optionFor(j.cableId)).map(j => {
+  const restoreJobs = rows => (Array.isArray(rows) ? rows : []).slice(0, MAX_DRUMS).filter(j => j && optionFor(j.cableId)).map(j => {
     const cable = optionFor(j.cableId);
     return newJob(cable.id, cable.sections.includes(Number(j.section)) ? Number(j.section) : cable.sections[0], {
       id: savedId(j.id),

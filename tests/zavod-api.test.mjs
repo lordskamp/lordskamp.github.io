@@ -601,3 +601,41 @@ test('webhook securely stores album photos once and inbox is isolated per Telegr
   assert.equal((await call('/photos', { initData: signed({ id: 201 }) })).data.photos.length, 0);
   assert.equal((await call('/photos')).status, 401);
 });
+
+test('recognition reads only selected user photos and passes each image to AI', async t => {
+  const { db, env, call } = fixture(); t.after(() => db.close());
+  db.prepare('INSERT INTO photo_inbox(update_id,telegram_id,file_id,received_at) VALUES(?,?,?,?)').run(10, '200', 'photo-id', '2026-10-27T00:00:00Z');
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async url => String(url).includes('/getFile')
+    ? Response.json({ok:true,result:{file_path:'photos/a.jpg',file_size:3}})
+    : new Response(new Uint8Array([1,2,3]));
+  t.after(() => { globalThis.fetch = oldFetch; });
+  env.AI = { async run(model, input) {
+    assert.equal(model, '@cf/qwen/qwen3.8-27b');
+    assert.match(input.messages[0].content[1].image_url.url, /^data:image\/jpeg;base64,/);
+    return { choices:[{message:{content:JSON.stringify({rows:[{cableId:'pv3--pv3',section:2.5,colors:['blue'],lengthsText:'10,200 + 5,150',totalKm:'15,350'}]})}}] };
+  } };
+  assert.equal((await call('/photos/recognize', { method:'POST', body:{ids:[10]}, initData:signed({id:201}) })).status, 404);
+  const result = await call('/photos/recognize', { method:'POST', body:{ids:[10]}, initData:signed({id:200}) });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.rows[0].lengthsText, '10,200 + 5,150');
+  assert.equal((await call('/photos/recognize', { method:'POST', body:{ids:[10,10]}, initData:signed({id:200}) })).status, 400);
+});
+
+test('owner connects webhook without replacing another service', async t => {
+  const { call, db, env } = fixture(); t.after(() => db.close());
+  const oldFetch = globalThis.fetch; t.after(() => { globalThis.fetch = oldFetch; });
+  let installed = null, current = 'https://another.example/webhook';
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('getWebhookInfo')) return Response.json({ok:true,result:{url:current}});
+    installed = JSON.parse(options.body); return Response.json({ok:true,result:true});
+  };
+  assert.equal((await call('/admin/photo-webhook', {method:'POST',initData:signed()})).status, 409);
+  assert.equal(installed, null);
+  current = '';
+  assert.equal((await call('/admin/photo-webhook', {method:'POST',initData:signed()})).status, 200);
+  assert.equal(installed.url, 'https://test.invalid/telegram/webhook');
+  assert.match(installed.secret_token, /^[0-9a-f]{64}$/);
+  assert.equal(installed.drop_pending_updates, false);
+  assert.equal((await worker.fetch(new Request('https://test.invalid/telegram/webhook', {method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':installed.secret_token},body:JSON.stringify({update_id:456,message:{from:{id:200},chat:{id:200,type:'private'},photo:[{file_id:'photo'}]}})}),env)).status, 200);
+});

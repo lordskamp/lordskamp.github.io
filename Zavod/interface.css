@@ -203,3 +203,11 @@ dialog{background:var(--paper);color:var(--ink);border-color:var(--line);border-
 .drag-preview .color-dot{width:16px;height:16px;flex:none}.drag-preview span:not(.color-dot){display:grid;gap:3px;min-width:0}.drag-preview b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.drag-preview small{color:var(--green);font-size:11px;font-weight:650}
 @media(max-width:600px){#view-plan .journal-start{order:0}#view-plan .queue-tools{width:100%;justify-content:flex-start;margin-left:0}#view-plan .journal-help{margin-top:0}}
 @media print{#view-plan .journal-start,#view-plan .journal-help{display:none}}
+#view-plan #photo-import{padding:12px;margin:0 0 14px;border:1px solid var(--line);border-radius:10px}
+#view-plan #photo-import>summary{font-size:13px;font-weight:650;cursor:pointer}
+#view-plan #photo-list label,#view-plan .photo-row label{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:12px}
+#view-plan .photo-row{display:grid;gap:5px;margin:12px 0;padding:12px}
+#view-plan .photo-row label:has([data-photo-field]){display:grid;gap:4px}
+#view-plan .photo-row input[data-photo-field],#view-plan .photo-row select{min-height:40px;width:100%}
+#view-plan .photo-row div{display:flex;flex-wrap:wrap;gap:5px 12px}
+#view-plan #photo-message{font-size:12px;line-height:1.4}

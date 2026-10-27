@@ -4,8 +4,8 @@
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
   <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=25">
   <link rel="stylesheet" href="./plan.css?v=3">
-  <link rel="stylesheet" href="./interface.css?v=5">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=44"></script>
+  <link rel="stylesheet" href="./interface.css?v=6">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=46"></script>
 </head><body>
   <main>
     <section id="view-setup" class="work-view">
@@ -22,7 +22,7 @@
       <details class="card job-builder" id="job-builder" open>
         <summary>Завдання</summary>
 
-        <div id="jobs"></div>
+        <details class="card" id="photo-import"><summary>Завдання з фото</summary><p class="quiet">Надішли фото в чат бота, потім обери їх тут. Перевір кожен рядок перед додаванням.</p><button type="button" class="secondary" id="photo-refresh">Завантажити список фото</button><div id="photo-list"></div><button type="button" class="secondary" id="photo-recognize" hidden>Розпізнати вибрані</button><div id="photo-rows"></div><button type="button" class="primary" id="photo-apply" hidden>Додати перевірені завдання</button><p id="photo-message" role="status"></p></details><div id="jobs"></div>
         <div class="actions job-actions"><button class="secondary" id="add-job" type="button">＋ Провід</button><button class="primary" id="generate-plan" type="button">Скласти чергу</button></div>
         <button class="back" id="undo-plan" type="button" hidden>Скасувати зміну черги</button>
         <p id="job-message" class="form-message" role="status"></p>
@@ -56,6 +56,7 @@
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Мої заміри</h1></div><span id="admin-who" class="quiet"></span></div>
       <div id="admin-gate" class="card gate"><p id="admin-message">Перевіряю вхід…</p><a class="primary" href="https://t.me/obpresyvanya_bot?startapp=admin">Відкрити в Telegram</a><button class="back" id="retry-admin" type="button">Перевірити вхід ще раз</button></div>
       <div id="admin-content" hidden>
+        <div class="card"><button type="button" class="secondary" id="connect-photo-bot">Підключити прийом фото</button><p id="connect-photo-message" role="status"></p></div>
         <details class="card" id="visits-panel"><summary>Відвідування бота</summary><p class="quiet">Останні 200 відкриттів у Telegram. Облік починається після підключення.</p><div id="visits-list"></div></details>
         <div class="admin-tabs"><button class="secondary" id="new-measurement" type="button">＋ Новий замір</button><button class="secondary" id="show-journal" type="button">Попередні заміри</button><button class="back" id="import-old" type="button" hidden>Мої старі уточнення</button></div>
         <form id="measurement-form" class="card">

@@ -1,9 +1,10 @@
+import { initPhotoImport } from './photo-ui.js?v=1';
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName } from './core.js?v=28';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=42';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=43';
 import { drumStatus } from './planner.js?v=30';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
-import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=27';
+import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=28';
 import { setupFor, tableSetups, metricValues, VALUE_LABELS } from './setup-data.js?v=33';
 import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
 import { initSplicePlanner } from './splice-ui.js?v=29';
@@ -561,12 +562,19 @@ for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change',
   if (id === 'color') state.color = $('color').value;
   persist(); renderSelectors(); renderSetup(); haptic();
 });
+initPhotoImport({ state, planner, persist });
 $('open-plan').addEventListener('click', () => showView('plan'));
 $('return-to-plan').addEventListener('click', () => showView('plan'));
 $('copy-plan').addEventListener('click', () => void copyPlan()); $('print-plan').addEventListener('click', () => window.print());
 $('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions(); $('table-filter').value = state.cableId;
 $('table-filter').addEventListener('change', renderTable); $('refresh-table').addEventListener('click', () => void syncCatalog(true));
 $('retry-admin').addEventListener('click', () => void enterAdmin());
+$('connect-photo-bot').addEventListener('click', async () => {
+  $('connect-photo-bot').disabled = true;
+  try { await api('/admin/photo-webhook', { method: 'POST', admin: true }); $('connect-photo-message').textContent = 'Прийом фото підключено.'; }
+  catch (error) { $('connect-photo-message').textContent = error.message; }
+  finally { $('connect-photo-bot').disabled = false; }
+});
 $('visits-panel').addEventListener('toggle', async event => {
   if (!event.currentTarget.open || !authorized) return;
   $('visits-list').textContent = 'Завантажую…';
