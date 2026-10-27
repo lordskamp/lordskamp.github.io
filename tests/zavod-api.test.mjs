@@ -609,7 +609,7 @@ test('recognition reads only selected user photos and passes each image to AI', 
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async url => String(url).includes('/getFile')
     ? Response.json({ok:true,result:{file_path:'photos/a.jpg',file_size:3}})
-    : new Response(new Uint8Array([1,2,3]));
+    : new Response(new Uint8Array([255,216,255,0]));
   t.after(() => { globalThis.fetch = oldFetch; });
   env.AI = { async run(model, input) {
     assert.equal(model, '@cf/qwen/qwen3.8-27b');
@@ -648,7 +648,7 @@ test('background recognition groups photos, updates one message, isolates result
   const oldFetch = globalThis.fetch, messages = []; t.after(() => { globalThis.fetch = oldFetch; });
   globalThis.fetch = async (url, options) => {
     if (String(url).includes('/getFile')) return Response.json({ok:true,result:{file_path:'photos/test.jpg',file_size:3}});
-    if (String(url).includes('/file/bot')) return new Response(new Uint8Array([1,2,3]));
+    if (String(url).includes('/file/bot')) return new Response(new Uint8Array([255,216,255,0]));
     messages.push({ url: String(url), body: JSON.parse(options.body) });
     return Response.json({ok:true,result:{message_id:42}});
   };
@@ -678,12 +678,79 @@ test('background recognition groups photos, updates one message, isolates result
   assert.equal(opened.data.state, 'ready');
   assert.equal(opened.data.rows.length, 2);
   assert.deepEqual(opened.data.ids, [1, 2]);
-  assert.equal(peak, 2);
+  assert.equal(peak, 1);
   assert.equal(opened.data.rows[0].coreClass,4);
   assert.equal(messages.filter(m=>m.url.endsWith('/sendMessage')).length,1);
-  assert.equal(messages.filter(m=>m.url.endsWith('/editMessageText')).length,2);
+  assert.equal(messages.filter(m=>m.url.endsWith('/editMessageText')).length,3);
   assert.match(messages.at(-1).body.text,/startapp=photo_/);
   assert.equal((await sendPhoto(3)).status,200);
   assert.equal(messages.filter(m=>m.url.endsWith('/sendMessage')).length,2);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM photo_batches').get().n,2);
+});
+
+test('AI quota exhaustion is reported to the photo sender instead of a generic recognition error', async t => {
+  const {call,db,env}=fixture(); t.after(()=>db.close());
+  env.TELEGRAM_WEBHOOK_SECRET='0123456789abcdef';
+  const oldFetch=globalThis.fetch, messages=[]; t.after(()=>{globalThis.fetch=oldFetch;});
+  globalThis.fetch=async (url, options)=>{
+    if (String(url).includes('/getFile')) return Response.json({ok:true,result:{file_path:'photos/test.jpg',file_size:3}});
+    if (String(url).includes('/file/bot')) return new Response(new Uint8Array([255,216,255,0]));
+    messages.push(JSON.parse(options.body));
+    return Response.json({ok:true,result:{message_id:42}});
+  };
+  env.AI={async run(){throw Object.assign(new Error('allocation'),{code:3036});}};
+  const webhook=new Request('https://test.invalid/telegram/webhook',{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':env.TELEGRAM_WEBHOOK_SECRET},body:JSON.stringify({update_id:1,message:{from:{id:200},chat:{id:200,type:'private'},photo:[{file_id:'photo'}]}})});
+  assert.equal((await worker.fetch(webhook,env)).status,200);
+  const response=await call('/photos/recognize',{method:'POST',body:{ids:[1]},initData:signed({id:200})});
+  assert.equal(response.status,503); assert.match(response.data.error,/ліміт Cloudflare AI/);
+  await processPhotoBatches(env,new Date(Date.now()+30000));
+  assert.match(messages.at(-1).text,/ліміт Cloudflare AI/);
+  assert.equal(db.prepare('SELECT status FROM photo_processing').get().status,'failed');
+  env.AI={async run(){throw Object.assign(new Error('busy'),{code:3040});}};
+  const busy=await call('/photos/recognize',{method:'POST',body:{ids:[1]},initData:signed({id:200})});
+  assert.equal(busy.status,503); assert.match(busy.data.error,/перевантажений/);
+});
+
+test('Telegram image documents and photos share a batch and Gemini receives the original image bytes', async t => {
+  const {call,db,env}=fixture(); t.after(()=>db.close());
+  env.TELEGRAM_WEBHOOK_SECRET='0123456789abcdef'; env.GEMINI_API_KEY='test-gemini-secret';
+  const oldFetch=globalThis.fetch, calls=[], sent=[]; t.after(()=>{globalThis.fetch=oldFetch;});
+  const png = new Uint8Array([137,80,78,71,13,10,26,10,7,8,9]);
+  globalThis.fetch=async (url, options={})=>{
+    url=String(url);
+    if (url.endsWith('/getFile')) return Response.json({ok:true,result:{file_path:'documents/test.png',file_size:png.length}});
+    if (url.includes('/file/bot')) return new Response(png);
+    if (url.includes('generativelanguage.googleapis.com')) {
+      calls.push({url,headers:options.headers,body:JSON.parse(options.body)});
+      return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,coreClass:4,colors:['blue'],totalKm:'15,350',lengthsText:'10,200 + 5,150'}]})}]}}]});
+    }
+    sent.push(JSON.parse(options.body)); return Response.json({ok:true,result:{message_id:42}});
+  };
+  const send=async (id,payload)=>worker.fetch(new Request('https://test.invalid/telegram/webhook',{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':env.TELEGRAM_WEBHOOK_SECRET},body:JSON.stringify({update_id:id,message:{from:{id:200},chat:{id:200,type:'private'},...payload}})}),env);
+  assert.equal((await send(1,{document:{file_id:'original',mime_type:'image/png',file_size:png.length}})).status,200);
+  assert.equal((await send(2,{photo:[{file_id:'small'},{file_id:'photo'}]})).status,200);
+  assert.equal((await send(3,{document:{file_id:'pdf',mime_type:'application/pdf',file_size:30}})).status,200);
+  assert.equal((await send(4,{document:{file_id:'large',mime_type:'image/jpeg',file_size:11*1024*1024}})).status,200);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM photo_inbox').get().n,2);
+  assert.match(sent.at(-1).text,/10 МБ/);
+  await processPhotoBatches(env,new Date(Date.now()+30000));
+  assert.equal(calls.length,2);
+  assert.equal(calls[0].headers['x-goog-api-key'],'test-gemini-secret');
+  assert(!calls[0].url.includes('test-gemini-secret'));
+  assert.equal(calls[0].body.contents[0].parts[1].inlineData.mimeType,'image/png');
+  assert.equal(calls[0].body.contents[0].parts[1].inlineData.data,Buffer.from(png).toString('base64'));
+  const id=db.prepare('SELECT id FROM photo_batches').get().id;
+  const opened=await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})});
+  assert.equal(opened.data.state,'ready'); assert.equal(opened.data.rows.length,2);
+  assert.equal(opened.data.rows[0].lengthsText,'10,200 + 5,150');
+});
+
+test('Gemini quota errors remain visible and are not mistaken for success', async t => {
+  const {call,db,env}=fixture(); t.after(()=>db.close()); env.GEMINI_API_KEY='test-gemini-secret';
+  db.prepare('INSERT INTO photo_inbox(update_id,telegram_id,file_id,received_at) VALUES(?,?,?,?)').run(10,'200','file','2026-10-27T00:00:00Z');
+  const oldFetch=globalThis.fetch; t.after(()=>{globalThis.fetch=oldFetch;});
+  globalThis.fetch=async url=>String(url).endsWith('/getFile') ? Response.json({ok:true,result:{file_path:'photo/a.jpg',file_size:4}})
+    : String(url).includes('/file/bot') ? new Response(new Uint8Array([255,216,255,0])) : Response.json({error:{message:'quota'}},{status:429});
+  const response=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
+  assert.equal(response.status,503); assert.match(response.data.error,/ліміт Gemini/i);
 });
