@@ -199,8 +199,36 @@ export async function handleRequest(request, env) {
       && message.from.id === message.chat.id && !message.from.is_bot && Array.isArray(message.photo) && message.photo.length) {
       const file = message.photo.at(-1);
       if (typeof file?.file_id === 'string' && file.file_id.length <= 512) {
-        await env.DB.prepare('INSERT INTO photo_inbox(update_id, telegram_id, file_id, received_at) VALUES(?, ?, ?, ?) ON CONFLICT(update_id) DO NOTHING')
-          .bind(update.update_id, String(message.from.id), file.file_id, new Date().toISOString()).run();
+        const telegramId = String(message.from.id), now = new Date().toISOString();
+        const previous = await env.DB.prepare('SELECT b.id, b.notified_at FROM photo_batch_items i JOIN photo_batches b ON b.id = i.batch_id WHERE i.update_id = ? AND b.telegram_id = ?').bind(update.update_id, telegramId).first();
+        let batch = previous;
+        if (!batch) {
+          const batchId = crypto.randomUUID().replaceAll('-', '');
+          await env.DB.batch([
+            env.DB.prepare('INSERT INTO photo_inbox(update_id, telegram_id, file_id, received_at) VALUES(?, ?, ?, ?) ON CONFLICT(update_id) DO NOTHING').bind(update.update_id, telegramId, file.file_id, now),
+            env.DB.prepare('INSERT INTO photo_batches(id, telegram_id, created_at) VALUES(?, ?, ?) ON CONFLICT DO NOTHING').bind(batchId, telegramId, now),
+            env.DB.prepare('INSERT INTO photo_batch_items(update_id, batch_id) SELECT ?, id FROM photo_batches WHERE telegram_id = ? AND closed_at IS NULL ON CONFLICT(update_id) DO NOTHING').bind(update.update_id, telegramId),
+          ]);
+          batch = await env.DB.prepare('SELECT b.id, b.notified_at FROM photo_batch_items i JOIN photo_batches b ON b.id = i.batch_id WHERE i.update_id = ? AND b.telegram_id = ?').bind(update.update_id, telegramId).first();
+        }
+        const claim = batch && !batch.notified_at
+          ? await env.DB.prepare("UPDATE photo_batches SET notify_claimed_at = ? WHERE id = ? AND notified_at IS NULL AND (notify_claimed_at IS NULL OR notify_claimed_at < ?)").bind(now, batch.id, new Date(Date.now() - 30000).toISOString()).run()
+          : null;
+        if (claim?.meta.changes) {
+          const url = 'https://t.me/obpresyvanya_bot?startapp=photo_' + batch.id;
+          try {
+            const response = await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: message.chat.id, text: 'Фото отримано. Надішли решту фото цього завдання, а потім відкрий посилання — розпізнавання почнеться автоматично.\n' + url }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) fail(502, 'Не вдалося надіслати посилання в Telegram.');
+            await env.DB.prepare('UPDATE photo_batches SET notified_at = ?, notify_claimed_at = NULL WHERE id = ?').bind(now, batch.id).run();
+          } catch (error) {
+            await env.DB.prepare('UPDATE photo_batches SET notify_claimed_at = NULL WHERE id = ? AND notified_at IS NULL').bind(batch.id).run();
+            throw error;
+          }
+        }
       }
     }
     return { ok: true };
@@ -212,12 +240,25 @@ export async function handleRequest(request, env) {
     const { results } = await env.DB.prepare('SELECT update_id, received_at FROM photo_inbox WHERE telegram_id = ? ORDER BY update_id DESC LIMIT 50').bind(String(user.id)).all();
     return { photos: results };
   }
+  if (request.method === 'POST' && path === '/photos/batch') {
+    if (!env.TELEGRAM_BOT_TOKEN) fail(503, 'Бот не налаштований.');
+    const user = await verifyTelegram(request.headers.get('X-Telegram-Init-Data'), env.TELEGRAM_BOT_TOKEN);
+    if (!user) fail(401, 'Відкрий застосунок у Telegram.');
+    const body = await bodyJson(request);
+    if (typeof body.id !== 'string' || !/^[a-f0-9]{32}$/.test(body.id)) fail(400, 'Неправильне посилання.');
+    const batch = await env.DB.prepare('SELECT id FROM photo_batches WHERE id = ? AND telegram_id = ?').bind(body.id, String(user.id)).first();
+    if (!batch) fail(404, 'Добірку фото не знайдено.');
+    await env.DB.prepare('UPDATE photo_batches SET closed_at = COALESCE(closed_at, ?) WHERE id = ? AND telegram_id = ?').bind(new Date().toISOString(), body.id, String(user.id)).run();
+    const { results } = await env.DB.prepare('SELECT update_id FROM photo_batch_items WHERE batch_id = ? ORDER BY update_id').bind(body.id).all();
+    if (!results.length || results.length > 10) fail(400, 'У добірці має бути від 1 до 10 фото.');
+    return { ids: results.map(row => row.update_id) };
+  }
   if (request.method === 'POST' && path === '/photos/recognize') {
     if (!env.TELEGRAM_BOT_TOKEN || !env.AI) fail(503, 'Розпізнавання ще не налаштоване.');
     const user = await verifyTelegram(request.headers.get('X-Telegram-Init-Data'), env.TELEGRAM_BOT_TOKEN);
     if (!user) fail(401, 'Відкрий застосунок у Telegram.');
     const body = await bodyJson(request), ids = body.ids;
-    if (!Array.isArray(ids) || !ids.length || ids.length > 8 || ids.some(id => !Number.isSafeInteger(id) || id < 0) || new Set(ids).size !== ids.length) fail(400, 'Обери від 1 до 8 фото.');
+    if (!Array.isArray(ids) || !ids.length || ids.length > 10 || ids.some(id => !Number.isSafeInteger(id) || id < 0) || new Set(ids).size !== ids.length) fail(400, 'Обери від 1 до 10 фото.');
     const rows = [], options = CABLES.filter(item => item.coreKind !== 'thread').map(item => ({ id: item.id, brand: item.brand, sections: item.sections }));
     for (const id of ids) {
       const photo = await env.DB.prepare('SELECT file_id FROM photo_inbox WHERE update_id = ? AND telegram_id = ?').bind(id, String(user.id)).first();

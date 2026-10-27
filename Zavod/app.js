@@ -1,4 +1,4 @@
-import { initPhotoImport } from './photo-ui.js?v=1';
+import { initPhotoImport } from './photo-ui.js?v=2';
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName } from './core.js?v=28';
 import { createPlannerUI, restorePlanner } from './plan-ui.js?v=43';
@@ -562,19 +562,13 @@ for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change',
   if (id === 'color') state.color = $('color').value;
   persist(); renderSelectors(); renderSetup(); haptic();
 });
-initPhotoImport({ state, planner, persist });
+const photoImport = initPhotoImport({ state, planner, persist });
 $('open-plan').addEventListener('click', () => showView('plan'));
 $('return-to-plan').addEventListener('click', () => showView('plan'));
 $('copy-plan').addEventListener('click', () => void copyPlan()); $('print-plan').addEventListener('click', () => window.print());
 $('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions(); $('table-filter').value = state.cableId;
 $('table-filter').addEventListener('change', renderTable); $('refresh-table').addEventListener('click', () => void syncCatalog(true));
 $('retry-admin').addEventListener('click', () => void enterAdmin());
-$('connect-photo-bot').addEventListener('click', async () => {
-  $('connect-photo-bot').disabled = true;
-  try { await api('/admin/photo-webhook', { method: 'POST', admin: true }); $('connect-photo-message').textContent = 'Прийом фото підключено.'; }
-  catch (error) { $('connect-photo-message').textContent = error.message; }
-  finally { $('connect-photo-bot').disabled = false; }
-});
 $('visits-panel').addEventListener('toggle', async event => {
   if (!event.currentTarget.open || !authorized) return;
   $('visits-list').textContent = 'Завантажую…';
@@ -618,11 +612,17 @@ $('working-speed-input').addEventListener('input', previewWorkingSpeed);
 $('working-speed-form').addEventListener('submit', event => { event.preventDefault(); saveWorkingSpeed(); });
 $('reset-working-speed').addEventListener('click', () => saveWorkingSpeed(true));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void syncCatalog(); });
-let visitRecorded = false;
+let visitRecorded = false, photoStartHandled = false;
 function startTelegram() {
   initTelegram();
   if (!visitRecorded && window.Telegram?.WebApp?.initData) { visitRecorded = true; void api('/visit', { method: 'POST', admin: true }).catch(() => {}); }
   if (window.Telegram?.WebApp?.initDataUnsafe?.start_param === 'admin' && view === 'setup') showView('admin');
+  const photoStart = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+  if (!photoStartHandled && /^photo_[a-f0-9]{32}$/.test(photoStart ?? '')) {
+    photoStartHandled = true;
+    showView('plan');
+    void photoImport.openBatch(photoStart.slice(6));
+  }
 }
 renderSelectors(); renderSetup(); renderTable(); startTelegram();
 window.addEventListener('load', startTelegram, { once: true });

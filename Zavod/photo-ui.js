@@ -17,9 +17,8 @@ export function initPhotoImport({ state, planner, persist }) {
       $('photo-recognize').hidden = !photos.length; message('');
     } catch (error) { message(error.message); }
   });
-  $('photo-recognize').addEventListener('click', async () => {
-    const ids = [...$('photo-list').querySelectorAll('[data-photo-id]:checked')].map(el => Number(el.dataset.photoId)).sort((a, b) => a - b);
-    if (!ids.length || ids.length > 8) { message('Обери від 1 до 8 фото.'); return; }
+  async function recognize(ids) {
+    if (!ids.length || ids.length > 10) { message('Обери від 1 до 10 фото.'); return; }
     $('photo-recognize').disabled = true; message('Розпізнаю фото. Це може зайняти кілька хвилин…');
     try {
       const result = await api('/photos/recognize', { method: 'POST', admin: true, body: { ids } });
@@ -27,7 +26,19 @@ export function initPhotoImport({ state, planner, persist }) {
       $('photo-rows').innerHTML = rows.map((row, i) => `<fieldset class="card photo-row" data-photo-row="${i}"><legend>Рядок ${i + 1}${row.uncertain ? ' · потребує уваги' : ''}</legend><label>Марка<select data-photo-field="cableId"><option value="">Обери марку</option>${list.map(option => `<option value="${esc(option.id)}" ${option.id === row.cableId ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}</select></label><label>Переріз, мм²<input data-photo-field="section" inputmode="decimal" value="${esc(row.section)}"></label><label>Клас жили<input data-photo-field="coreClass" inputmode="numeric" value="${esc(row.coreClass)}"></label><label>Загальна довжина, км<input data-photo-field="totalKm" value="${esc(row.totalKm)}"></label><label>Барабани, км<input data-photo-field="lengthsText" value="${esc(row.lengthsText)}" placeholder="10,200 + 5,150"></label><div>Кольори: ${COLORS.map(color => `<label><input type="checkbox" data-photo-color="${esc(color.id)}" ${Array.isArray(row.colors) && row.colors.includes(color.id) ? 'checked' : ''}>${esc(color.label)}</label>`).join('')}</div><label><input type="checkbox" data-photo-reviewed> Я перевірив цей рядок</label><label><input type="checkbox" data-photo-exclude> Пропустити цей рядок</label></fieldset>`).join('');
       $('photo-apply').hidden = !rows.length; message(rows.length ? 'Звір рядки з фото, зокрема позначки виконання.' : 'Рядків не знайдено.');
     } catch (error) { message(error.message); } finally { $('photo-recognize').disabled = false; }
+  }
+  $('photo-recognize').addEventListener('click', () => {
+    const ids = [...$('photo-list').querySelectorAll('[data-photo-id]:checked')].map(el => Number(el.dataset.photoId)).sort((a, b) => a - b);
+    void recognize(ids);
   });
+  async function openBatch(id) {
+    $('job-builder').open = true; $('photo-import').open = true;
+    message('Завантажую добірку фото…');
+    try {
+      const { ids } = await api('/photos/batch', { method: 'POST', admin: true, body: { id } });
+      await recognize(ids);
+    } catch (error) { message(error.message); }
+  }
   $('photo-apply').addEventListener('click', () => {
     const fields = [...$('photo-rows').querySelectorAll('[data-photo-row]')].filter(el => !el.querySelector('[data-photo-exclude]').checked);
     if (!fields.length || fields.some(el => !el.querySelector('[data-photo-reviewed]').checked)) { message('Перевір кожен потрібний рядок або познач його як пропущений.'); return; }
@@ -47,4 +58,5 @@ export function initPhotoImport({ state, planner, persist }) {
     state.planDirty = true; persist(); planner.render(); $('job-builder').open = true;
     $('photo-apply').hidden = true; message(`Додано ${result.jobs.length} рядків. Перевір завдання й натисни «Скласти чергу».`);
   });
+  return { openBatch };
 }

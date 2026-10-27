@@ -589,6 +589,7 @@ test('visits accept only signed Telegram users and are visible only to owner', a
 
 test('webhook securely stores album photos once and inbox is isolated per Telegram user', async t => {
   const { call, db, env } = fixture(); t.after(() => db.close());
+  const originalFetch = globalThis.fetch; globalThis.fetch = async () => Response.json({ok:true}); t.after(() => { globalThis.fetch = originalFetch; });
   env.TELEGRAM_WEBHOOK_SECRET = '0123456789abcdef';
   const update = { update_id: 123, message: { chat: { id: 200, type: 'private' }, from: { id: 200 }, photo: [{ file_id: 'small' }, { file_id: 'largest' }] } };
   const request = secret => new Request('https://test.invalid/telegram/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': secret }, body: JSON.stringify(update) });
@@ -628,6 +629,7 @@ test('owner connects webhook without replacing another service', async t => {
   let installed = null, current = 'https://another.example/webhook';
   globalThis.fetch = async (url, options) => {
     if (String(url).endsWith('getWebhookInfo')) return Response.json({ok:true,result:{url:current}});
+    if (String(url).endsWith('sendMessage')) return Response.json({ok:true,result:{}});
     installed = JSON.parse(options.body); return Response.json({ok:true,result:true});
   };
   assert.equal((await call('/admin/photo-webhook', {method:'POST',initData:signed()})).status, 409);
@@ -638,4 +640,29 @@ test('owner connects webhook without replacing another service', async t => {
   assert.match(installed.secret_token, /^[0-9a-f]{64}$/);
   assert.equal(installed.drop_pending_updates, false);
   assert.equal((await worker.fetch(new Request('https://test.invalid/telegram/webhook', {method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':installed.secret_token},body:JSON.stringify({update_id:456,message:{from:{id:200},chat:{id:200,type:'private'},photo:[{file_id:'photo'}]}})}),env)).status, 200);
+});
+
+test('photo links collect the current user batch once, isolate it, and open a new batch after use', async t => {
+  const { call, db, env } = fixture(); t.after(() => db.close());
+  env.TELEGRAM_WEBHOOK_SECRET = '0123456789abcdef';
+  const oldFetch = globalThis.fetch, sent = []; t.after(() => { globalThis.fetch = oldFetch; });
+  globalThis.fetch = async (url, options) => { sent.push(JSON.parse(options.body)); return Response.json({ok:true}); };
+  const sendPhoto = async (id, user = 200) => worker.fetch(new Request('https://test.invalid/telegram/webhook', {
+    method:'POST', headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':env.TELEGRAM_WEBHOOK_SECRET},
+    body:JSON.stringify({update_id:id,message:{from:{id:user},chat:{id:user,type:'private'},photo:[{file_id:'file'+id}]}})
+  }), env);
+  assert.equal((await sendPhoto(1)).status, 200);
+  assert.equal((await sendPhoto(2)).status, 200);
+  assert.equal((await sendPhoto(1)).status, 200);
+  assert.equal(sent.length, 1);
+  const id = sent[0].text.match(/startapp=photo_([a-f0-9]{32})/)[1];
+  assert.equal((await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:201})})).status, 404);
+  assert.equal((await call('/photos/batch',{method:'POST',body:{id}})).status, 401);
+  const opened = await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})});
+  assert.deepEqual(opened.data.ids, [1,2]);
+  assert.deepEqual((await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})})).data.ids,[1,2]);
+  assert.equal((await sendPhoto(3)).status,200);
+  assert.equal(sent.length,2);
+  assert.notEqual(sent[0].text,sent[1].text);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM photo_batches').get().n,2);
 });
