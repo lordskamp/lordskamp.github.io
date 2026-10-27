@@ -1,4 +1,4 @@
-import { initPhotoImport } from './photo-ui.js?v=2';
+import { initPhotoImport } from './photo-ui.js?v=3';
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName } from './core.js?v=28';
 import { createPlannerUI, restorePlanner } from './plan-ui.js?v=43';

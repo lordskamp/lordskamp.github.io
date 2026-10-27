@@ -56,7 +56,8 @@ export function initPhotoImport({ state, planner, persist }) {
     if (existing.length + result.jobs.length > 500) { message('Забагато рядків у завданні.'); return; }
     state.jobs = [...existing, ...result.jobs];
     state.planDirty = true; persist(); planner.render(); $('job-builder').open = true;
-    $('photo-apply').hidden = true; message(`Додано ${result.jobs.length} рядків. Перевір завдання й натисни «Скласти чергу».`);
+    $('photo-apply').hidden = true; message(`Додано ${result.jobs.length} рядків. Складаю чергу.`);
+    $('generate-plan').click();
   });
   return { openBatch };
 }
