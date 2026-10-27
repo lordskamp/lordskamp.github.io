@@ -567,6 +567,14 @@ $('copy-plan').addEventListener('click', () => void copyPlan()); $('print-plan')
 $('table-filter').innerHTML = '<option value="">Усі проводи</option>' + cableOptions(); $('table-filter').value = state.cableId;
 $('table-filter').addEventListener('change', renderTable); $('refresh-table').addEventListener('click', () => void syncCatalog(true));
 $('retry-admin').addEventListener('click', () => void enterAdmin());
+$('visits-panel').addEventListener('toggle', async event => {
+  if (!event.currentTarget.open || !authorized) return;
+  $('visits-list').textContent = 'Завантажую…';
+  try {
+    const result = await api('/admin/visits', { admin: true });
+    $('visits-list').innerHTML = result.visits.length ? result.visits.map(row => `<p><b>${esc(row.first_name || 'Без імені')}</b> ${row.username ? '@' + esc(row.username) : ''} · ID ${esc(row.telegram_id)}<br><small>${esc(date(row.visited_at))}</small></p>`).join('') : '<p>Відвідувань поки немає.</p>';
+  } catch (error) { $('visits-list').textContent = error.message; }
+});
 $('new-measurement').addEventListener('click', () => {
   if (busy) return;
   if (formReady) {
@@ -602,7 +610,12 @@ $('working-speed-input').addEventListener('input', previewWorkingSpeed);
 $('working-speed-form').addEventListener('submit', event => { event.preventDefault(); saveWorkingSpeed(); });
 $('reset-working-speed').addEventListener('click', () => saveWorkingSpeed(true));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void syncCatalog(); });
-function startTelegram() { initTelegram(); if (window.Telegram?.WebApp?.initDataUnsafe?.start_param === 'admin' && view === 'setup') showView('admin'); }
+let visitRecorded = false;
+function startTelegram() {
+  initTelegram();
+  if (!visitRecorded && window.Telegram?.WebApp?.initData) { visitRecorded = true; void api('/visit', { method: 'POST', admin: true }).catch(() => {}); }
+  if (window.Telegram?.WebApp?.initDataUnsafe?.start_param === 'admin' && view === 'setup') showView('admin');
+}
 renderSelectors(); renderSetup(); renderTable(); startTelegram();
 window.addEventListener('load', startTelegram, { once: true });
 if (new URLSearchParams(window.location.search).get('admin') === '1') showView('admin');

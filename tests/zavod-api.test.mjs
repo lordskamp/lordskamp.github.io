@@ -575,3 +575,29 @@ test('CSV preserves Unicode and quotes, and neutralizes spreadsheet formulas', (
   const catalog = baseline(); catalog.recipes[0].notes = ['=HYPERLINK("bad")'];
   const output = csv(catalog); assert.ok(output.startsWith('\uFEFF')); assert.ok(output.includes("\"'=HYPERLINK(\"\"bad\"\")\"")); assert.ok(output.includes('SIKORA'));
 });
+
+test('visits accept only signed Telegram users and are visible only to owner', async t => {
+  const { call, db } = fixture(); t.after(() => db.close());
+  assert.equal((await call('/visit', { method: 'POST' })).status, 401);
+  assert.equal((await call('/visit', { method: 'POST', initData: signed({ id: 200, username: 'worker', first_name: 'Test' }) })).status, 200);
+  assert.equal((await call('/admin/visits', { initData: signed({ id: 200, username: 'worker' }) })).status, 403);
+  const visits = await call('/admin/visits', { initData: signed() });
+  assert.equal(visits.status, 200);
+  assert.deepEqual([visits.data.visits[0].telegram_id, visits.data.visits[0].username, visits.data.visits[0].first_name], ['200', 'worker', 'Test']);
+  assert.ok(visits.data.visits[0].visited_at);
+});
+
+test('webhook securely stores album photos once and inbox is isolated per Telegram user', async t => {
+  const { call, db, env } = fixture(); t.after(() => db.close());
+  env.TELEGRAM_WEBHOOK_SECRET = '0123456789abcdef';
+  const update = { update_id: 123, message: { chat: { id: 200, type: 'private' }, from: { id: 200 }, photo: [{ file_id: 'small' }, { file_id: 'largest' }] } };
+  const request = secret => new Request('https://test.invalid/telegram/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': secret }, body: JSON.stringify(update) });
+  assert.equal((await worker.fetch(request('wrong'), env)).status, 403);
+  assert.equal((await worker.fetch(request(env.TELEGRAM_WEBHOOK_SECRET), env)).status, 200);
+  assert.equal((await worker.fetch(request(env.TELEGRAM_WEBHOOK_SECRET), env)).status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM photo_inbox').get().n, 1);
+  assert.equal(db.prepare('SELECT file_id FROM photo_inbox').get().file_id, 'largest');
+  assert.equal((await call('/photos', { initData: signed({ id: 200 }) })).data.photos.length, 1);
+  assert.equal((await call('/photos', { initData: signed({ id: 201 }) })).data.photos.length, 0);
+  assert.equal((await call('/photos')).status, 401);
+});

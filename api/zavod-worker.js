@@ -177,9 +177,50 @@ export async function handleRequest(request, env) {
     const updatedAt = [...results.map(row => row.updated_at), ...measured.map(row => row.created_at)].reduce((last, timestamp) => timestamp > last ? timestamp : last, '');
     return { cables: CABLES, recipes, calibrations, recipeRevisions: Object.fromEntries(results.map(row => [row.id, row.revision])), updatedAt, source: 'server' };
   }
+  if (request.method === 'POST' && path === '/telegram/webhook') {
+    const secret = env.TELEGRAM_WEBHOOK_SECRET;
+    if (typeof secret !== 'string' || secret.length < 16) fail(503, 'Webhook не налаштований.');
+    const supplied = request.headers.get('X-Telegram-Bot-Api-Secret-Token') ?? '';
+    const expectedHash = await crypto.subtle.digest('SHA-256', encoder.encode(secret));
+    const suppliedHash = await crypto.subtle.digest('SHA-256', encoder.encode(supplied));
+    const key = await crypto.subtle.importKey('raw', expectedHash, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify', 'sign']);
+    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode('webhook'));
+    const key2 = await crypto.subtle.importKey('raw', suppliedHash, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+    if (!await crypto.subtle.verify('HMAC', key2, signature, encoder.encode('webhook'))) fail(403, 'Недійсний webhook.');
+    const update = await bodyJson(request), message = update.message;
+    if (Number.isSafeInteger(update.update_id) && message?.chat?.type === 'private' && Number.isSafeInteger(message.from?.id)
+      && message.from.id === message.chat.id && !message.from.is_bot && Array.isArray(message.photo) && message.photo.length) {
+      const file = message.photo.at(-1);
+      if (typeof file?.file_id === 'string' && file.file_id.length <= 512) {
+        await env.DB.prepare('INSERT INTO photo_inbox(update_id, telegram_id, file_id, received_at) VALUES(?, ?, ?, ?) ON CONFLICT(update_id) DO NOTHING')
+          .bind(update.update_id, String(message.from.id), file.file_id, new Date().toISOString()).run();
+      }
+    }
+    return { ok: true };
+  }
+  if (request.method === 'GET' && path === '/photos') {
+    if (!env.TELEGRAM_BOT_TOKEN) fail(503, 'Бот не налаштований.');
+    const user = await verifyTelegram(request.headers.get('X-Telegram-Init-Data'), env.TELEGRAM_BOT_TOKEN);
+    if (!user) fail(401, 'Відкрий застосунок у Telegram.');
+    const { results } = await env.DB.prepare('SELECT update_id, received_at FROM photo_inbox WHERE telegram_id = ? ORDER BY update_id DESC LIMIT 50').bind(String(user.id)).all();
+    return { photos: results };
+  }
+  if (request.method === 'POST' && path === '/visit') {
+    if (!env.TELEGRAM_BOT_TOKEN) fail(503, 'Бот не налаштований.');
+    const visitor = await verifyTelegram(request.headers.get('X-Telegram-Init-Data'), env.TELEGRAM_BOT_TOKEN);
+    if (!visitor) fail(401, 'Відкрий застосунок у Telegram.');
+    const clean = value => typeof value === 'string' ? value.slice(0, 128) : null;
+    await env.DB.prepare('INSERT INTO bot_visits(telegram_id, username, first_name, visited_at) VALUES(?, ?, ?, ?)')
+      .bind(String(visitor.id), clean(visitor.username), clean(visitor.first_name), new Date().toISOString()).run();
+    return { ok: true };
+  }
   if (!path.startsWith('/admin/')) fail(404, 'Сторінку не знайдено.');
   const user = await admin(request, env);
   if (request.method === 'POST' && path === '/admin/auth') return { ok: true, username: user.username || env.OWNER_USERNAME };
+  if (request.method === 'GET' && path === '/admin/visits') {
+    const { results } = await env.DB.prepare('SELECT telegram_id, username, first_name, visited_at FROM bot_visits ORDER BY visited_at DESC, id DESC LIMIT 200').all();
+    return { visits: results };
+  }
   if (request.method === 'GET' && path === '/admin/measurements') {
     const cursor = new URL(request.url).searchParams.get('before');
     const [before, beforeId] = cursor ? cursor.split('|') : ['9999', ''];

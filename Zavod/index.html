@@ -5,7 +5,7 @@
   <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=25">
   <link rel="stylesheet" href="./plan.css?v=3">
   <link rel="stylesheet" href="./interface.css?v=5">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=43"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=44"></script>
 </head><body>
   <main>
     <section id="view-setup" class="work-view">
@@ -56,6 +56,7 @@
       <div class="page-heading"><div><button class="back" type="button" data-view="setup">← Назад</button><h1>Мої заміри</h1></div><span id="admin-who" class="quiet"></span></div>
       <div id="admin-gate" class="card gate"><p id="admin-message">Перевіряю вхід…</p><a class="primary" href="https://t.me/obpresyvanya_bot?startapp=admin">Відкрити в Telegram</a><button class="back" id="retry-admin" type="button">Перевірити вхід ще раз</button></div>
       <div id="admin-content" hidden>
+        <details class="card" id="visits-panel"><summary>Відвідування бота</summary><p class="quiet">Останні 200 відкриттів у Telegram. Облік починається після підключення.</p><div id="visits-list"></div></details>
         <div class="admin-tabs"><button class="secondary" id="new-measurement" type="button">＋ Новий замір</button><button class="secondary" id="show-journal" type="button">Попередні заміри</button><button class="back" id="import-old" type="button" hidden>Мої старі уточнення</button></div>
         <form id="measurement-form" class="card">
           <div class="form-grid"><label>Провід<select id="measure-cable"></select></label><label>Переріз, мм²<select id="measure-section"></select></label><label id="measure-thread-diameter-picker" hidden>Фінальний діаметр, мм<input id="measure-final-diameter" inputmode="decimal" maxlength="12" autocomplete="off" placeholder="Із завдання"></label></div>
