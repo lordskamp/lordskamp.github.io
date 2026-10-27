@@ -1,7 +1,7 @@
-import { initPhotoImport } from './photo-ui.js?v=3';
+import { initPhotoImport } from './photo-ui.js?v=4';
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName } from './core.js?v=28';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=43';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=44';
 import { drumStatus } from './planner.js?v=30';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=28';
@@ -10,6 +10,7 @@ import { SOURCE_ANNOTATIONS } from './reference-data.js?v=27';
 import { initSplicePlanner } from './splice-ui.js?v=29';
 import { inferMeasurementMode, measurementRecords, measurementSignature, refreshPendingMeasurements } from './measurement-input.js?v=27';
 import { SPEED_STORAGE, speedKey, speedLimit, speedSetup, retainWorkingSpeed } from './speed-override.js?v=28';
+import { applyMarkingSpeed } from './marking.js?v=1';
 import { modeFor } from './pv3-modes.js?v=27';
 
 const $ = id => document.getElementById(id);
@@ -51,7 +52,7 @@ let catalog = cachedCatalog();
 let view = 'setup', toastTimer, syncing = false, catalogRequest = null, authorized = false, authenticating = false;
 let formReady = false, formMode = null, formDraftContext = null, expectedRevision = 0, pendingSave = null, journal = [], nextJournal = null, busy = false;
 let deletedMeasurement = null;
-let setupFromPlan = false;
+let setupFromPlan = false, setupPlanMarking = false;
 const savedSpeeds = read(SPEED_STORAGE);
 const localSpeeds = savedSpeeds && typeof savedSpeeds === 'object' && !Array.isArray(savedSpeeds) ? savedSpeeds : {};
 let speedEditContext = null;
@@ -60,7 +61,7 @@ const localSetup = (cableId, section, color, finalDiameter, mode, allowColorOver
   const original = setupFor(cableId, section, catalog, color, { finalDiameter, mode: allowColorOverride ? preferred : preferred ? modeFor(optionFor(cableId), color, preferred) : undefined, allowColorOverride }), selected = localSpeeds[speedKey(original)];
   return selected == null ? original : retainWorkingSpeed(original, selected);
 };
-const setup = () => localSetup(state.cableId, state.section, 'blue', state.finalDiameter, state.setupExtruderModes[state.cableId] ?? 'dual', true);
+const setup = () => applyMarkingSpeed(localSetup(state.cableId, state.section, 'blue', state.finalDiameter, state.setupExtruderModes[state.cableId] ?? 'dual', true), setupFromPlan && setupPlanMarking);
 const recipe = color => {
   const result = setup(color);
   return { ...result.stored, ...result.effective, color: 'blue', mode: result.mode, maxSpeed: result.effective.workingSpeed, optionId: result.option.id, finalDiameter: result.finalDiameter, noDye: result.noDye };
@@ -76,13 +77,13 @@ const planner = createPlannerUI({ state, getSetup: localSetup, persist, toast, h
     if (!['black', 'yellow-green'].includes(drum.color)) state.modePreferences[drum.cableId] = drum.mode;
   }
   if (isThread(drum.cableId)) state.finalDiameter = String(drum.finalDiameter ?? '');
-  setupFromPlan = true; persist(); renderSelectors(); showView('setup');
+  setupFromPlan = true; setupPlanMarking = drum.marking === true; persist(); renderSelectors(); showView('setup');
 } });
 
 function showView(next) {
   if (next === 'table' && view === 'setup') $('table-filter').value = state.cableId;
   view = next;
-  if (next !== 'setup') setupFromPlan = false;
+  if (next !== 'setup') { setupFromPlan = false; setupPlanMarking = false; }
   $('return-to-plan').hidden = next !== 'setup' || !setupFromPlan;
   for (const name of ['setup', 'plan', 'table', 'admin']) $('view-' + name).hidden = next !== name;
   document.querySelectorAll('[data-view]').forEach(button => button.toggleAttribute('data-active', button.dataset.view === next));
@@ -123,6 +124,7 @@ function renderSetup() {
       <div class="tool-row"><div><img src="./DORN.svg" alt=""><span>Дорн, мм</span><div class="tool-values">${value('dorn')}</div></div><div><img src="./MATRIX.svg" alt=""><span>Матриця, мм</span><div class="tool-values">${value('matrix')}</div></div></div>
     </section>
     <section class="card speeds"><h2>Швидкість <small>м/хв</small></h2><div class="speed-stages"><div><span>Запуск</span><strong>${fmt(speeds.first)}</strong></div><div><span>Проміжна</span><strong>${fmt(speeds.second)}</strong></div><div><span>Робоча</span><button type="button" id="edit-working-speed" class="speed-edit" aria-label="Змінити робочу швидкість"><strong>${predicted('workingSpeed') ? '<span class="estimate-mark">≈</span>' : ''}${fmt(speeds.working)}</strong><span aria-hidden="true">✎</span></button></div></div>${info.sources.workingSpeed === 'forecast' ? '<small class="rpm-basis-warning speed-warning">Прогноз швидкості — перевір на лінії.</small>' : ''}</section>
+    ${setupFromPlan && setupPlanMarking ? '<p class="notice">Маркування: увімкни принтер. Швидкість не більше 150 м/хв.</p>' : ''}
     ${info.speedWarning ? `<p class="notice">${esc(info.speedWarning)}</p>` : ''}`;
   const comparisons = ['extruder1', ...(info.mode === 'dual' ? ['extruder2'] : []), ...(thread ? [] : ['sikoraWire', 'sikoraOuter']), 'dorn', 'matrix', 'workingSpeed'].map(key => {
     const label = FIELDS.find(([field]) => field === (key === 'workingSpeed' ? 'maxSpeed' : key))?.[1];
@@ -281,6 +283,7 @@ async function copyPlan() {
     const labeled = key => `${display(info.effective[key])} (${info.sources[key] === 'manual' ? 'орієнтовно · за твоєю швидкістю' : VALUE_LABELS[info.sources[key]] ?? 'ще не визначено'})`;
     const sikora = isThread(drum.cableId) ? '' : ` Сікора ${labeled('sikoraWire')} / ${labeled('sikoraOuter')}.`;
     lines.push(`\nБарабан ${i + 1}${planner.journalNumber(drum) == null ? '' : ' · журнал №' + planner.journalNumber(drum)}${drum.name ? ' · ' + drum.name : ''}: ${planner.drumTitle(drum)} · ${isThread(drum.cableId) ? 'без барвника' : colorName(drum.color)}, ${drum.length} м.`, `Оберти шнека №1 ${labeled('extruder1')}, №2 ${r.mode === 'single' ? 'вимк.' : labeled('extruder2')} об/хв.${sikora} Дорн ${labeled('dorn')}, матриця ${labeled('matrix')}. Швидкості: 1 — ${fmt(info.stages.first)}, 2 — ${fmt(info.stages.second)}, робоча — ${labeled('workingSpeed')} м/хв.`, `Стан: ${drumStatus(drum) === 'done' ? 'готово' : drumStatus(drum) === 'active' ? 'в роботі' : 'у черзі'}. ${result.target > 0 ? `На екрані: ${fmt(result.target)} м.` : 'Завдання зупинки потребує уточнення.'}`, ...result.errors, ...(result.warnings || []), ...result.events.map(e => `≈ ${fmt(e.at)} м: барвник №${e.extruder} — ${e.dye}.`));
+    if (drum.marking) lines.push('Маркування: увімкнути принтер; швидкість не більше 150 м/хв.');
     if (result.transition) lines.push(`Планова зупинка: ${fmt(result.stopAt)} м. Стравити через байпас і головку, запустити лінію; після появи якісного кабелю додати 170 м до поточного показу для перекидання. Відмотати неякісну ділянку.`);
     if (result.setupChange) lines.push(planner.transitionText(drum, i));
     if (result.splice?.spliceCount && !result.splice.errors.length) lines.push('На лейбл: ' + result.splice.label);
@@ -557,6 +560,7 @@ $('thread-final-diameter').addEventListener('input', () => {
   state.finalDiameter = $('thread-final-diameter').value; persist(); renderSetup();
 });
 for (const id of ['cable', 'section', 'color']) $(id).addEventListener('change', () => {
+  if (id === 'cable' || id === 'section') setupPlanMarking = false;
   if (id === 'cable') { state.cableId = $('cable').value; if (!CABLES.find(c => c.id === state.cableId).sections.includes(state.section)) state.section = CABLES.find(c => c.id === state.cableId).sections[0]; }
   if (id === 'section') state.section = Number($('section').value);
   if (id === 'color') state.color = $('color').value;

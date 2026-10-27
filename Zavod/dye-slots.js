@@ -14,7 +14,8 @@ export function normalizeDyeSlots(value) {
 }
 
 export function dyeMode(drum) {
-  const mode = modeFor(optionFor(drum?.cableId), drum?.color, drum?.mode);
+  const wanted = drum?.idealColor === true && !['black', 'yellow-green'].includes(drum?.color) ? 'single' : drum?.mode;
+  const mode = modeFor(optionFor(drum?.cableId), drum?.color, wanted);
   return mode === 'single' ? 'single' : 'dual';
 }
 

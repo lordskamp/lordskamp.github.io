@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHmac, randomUUID } from 'node:crypto';
-import worker, { verifyTelegram } from '../api/zavod-worker.js';
+import worker, { verifyTelegram, processPhotoBatches } from '../api/zavod-worker.js';
 import { baseline, findRecipe, csv } from '../Zavod/store.js';
 import { CATALOG_OPTIONS, baseFor, measurementColor, practicalFor, recipeIdFor } from '../Zavod/catalog-base.js';
 import { setupFor } from '../Zavod/setup-data.js';
@@ -642,11 +642,20 @@ test('owner connects webhook without replacing another service', async t => {
   assert.equal((await worker.fetch(new Request('https://test.invalid/telegram/webhook', {method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':installed.secret_token},body:JSON.stringify({update_id:456,message:{from:{id:200},chat:{id:200,type:'private'},photo:[{file_id:'photo'}]}})}),env)).status, 200);
 });
 
-test('photo links collect the current user batch once, isolate it, and open a new batch after use', async t => {
+test('background recognition groups photos, updates one message, isolates results and opens the next batch', async t => {
   const { call, db, env } = fixture(); t.after(() => db.close());
   env.TELEGRAM_WEBHOOK_SECRET = '0123456789abcdef';
-  const oldFetch = globalThis.fetch, sent = []; t.after(() => { globalThis.fetch = oldFetch; });
-  globalThis.fetch = async (url, options) => { sent.push(JSON.parse(options.body)); return Response.json({ok:true}); };
+  const oldFetch = globalThis.fetch, messages = []; t.after(() => { globalThis.fetch = oldFetch; });
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes('/getFile')) return Response.json({ok:true,result:{file_path:'photos/test.jpg',file_size:3}});
+    if (String(url).includes('/file/bot')) return new Response(new Uint8Array([1,2,3]));
+    messages.push({ url: String(url), body: JSON.parse(options.body) });
+    return Response.json({ok:true,result:{message_id:42}});
+  };
+  env.AI = { async run(_model,input) {
+    assert.match(input.messages[0].content[0].text,/1,5\/4/);
+    return { choices:[{message:{content:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,coreClass:4,idealColor:true,marking:true,colors:['blue'],lengthsText:'10'}]})}}] };
+  } };
   const sendPhoto = async (id, user = 200) => worker.fetch(new Request('https://test.invalid/telegram/webhook', {
     method:'POST', headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':env.TELEGRAM_WEBHOOK_SECRET},
     body:JSON.stringify({update_id:id,message:{from:{id:user},chat:{id:user,type:'private'},photo:[{file_id:'file'+id}]}})
@@ -654,15 +663,20 @@ test('photo links collect the current user batch once, isolate it, and open a ne
   assert.equal((await sendPhoto(1)).status, 200);
   assert.equal((await sendPhoto(2)).status, 200);
   assert.equal((await sendPhoto(1)).status, 200);
-  assert.equal(sent.length, 1);
-  const id = sent[0].text.match(/startapp=photo_([a-f0-9]{32})/)[1];
+  assert.equal(messages.length, 1);
+  const id = db.prepare('SELECT id FROM photo_batches').get().id;
   assert.equal((await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:201})})).status, 404);
   assert.equal((await call('/photos/batch',{method:'POST',body:{id}})).status, 401);
+  assert.equal((await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})})).data.state, 'collecting');
+  await processPhotoBatches(env, new Date(Date.now()+30000));
   const opened = await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})});
-  assert.deepEqual(opened.data.ids, [1,2]);
-  assert.deepEqual((await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})})).data.ids,[1,2]);
+  assert.equal(opened.data.state, 'ready');
+  assert.equal(opened.data.rows.length, 2);
+  assert.equal(opened.data.rows[0].coreClass,4);
+  assert.equal(messages.filter(m=>m.url.endsWith('/sendMessage')).length,1);
+  assert.equal(messages.filter(m=>m.url.endsWith('/editMessageText')).length,2);
+  assert.match(messages.at(-1).body.text,/startapp=photo_/);
   assert.equal((await sendPhoto(3)).status,200);
-  assert.equal(sent.length,2);
-  assert.notEqual(sent[0].text,sent[1].text);
+  assert.equal(messages.filter(m=>m.url.endsWith('/sendMessage')).length,2);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM photo_batches').get().n,2);
 });

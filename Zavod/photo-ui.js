@@ -1,7 +1,7 @@
 import { CATALOG_OPTIONS } from './catalog-options.js?v=27';
 import { COLORS } from './core.js?v=29';
 import { api } from './store.js?v=28';
-import { photoRowsToJobs } from './photo-import.js';
+import { photoRowsToJobs } from './photo-import.js?v=2';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -17,14 +17,17 @@ export function initPhotoImport({ state, planner, persist }) {
       $('photo-recognize').hidden = !photos.length; message('');
     } catch (error) { message(error.message); }
   });
+  function showRows(result) {
+    rows = Array.isArray(result.rows) ? result.rows : [];
+    $('photo-rows').innerHTML = rows.map((row, i) => `<fieldset class="card photo-row" data-photo-row="${i}"><legend>Рядок ${i + 1}${row.uncertain ? ' · потребує уваги' : ''}</legend><label>Марка<select data-photo-field="cableId"><option value="">Обери марку</option>${list.map(option => `<option value="${esc(option.id)}" ${option.id === row.cableId ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}</select></label><label>Переріз, мм²<input data-photo-field="section" inputmode="decimal" value="${esc(row.section)}"></label><label>Клас жили<input data-photo-field="coreClass" inputmode="numeric" value="${esc(row.coreClass)}"></label><label>Загальна довжина, км<input data-photo-field="totalKm" value="${esc(row.totalKm)}"></label><label>Барабани, км<input data-photo-field="lengthsText" value="${esc(row.lengthsText)}" placeholder="10,200 + 5,150"></label><div>Кольори: ${COLORS.map(color => `<label><input type="checkbox" data-photo-color="${esc(color.id)}" ${Array.isArray(row.colors) && row.colors.includes(color.id) ? 'checked' : ''}>${esc(color.label)}</label>`).join('')}</div><label><input type="checkbox" data-photo-ideal ${row.idealColor === true ? 'checked' : ''}> Ідеальний колір (1 екструдер, окрім чорного і жовто-зеленого)</label><label><input type="checkbox" data-photo-marking ${row.marking === true ? 'checked' : ''}> З маркуванням (принтер, до 150 м/хв)</label><label><input type="checkbox" data-photo-reviewed> Я перевірив цей рядок</label><label><input type="checkbox" data-photo-exclude> Пропустити цей рядок</label></fieldset>`).join('');
+    $('photo-apply').hidden = !rows.length; message(rows.length ? 'Звір рядки з фото, зокрема позначки виконання.' : 'Рядків не знайдено.');
+  }
   async function recognize(ids) {
     if (!ids.length || ids.length > 10) { message('Обери від 1 до 10 фото.'); return; }
     $('photo-recognize').disabled = true; message('Розпізнаю фото. Це може зайняти кілька хвилин…');
     try {
       const result = await api('/photos/recognize', { method: 'POST', admin: true, body: { ids } });
-      rows = Array.isArray(result.rows) ? result.rows : [];
-      $('photo-rows').innerHTML = rows.map((row, i) => `<fieldset class="card photo-row" data-photo-row="${i}"><legend>Рядок ${i + 1}${row.uncertain ? ' · потребує уваги' : ''}</legend><label>Марка<select data-photo-field="cableId"><option value="">Обери марку</option>${list.map(option => `<option value="${esc(option.id)}" ${option.id === row.cableId ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}</select></label><label>Переріз, мм²<input data-photo-field="section" inputmode="decimal" value="${esc(row.section)}"></label><label>Клас жили<input data-photo-field="coreClass" inputmode="numeric" value="${esc(row.coreClass)}"></label><label>Загальна довжина, км<input data-photo-field="totalKm" value="${esc(row.totalKm)}"></label><label>Барабани, км<input data-photo-field="lengthsText" value="${esc(row.lengthsText)}" placeholder="10,200 + 5,150"></label><div>Кольори: ${COLORS.map(color => `<label><input type="checkbox" data-photo-color="${esc(color.id)}" ${Array.isArray(row.colors) && row.colors.includes(color.id) ? 'checked' : ''}>${esc(color.label)}</label>`).join('')}</div><label><input type="checkbox" data-photo-reviewed> Я перевірив цей рядок</label><label><input type="checkbox" data-photo-exclude> Пропустити цей рядок</label></fieldset>`).join('');
-      $('photo-apply').hidden = !rows.length; message(rows.length ? 'Звір рядки з фото, зокрема позначки виконання.' : 'Рядків не знайдено.');
+      showRows(result);
     } catch (error) { message(error.message); } finally { $('photo-recognize').disabled = false; }
   }
   $('photo-recognize').addEventListener('click', () => {
@@ -34,17 +37,27 @@ export function initPhotoImport({ state, planner, persist }) {
   async function openBatch(id) {
     $('job-builder').open = true; $('photo-import').open = true;
     message('Завантажую добірку фото…');
+    const bar = $('photo-progress');
     try {
-      const { ids } = await api('/photos/batch', { method: 'POST', admin: true, body: { id } });
-      await recognize(ids);
-    } catch (error) { message(error.message); }
+      while (true) {
+        const result = await api('/photos/batch', { method: 'POST', admin: true, body: { id } });
+        if (!result.state) { await recognize(result.ids); return; }
+        if (result.state === 'ready') { bar.hidden = true; showRows(result); return; }
+        if (result.state === 'failed') { bar.hidden = true; message('Не вдалося розпізнати фото. Надішли їх боту ще раз.'); return; }
+        const total = Number(result.total) || 0, completed = Number(result.completed) || 0;
+        bar.hidden = false;
+        if (total > 0) { bar.max = total; bar.value = completed; message('Розпізнано фото: ' + completed + ' із ' + total + '. Бот повідомить про завершення.'); }
+        else { bar.removeAttribute('value'); message('Фото отримано. Очікую початку розпізнавання; бот повідомить про завершення.'); }
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    } catch (error) { bar.hidden = true; message(error.message); }
   }
   $('photo-apply').addEventListener('click', () => {
     const fields = [...$('photo-rows').querySelectorAll('[data-photo-row]')].filter(el => !el.querySelector('[data-photo-exclude]').checked);
     if (!fields.length || fields.some(el => !el.querySelector('[data-photo-reviewed]').checked)) { message('Перевір кожен потрібний рядок або познач його як пропущений.'); return; }
     const checked = fields.map(el => {
       const get = key => el.querySelector(`[data-photo-field="${key}"]`).value.trim();
-      return { cableId: get('cableId'), section: get('section').replace(',', '.'), coreClass: get('coreClass'), totalKm: get('totalKm'), lengthsText: get('lengthsText'), colors: [...el.querySelectorAll('[data-photo-color]:checked')].map(color => color.dataset.photoColor) };
+      return { cableId: get('cableId'), section: get('section').replace(',', '.'), coreClass: get('coreClass'), totalKm: get('totalKm'), lengthsText: get('lengthsText'), idealColor: el.querySelector('[data-photo-ideal]').checked, marking: el.querySelector('[data-photo-marking]').checked, colors: [...el.querySelectorAll('[data-photo-color]:checked')].map(color => color.dataset.photoColor) };
     });
     const result = photoRowsToJobs(checked);
     if (result.errors.length) { message(result.errors.join(' ')); return; }

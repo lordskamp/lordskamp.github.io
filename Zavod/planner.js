@@ -145,8 +145,10 @@ function expandValidated(jobs) {
     cableId: job.cableId,
     section: job.section,
     ...(conductorClass(job) !== null ? { coreClass: conductorClass(job) } : {}),
+    ...(job.idealColor === true ? { idealColor: true } : {}),
+    ...(job.marking === true ? { marking: true } : {}),
     ...(isThread(job) ? { finalDiameter: job.finalDiameter } : {}),
-    ...(isThread(job) ? { mode: 'single' } : ['black', 'yellow-green'].includes(color) ? { mode: 'dual' } : ['single', 'dual'].includes(job.mode) ? { mode: job.mode } : {}),
+    ...(isThread(job) ? { mode: 'single' } : ['black', 'yellow-green'].includes(color) ? { mode: 'dual' } : job.idealColor === true ? { mode: 'single' } : ['single', 'dual'].includes(job.mode) ? { mode: job.mode } : {}),
     color,
     length: String(length),
     name: '',
@@ -258,14 +260,17 @@ export function scheduleJobs(jobs, existingDrums = [], options = {}) {
     }
     if (saved) retained.add(saved.id);
     const unchanged = saved?.cableId === drum.cableId && number(saved?.section) === drum.section && (isThread(drum) || saved?.color === drum.color)
-      && number(saved?.length) === number(drum.length) && sameDiameter(saved, drum) && sameClass(saved, drum);
+      && number(saved?.length) === number(drum.length) && sameDiameter(saved, drum) && sameClass(saved, drum)
+      && Boolean(saved?.idealColor) === Boolean(drum.idealColor) && Boolean(saved?.marking) === Boolean(drum.marking);
     const status = unchanged ? drumStatus(saved) : 'queued';
     if (saved && drumStatus(saved) !== 'queued' && !unchanged) resetStarted = true;
     const mode = isThread(drum) ? 'single' : ['black', 'yellow-green'].includes(drum.color) ? 'dual'
-      : unchanged && ['single', 'dual'].includes(saved?.mode) ? saved.mode : drum.mode;
+      : drum.idealColor === true ? 'single' : unchanged && ['single', 'dual'].includes(saved?.mode) ? saved.mode : drum.mode;
     const restored = { ...saved, ...drum, name: saved?.name ?? '', breakdowns: saved?.breakdowns ?? '', status };
     if (!unchanged) delete restored.journalNumber;
     if (!drum.coiling) delete restored.coiling;
+    if (!drum.idealColor) delete restored.idealColor;
+    if (!drum.marking) delete restored.marking;
     if (!Object.hasOwn(drum, 'coreClass')) delete restored.coreClass;
     if (['single', 'dual'].includes(mode)) restored.mode = mode; else delete restored.mode;
     return restored;

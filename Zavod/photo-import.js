@@ -10,7 +10,8 @@ export function photoRowsToJobs(rows, makeId = () => crypto.randomUUID()) {
     const label = `Рядок ${i + 1}`;
     if (!row || typeof row !== 'object' || Array.isArray(row)) { errors.push(`${label}: перевір дані.`); return; }
     const option = CATALOG_OPTIONS.find(item => item.id === row.cableId);
-    const section = Number(row.section);
+    const notation = typeof row.section === 'string' ? row.section.trim().match(/^(\d+(?:[.,]\d+)?)\s*\/\s*([1-6])$/) : null;
+    const section = Number(notation ? notation[1].replace(',', '.') : String(row.section ?? '').replace(',', '.'));
     const colors = Array.isArray(row.colors) ? row.colors : [];
     const lengthsText = typeof row.lengthsText === 'string' ? row.lengthsText.trim() : '';
     const parsed = parseJobLengths(lengthsText);
@@ -21,11 +22,13 @@ export function photoRowsToJobs(rows, makeId = () => crypto.randomUUID()) {
       const total = parseJobLengths(String(row.totalKm));
       if (total.errors.length || total.lengths.length !== 1 || total.lengths[0] !== parsed.lengths.reduce((a, b) => a + b, 0)) errors.push(`${label}: загальна довжина не збігається з частинами.`);
     }
-    const coreClass = row.coreClass === null || row.coreClass === undefined || row.coreClass === '' ? null : Number(row.coreClass);
+    const writtenClass = notation ? Number(notation[2]) : null;
+    const coreClass = row.coreClass === null || row.coreClass === undefined || row.coreClass === '' ? writtenClass : Number(row.coreClass);
+    if (writtenClass !== null && coreClass !== writtenClass) errors.push(`${label}: клас жили не збігається з позначенням перерізу.`);
     if (coreClass !== null && ![1, 2, 3, 4, 5, 6].includes(coreClass)) errors.push(`${label}: уточни клас жили.`);
     if (row.uncertain === true) errors.push(`${label}: перевір нерозбірливий запис.`);
     if (option) jobs.push({ id: makeId(), cableId: option.id, section, colors, cores: colors.length, lengthsText,
-      ...(coreClass !== null ? { coreClass } : {}), urgent: false, batchSize: 3 });
+      ...(coreClass !== null ? { coreClass } : {}), ...(row.idealColor === true ? { idealColor: true } : {}), ...(row.marking === true ? { marking: true } : {}), urgent: false, batchSize: 3 });
   });
   return { jobs: errors.length ? [] : jobs, errors };
 }
