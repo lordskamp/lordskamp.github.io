@@ -2,6 +2,20 @@ import { CATALOG_OPTIONS } from './catalog-options.js?v=27';
 import { COLORS } from './core.js?v=29';
 import { parseJobLengths } from './planner.js?v=34';
 
+// The printed total is a cross-check, not another drum.
+export function photoLengthStatus(lengthsText, totalText) {
+  const lengths = parseJobLengths(String(lengthsText ?? ''));
+  const suppliedTotal = String(totalText ?? '').trim();
+  const printed = suppliedTotal ? parseJobLengths(suppliedTotal) : null;
+  if (!String(lengthsText ?? '').trim()) return { warning: true, message: suppliedTotal ? 'Вкажи довжини барабанів і звір із сумою на фото.' : 'Вкажи довжину кожного барабана.' };
+  if (lengths.errors.length || !lengths.lengths.length) return { warning: true, message: 'Перевір довжини барабанів.' };
+  const sum = lengths.lengths.reduce((a, b) => a + b, 0);
+  const formatted = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 3 }).format(sum / 1000);
+  const text = 'Разом: ' + formatted + ' км на кожен колір';
+  if (printed && (printed.errors.length || printed.lengths.length !== 1)) return { warning: true, message: text + ' · перевір суму з фото.' };
+  if (printed && printed.lengths[0] !== sum) return { warning: true, message: text + ' · не збігається із сумою на фото.' };
+  return { warning: false, message: text + (printed ? ' · збігається з фото' : '') };
+}
 // Vision output is untrusted: never silently select a cable, colour or length.
 export function photoRowsToJobs(rows, makeId = () => crypto.randomUUID()) {
   if (!Array.isArray(rows) || !rows.length || rows.length > 500) return { jobs: [], errors: ['Немає рядків завдання або їх забагато.'] };

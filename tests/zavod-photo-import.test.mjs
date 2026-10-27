@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { photoRowsToJobs } from '../Zavod/photo-import.js';
+import { photoRowsToJobs, photoLengthStatus } from '../Zavod/photo-import.js';
 import { applyMarkingSpeed } from '../Zavod/marking.js';
 import { setupFor } from '../Zavod/setup-data.js';
 import { baseline } from '../Zavod/store.js';
@@ -62,4 +62,13 @@ test('marking and ideal colour survive restoring saved tasks and drums', () => {
   assert.equal(state.drums[0].marking,true);
   assert.equal(state.drums[0].idealColor,true);
   assert.equal(state.drums[0].coreClass,4);
+});
+
+test('photo drum lengths show their per-colour sum and flag disagreements with the sheet', () => {
+  assert.deepEqual(photoLengthStatus('10,200 + 5,150', '15,350'), { warning:false, message:'Разом: 15,35 км на кожен колір · збігається з фото' });
+  assert.equal(photoLengthStatus('10,200 + 5,150', '15,360').warning, true);
+  assert.equal(photoLengthStatus('', '15,350').warning, true);
+  assert.match(photoLengthStatus('', '15,350').message, /довжини барабанів/);
+  assert.equal(photoLengthStatus('2x8,130', '').warning, false);
+  assert.equal(photoLengthStatus('нечитабельно', '15,350').warning, true);
 });

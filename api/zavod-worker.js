@@ -161,8 +161,8 @@ async function deleteMeasurement(id, env, user) {
   return { ok: true, id, deleted: true, catalogChanged: Boolean(calibration) || results.slice(1).some(result => result.meta.changes > 0) };
 }
 
-async function recognizePhoto(env, id, telegramId, options) {
-      const photo = await env.DB.prepare('SELECT file_id FROM photo_inbox WHERE update_id = ? AND telegram_id = ?').bind(id, String(telegramId)).first();
+async function recognizePhoto(env, id, telegramId, options, knownFileId = null) {
+      const photo = knownFileId ? { file_id: knownFileId } : await env.DB.prepare('SELECT file_id FROM photo_inbox WHERE update_id = ? AND telegram_id = ?').bind(id, String(telegramId)).first();
       if (!photo) fail(404, 'Фото не знайдено.');
       const telegram = await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/getFile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_id: photo.file_id }) });
       const data = await telegram.json();
@@ -208,7 +208,7 @@ export async function processPhotoBatches(env, now = new Date()) {
     } catch { /* Try again on the next scheduled run. */ }
   }
   await env.DB.prepare("UPDATE photo_processing SET status = 'collecting' WHERE status = 'processing' AND updated_at < ?").bind(new Date(now.getTime() - 15 * 60 * 1000).toISOString()).run();
-  const cutoff = new Date(now.getTime() - 20000).toISOString();
+  const cutoff = new Date(now.getTime() - 10000).toISOString();
   const pending = await env.DB.prepare("SELECT p.batch_id, p.telegram_message_id, b.telegram_id FROM photo_processing p JOIN photo_batches b ON b.id = p.batch_id WHERE p.status = 'collecting' AND NOT EXISTS (SELECT 1 FROM photo_batch_items i JOIN photo_inbox f ON f.update_id = i.update_id WHERE i.batch_id = b.id AND f.received_at > ?) ORDER BY b.created_at LIMIT 1").bind(cutoff).all();
   for (const batch of pending.results) {
     const startedAt = new Date().toISOString();
@@ -216,25 +216,34 @@ export async function processPhotoBatches(env, now = new Date()) {
     if (!claimed.meta.changes) continue;
     await env.DB.prepare("UPDATE photo_batches SET closed_at = COALESCE(closed_at, ?) WHERE id = ?").bind(startedAt, batch.batch_id).run();
     try {
-      const { results } = await env.DB.prepare('SELECT update_id FROM photo_batch_items WHERE batch_id = ? ORDER BY update_id').bind(batch.batch_id).all();
+      const { results } = await env.DB.prepare('SELECT i.update_id, f.file_id FROM photo_batch_items i JOIN photo_inbox f ON f.update_id = i.update_id WHERE i.batch_id = ? AND f.telegram_id = ? ORDER BY i.update_id').bind(batch.batch_id, String(batch.telegram_id)).all();
       if (!results.length || results.length > 10) throw new Error('photo count');
       const total = results.length;
       await env.DB.prepare('UPDATE photo_processing SET total = ?, updated_at = ? WHERE batch_id = ?').bind(total, new Date().toISOString(), batch.batch_id).run();
       const options = CABLES.filter(item => item.coreKind !== 'thread').map(item => ({ id: item.id, brand: item.brand, sections: item.sections }));
+      try { await photoTelegram(env, batch, 'Розпізнаю фото: 0/' + total + '\nЗачекай, я повідомлю, коли результат буде готовий.'); } catch { /* Status is optional. */ }
       const rows = [];
-      for (let i = 0; i < total; i++) {
-        rows.push(...await recognizePhoto(env, results[i].update_id, batch.telegram_id, options));
-        await env.DB.prepare('UPDATE photo_processing SET completed = ?, updated_at = ? WHERE batch_id = ?').bind(i + 1, new Date().toISOString(), batch.batch_id).run();
-        if (i + 1 === Math.ceil(total / 2) && i + 1 < total) {
-          const blocks = Math.round((i + 1) / total * 10);
-          try { await photoTelegram(env, batch, 'Розпізнаю фото: ' + (i + 1) + '/' + total + '\n' + '■'.repeat(blocks) + '□'.repeat(10 - blocks)); } catch { /* Progress is optional. */ }
+      // Two concurrent requests accelerate multi-page orders without sending all images at once.
+      for (let i = 0; i < total; i += 2) {
+        const group = results.slice(i, i + 2);
+        const outcomes = await Promise.allSettled(group.map(photo => recognizePhoto(env, photo.update_id, batch.telegram_id, options, photo.file_id)));
+        for (const outcome of outcomes) {
+          if (outcome.status === 'rejected') throw outcome.reason;
+          rows.push(...outcome.value);
+        }
+        const completed = i + group.length;
+        await env.DB.prepare('UPDATE photo_processing SET completed = ?, updated_at = ? WHERE batch_id = ?').bind(completed, new Date().toISOString(), batch.batch_id).run();
+        if (completed >= Math.ceil(total / 2) && completed < total && i < Math.ceil(total / 2)) {
+          const blocks = Math.round(completed / total * 10);
+          try { await photoTelegram(env, batch, 'Розпізнаю фото: ' + completed + '/' + total + '\n' + '■'.repeat(blocks) + '□'.repeat(10 - blocks)); } catch { /* Progress is optional. */ }
         }
       }
       await env.DB.prepare("UPDATE photo_processing SET status = 'ready', rows_json = ?, updated_at = ? WHERE batch_id = ?").bind(JSON.stringify(rows), new Date().toISOString(), batch.batch_id).run();
       try {
         if (await photoTelegram(env, batch, 'Фото розпізнано: ' + total + '/' + total + '\n■■■■■■■■■■\nВідкрий завдання, перевір рядки та склади чергу:\nhttps://t.me/obpresyvanya_bot?startapp=photo_' + batch.batch_id, true)) await env.DB.prepare('UPDATE photo_processing SET completion_notified_at = ? WHERE batch_id = ?').bind(new Date().toISOString(), batch.batch_id).run();
       } catch { /* Retry delivery on a later scheduled run. */ }
-    } catch {
+    } catch (error) {
+      console.error('photo recognition failed:', error instanceof HttpError ? error.status + ' ' + error.message : 'unexpected error');
       await env.DB.prepare("UPDATE photo_processing SET status = 'failed', updated_at = ? WHERE batch_id = ?").bind(new Date().toISOString(), batch.batch_id).run();
       try { await photoTelegram(env, batch, 'Не вдалося розпізнати добірку. Надішли від 1 до 10 фото ще раз або вибери раніше надіслані фото у плануванні.', true); } catch { /* The error stays visible in the app. */ }
     }
@@ -299,7 +308,7 @@ export async function handleRequest(request, env) {
           try {
             const response = await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: message.chat.id, text: 'Фото отримано. Надішли решту фото завдання. Розпізнавання почнеться автоматично; я повідомлю, коли воно завершиться.' }),
+              body: JSON.stringify({ chat_id: message.chat.id, text: 'Фото отримано. Якщо є інші фото цього завдання, надішли їх зараз. Розпізнавання почнеться автоматично і для одного фото. Я повідомлю, коли воно завершиться.' }),
             });
             const result = await response.json();
             if (!response.ok || !result.ok) fail(502, 'Не вдалося надіслати посилання в Telegram.');
@@ -332,7 +341,11 @@ export async function handleRequest(request, env) {
     const batch = await env.DB.prepare('SELECT id FROM photo_batches WHERE id = ? AND telegram_id = ?').bind(body.id, String(user.id)).first();
     if (!batch) fail(404, 'Добірку фото не знайдено.');
     const processing = await env.DB.prepare('SELECT status, completed, total, rows_json FROM photo_processing WHERE batch_id = ?').bind(body.id).first();
-    if (processing) return { state: processing.status, completed: processing.completed, total: processing.total, ...(processing.status === 'ready' ? { rows: JSON.parse(processing.rows_json ?? '[]') } : {}) };
+    if (processing) {
+      const finished = processing.status === 'ready';
+      const ids = finished ? (await env.DB.prepare('SELECT update_id FROM photo_batch_items WHERE batch_id = ? ORDER BY update_id').bind(body.id).all()).results.map(row => row.update_id) : [];
+      return { state: processing.status, completed: processing.completed, total: processing.total, ...(finished ? { rows: JSON.parse(processing.rows_json ?? '[]'), ids } : {}) };
+    }
     await env.DB.prepare('UPDATE photo_batches SET closed_at = COALESCE(closed_at, ?) WHERE id = ? AND telegram_id = ?').bind(new Date().toISOString(), body.id, String(user.id)).run();
     const { results } = await env.DB.prepare('SELECT update_id FROM photo_batch_items WHERE batch_id = ? ORDER BY update_id').bind(body.id).all();
     if (!results.length || results.length > 10) fail(400, 'У добірці має бути від 1 до 10 фото.');

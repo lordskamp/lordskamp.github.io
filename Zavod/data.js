@@ -117,7 +117,7 @@ export const RECIPES = [
   }),
   ...['ysly', 'h05vv-f'].flatMap((cableId) => [
     empty(cableId, 0.5, 'DRAW_4.JPG'),
-    ...sharedFlexible.map(([section, values]) => recipe(cableId, section, 'DRAW_4.JPG', { ...values, mode: 'dual' })),
+    ...sharedFlexible.map(([section, values]) => recipe(cableId, section, 'DRAW_4.JPG', { ...Object(values), mode: 'dual' })),
   ]),
   empty('ysly', 1.5, 'DRAW_4.JPG', 'Рядок YSLY 1,5 мм² порожній. Окремий запис H05VV-F із DRAW_6 не підтверджує цей режим для YSLY.'),
   recipe('h05vv-f', 1.5, 'DRAW_6.JPG', {

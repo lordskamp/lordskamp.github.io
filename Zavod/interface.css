@@ -203,11 +203,41 @@ dialog{background:var(--paper);color:var(--ink);border-color:var(--line);border-
 .drag-preview .color-dot{width:16px;height:16px;flex:none}.drag-preview span:not(.color-dot){display:grid;gap:3px;min-width:0}.drag-preview b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.drag-preview small{color:var(--green);font-size:11px;font-weight:650}
 @media(max-width:600px){#view-plan .journal-start{order:0}#view-plan .queue-tools{width:100%;justify-content:flex-start;margin-left:0}#view-plan .journal-help{margin-top:0}}
 @media print{#view-plan .journal-start,#view-plan .journal-help{display:none}}
-#view-plan #photo-import{padding:12px;margin:0 0 14px;border:1px solid var(--line);border-radius:10px}
+#view-plan #photo-import{padding:10px 12px;margin:0 0 14px;border:1px solid var(--line);border-radius:12px}
 #view-plan #photo-import>summary{font-size:13px;font-weight:650;cursor:pointer}
-#view-plan #photo-list label,#view-plan .photo-row label{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:12px}
-#view-plan .photo-row{display:grid;gap:5px;margin:12px 0;padding:12px}
-#view-plan .photo-row label:has([data-photo-field]){display:grid;gap:4px}
-#view-plan .photo-row input[data-photo-field],#view-plan .photo-row select{min-height:40px;width:100%}
-#view-plan .photo-row div{display:flex;flex-wrap:wrap;gap:5px 12px}
+#view-plan #photo-import>p.quiet{font-size:12px;line-height:1.4;margin:8px 0}
+#view-plan #photo-list label{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:12px}
+#view-plan #photo-rows{display:grid;gap:7px;margin:10px 0}
+#view-plan .photo-row{min-width:0;border:1px solid var(--line);border-radius:12px;background:var(--paper);overflow:hidden}
+#view-plan .photo-row.is-excluded{opacity:.65}
+#view-plan .photo-row-summary{display:flex;align-items:center;gap:10px;min-height:54px;padding:9px 11px;cursor:pointer;list-style:none}
+#view-plan .photo-row-summary::-webkit-details-marker{display:none}
+#view-plan .photo-row-number{display:grid;place-items:center;flex:none;width:25px;height:25px;border-radius:8px;background:var(--soft);font-size:12px;font-weight:650}
+#view-plan .photo-row-heading{display:grid;gap:3px;min-width:0;flex:1}
+#view-plan .photo-row-heading strong{font-size:13px;line-height:1.25;overflow-wrap:anywhere}
+#view-plan .photo-row-preview{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px}
+#view-plan [data-photo-length-preview]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+#view-plan [data-photo-swatches]{display:flex;align-items:center;gap:3px}
+#view-plan [data-photo-swatches] .color-dot{width:13px;height:13px}
+#view-plan .photo-chevron{color:var(--muted);font-size:18px;line-height:1}
+#view-plan .photo-row[open]>.photo-row-summary .photo-chevron{transform:rotate(180deg)}
+#view-plan .photo-row-body{display:grid;gap:9px;padding:0 11px 11px}
+#view-plan .photo-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#view-plan .photo-fields>label,#view-plan .photo-reference label{display:grid;gap:4px;margin:0;min-width:0;font-size:11px;color:var(--muted)}
+#view-plan .photo-cable,#view-plan .photo-lengths{grid-column:1/-1}
+#view-plan .photo-row input[data-photo-field],#view-plan .photo-row select{min-height:42px;height:42px;width:100%;padding:8px 9px;font-size:14px}
+#view-plan .photo-length-summary{font-size:12px;line-height:1.35;margin:0;color:var(--muted)}
+#view-plan .photo-length-summary.is-warning,#view-plan .photo-uncertain{color:#a45022}
+#view-plan .photo-reference{font-size:11px;color:var(--muted)}
+#view-plan .photo-reference summary{cursor:pointer;min-height:0;padding:3px 0}
+#view-plan .photo-reference label{margin-top:7px}
+#view-plan .photo-reference small{display:block;margin-top:5px;line-height:1.35}
+#view-plan .photo-colors{margin:0;max-width:none}
+#view-plan .photo-colors legend{margin-bottom:3px}
+#view-plan .photo-options,#view-plan .photo-review{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px}
+#view-plan .photo-options label,#view-plan .photo-review label{display:flex;flex-direction:row;align-items:center;gap:6px;margin:0;min-height:32px;font-size:12px;line-height:1.35}
+#view-plan .photo-options input,#view-plan .photo-review input{flex:none;width:18px;height:18px;min-height:18px;margin:0;padding:0;accent-color:var(--green)}
+#view-plan .photo-review{border-top:1px solid var(--line);padding-top:9px}
+#view-plan .photo-uncertain{font-size:11px;line-height:1.4;margin:0}
 #view-plan #photo-message{font-size:12px;line-height:1.4}
+@media(max-width:360px){#view-plan .photo-row-summary{gap:7px}#view-plan .photo-options{gap:7px}}

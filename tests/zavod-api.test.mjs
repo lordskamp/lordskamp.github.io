@@ -652,7 +652,11 @@ test('background recognition groups photos, updates one message, isolates result
     messages.push({ url: String(url), body: JSON.parse(options.body) });
     return Response.json({ok:true,result:{message_id:42}});
   };
+  let active = 0, peak = 0;
   env.AI = { async run(_model,input) {
+    active++; peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    active--;
     assert.match(input.messages[0].content[0].text,/1,5\/4/);
     return { choices:[{message:{content:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,coreClass:4,idealColor:true,marking:true,colors:['blue'],lengthsText:'10'}]})}}] };
   } };
@@ -664,6 +668,7 @@ test('background recognition groups photos, updates one message, isolates result
   assert.equal((await sendPhoto(2)).status, 200);
   assert.equal((await sendPhoto(1)).status, 200);
   assert.equal(messages.length, 1);
+  assert.match(messages[0].body.text, /для одного фото/);
   const id = db.prepare('SELECT id FROM photo_batches').get().id;
   assert.equal((await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:201})})).status, 404);
   assert.equal((await call('/photos/batch',{method:'POST',body:{id}})).status, 401);
@@ -672,6 +677,8 @@ test('background recognition groups photos, updates one message, isolates result
   const opened = await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})});
   assert.equal(opened.data.state, 'ready');
   assert.equal(opened.data.rows.length, 2);
+  assert.deepEqual(opened.data.ids, [1, 2]);
+  assert.equal(peak, 2);
   assert.equal(opened.data.rows[0].coreClass,4);
   assert.equal(messages.filter(m=>m.url.endsWith('/sendMessage')).length,1);
   assert.equal(messages.filter(m=>m.url.endsWith('/editMessageText')).length,2);
