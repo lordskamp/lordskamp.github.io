@@ -4,8 +4,8 @@
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
   <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=25">
   <link rel="stylesheet" href="./plan.css?v=3">
-  <link rel="stylesheet" href="./interface.css?v=4">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=42"></script>
+  <link rel="stylesheet" href="./interface.css?v=5">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=43"></script>
 </head><body>
   <main>
     <section id="view-setup" class="work-view">
@@ -31,18 +31,18 @@
       <div id="plan-summary" aria-live="polite"></div>
       <section id="drum-player" class="drum-player" aria-label="Налаштування барабана" aria-live="polite" hidden></section>
       <p id="plan-order-status" class="quiet" role="status"></p>
-      <div class="queue-heading"><h2>Черга</h2><details id="dye-slots" class="dye-slots"></details><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Порядок</button><button class="secondary" id="clear-plan" type="button">Очистити</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>
-      <div id="drums" class="drums"></div>
+      <div class="queue-heading"><h2>Черга</h2><details id="dye-slots" class="dye-slots"></details><label class="journal-start">Останній № <input id="journal-last" inputmode="numeric" autocomplete="off" maxlength="15" placeholder="—" aria-label="Останній записаний номер у журналі" aria-describedby="journal-help"></label><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Порядок</button><button class="secondary" id="clear-plan" type="button">Очистити</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>
+      <p id="journal-help" class="journal-help">Останній записаний номер. Наступні номери — у черзі.</p><div id="drums" class="drums"></div>
       <p id="plan-live" class="sr-only" role="status" aria-live="polite"></p>
       <div class="actions"><button class="secondary" id="copy-plan" type="button">Копіювати план</button><button class="secondary" id="print-plan" type="button">Друк</button></div>
       <details class="card splice-planner" id="splice-planner">
         <summary>Калькулятор скрутки</summary>
         <div class="splice-rows">
           <label class="splice-row"><span>Довжина, м</span><input id="splice-length" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="15000" aria-describedby="splice-message"></label>
-          <label class="splice-row"><span>Пробої, м</span><textarea id="splice-breakdowns" rows="1" maxlength="2000" placeholder="5385, 8459" aria-describedby="splice-help splice-message"></textarea></label>
+          <label class="splice-row"><span>Пробої / з’єднання, м</span><textarea id="splice-breakdowns" rows="1" maxlength="2000" placeholder="5385, 8459" aria-describedby="splice-help splice-message"></textarea></label>
           <div id="splice-preview" class="splice-preview" aria-live="polite"><div class="splice-row"><span>На лейбл</span><strong id="splice-label" class="splice-value">—</strong></div><div class="splice-row"><span>На екрані, м</span><strong id="splice-screen" class="splice-value">—</strong></div></div>
         </div>
-        <p id="splice-help" class="quiet">Пробої — через кому, в метрах.</p>
+        <p id="splice-help" class="quiet">Пробої та з’єднання — через кому, в метрах.</p>
         <p id="splice-message" class="form-message" role="status"></p>
       </details>
     </section>

@@ -12,11 +12,12 @@ test('coil lengths use only confirmed brand and section pairs', () => {
   ]) assert.equal(coilLength(brand, section), expected);
 });
 
-test('faults and actual joints are distinct on ordinary wire', () => {
+test('faults and joints have the same label and no added length on ordinary wire', () => {
   const fault = calculateProduction(1000, '250', '', false, null);
   const joint = calculateProduction(1000, '', '250', false, null);
   assert.equal(fault.target, 1000);
-  assert.equal(joint.target, 1030);
+  assert.equal(joint.target, 1000);
+  assert.deepEqual(joint.splice, fault.splice);
   assert.equal(joint.splice.label, '(250+750)');
   assert.equal(calculateProduction(1000, '', '', false, null).target, 1000);
 });

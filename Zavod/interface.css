@@ -181,3 +181,25 @@ dialog{background:var(--paper);color:var(--ink);border-color:var(--line);border-
 #view-plan .queue-status[data-action="done"]::after{content:'✓'}
 #view-plan .queue-card .drag-handle{width:20px;min-width:20px}
 #view-plan .queue-more .cable-info{width:44px;min-width:44px;height:44px;min-height:44px}
+
+/* Journal, one-button progress and a visible drag destination. */
+#view-plan .journal-start{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;white-space:nowrap}
+#view-plan .journal-start input{width:68px;min-width:0;min-height:40px;height:40px;padding:6px 7px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-size:14px;font-variant-numeric:tabular-nums}
+#view-plan .journal-start input[aria-invalid="true"]{border-color:#b8493e}
+#view-plan .journal-help{margin:-3px 0 9px;color:var(--muted);font-size:11px;line-height:1.35}
+#view-plan .journal-help.error{color:#b8493e}
+#view-plan .journal-number{flex:none;color:var(--green);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+#view-plan .drum-title .queue-class-change{display:block;color:var(--green);font-size:10px;line-height:1.2;white-space:nowrap}
+#view-plan .queue-status[data-action="cycle-status"]::after{content:'○'}
+#view-plan .queue-status[data-current-status="active"]::after{content:'▶';color:var(--green)}
+#view-plan .queue-status[data-current-status="done"]::after{content:'✓';color:var(--green)}
+#view-plan .queue-status[data-current-status="active"],#view-plan .queue-status[data-current-status="done"]{background:var(--soft)}
+#view-plan .queue-card{position:relative}
+#view-plan .queue-card.is-dragging{opacity:.35;outline:2px dashed var(--green);outline-offset:1px}
+#view-plan .queue-card.drop-before::before,#view-plan .queue-card.drop-after::after{content:'';position:absolute;z-index:4;left:8px;right:8px;height:5px;background:var(--green);border-radius:4px;box-shadow:0 0 0 2px var(--paper);pointer-events:none}
+#view-plan .queue-card.drop-before::before{top:-7px}
+#view-plan .queue-card.drop-after::after{bottom:-7px}
+.drag-preview{position:fixed;z-index:9999;transform:translate(-35%,-100%);display:flex;align-items:center;gap:9px;max-width:min(270px,80vw);padding:10px 14px;border:1px solid var(--green);border-radius:10px;background:var(--paper);box-shadow:0 8px 24px #0004;pointer-events:none;font-size:13px}
+.drag-preview .color-dot{width:16px;height:16px;flex:none}.drag-preview span:not(.color-dot){display:grid;gap:3px;min-width:0}.drag-preview b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.drag-preview small{color:var(--green);font-size:11px;font-weight:650}
+@media(max-width:600px){#view-plan .journal-start{order:0}#view-plan .queue-tools{width:100%;justify-content:flex-start;margin-left:0}#view-plan .journal-help{margin-top:0}}
+@media print{#view-plan .journal-start,#view-plan .journal-help{display:none}}

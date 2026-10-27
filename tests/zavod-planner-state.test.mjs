@@ -152,7 +152,8 @@ test('thread diameter transitions keep nominal length and show matrix changes wi
     assert.doesNotMatch(planner.transitionText(state.drums[0], 0), /барвник №|за 150|− 150/);
     planner.render();
     assert.match(element('drums').innerHTML, /Перехід після зупинки\. Без барвника\./);
-    clickAction(state.drums[0].id, 'done');
+    clickAction(state.drums[0].id, 'cycle-status');
+    clickAction(state.drums[0].id, 'cycle-status');
     assert.match(element('plan-live').textContent, /Без барвника: готово/);
     assert.doesNotMatch(element('plan-summary').innerHTML, /кожного кольору|комплекту кольорів/);
   }, (id, section, color, finalDiameter) => ({ mode: 'single', noDye: true, stored: {}, effective: { matrix: number(finalDiameter) + .2 } }));
@@ -199,20 +200,20 @@ test('restored drum fault records do not control the independent splice module',
   assert.equal(deleted.splicePlan, undefined);
 });
 
-test('splice reserves combine with transitions while labels and production totals use nominal metres', () => {
+test('faults and joints use the same nominal metres through transitions', () => {
   const first = oldDrum({ id: 'spliced', cableId: globalCable.id, section: 2.5, breakdowns: '', joints: '6838' });
   const next = oldDrum({ id: 'next', cableId: globalCable.id, section: 2.5, color: 'brown', breakdowns: '' });
   const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [first, next] };
   withPlannerHarness(state, ({ planner }) => {
     const transition = planner.result(first, 0);
     assert.equal(transition.splice.label, '(6830+8170)');
-    assert.equal(transition.target, 15880);
-    assert.equal(transition.events[0].at, 13030);
+    assert.equal(transition.target, 15850);
+    assert.equal(transition.events[0].at, 13000);
     assert.equal(first.length, '15000');
     next.section = 1.5;
-    assert.equal(planner.result(first, 0).target, 14880);
+    assert.equal(planner.result(first, 0).target, 14850);
     first.joints = '5385; 8459';
-    assert.equal(planner.result(first, 0).target, 14910);
+    assert.equal(planner.result(first, 0).target, 14850);
     first.joints = '8459; 8450';
     const invalid = planner.result(first, 0);
     assert.equal(invalid.target, null);
@@ -359,11 +360,13 @@ test('done rows keep their positions, expose undo and still participate in manua
     assert.match(html, /data-status="done" data-color="blue" style="--done-color:#3874bc"/);
     assert.match(html, />Не готово<\/button>/);
     assert.equal((html.match(/data-drag-handle/g) || []).length, 3, 'finished rows remain movable');
-    clickAction('striped', 'done');
+    clickAction('striped', 'cycle-status');
+    assert.equal(state.drums[2].status, 'active');
+    clickAction('striped', 'cycle-status');
     assert.deepEqual(state.drums.map(drum => drum.id), initialIds);
     assert.equal(state.drums[2].status, 'done');
     assert.match(element('plan-summary').innerHTML, /3 \/ 3 готово/);
-    clickAction('striped', 'done');
+    clickAction('striped', 'cycle-status');
     assert.equal(state.drums[2].status, 'queued');
     assert.deepEqual(state.drums.map(drum => drum.id), initialIds);
     assert.match(element('plan-summary').innerHTML, /2 \/ 3 готово/);
@@ -386,7 +389,7 @@ test('the queue uses practical lead measurements for each extruder and falls bac
   const previousDocument = globalThis.document, previousWindow = globalThis.window;
   const elements = new Map();
   globalThis.document = {
-    getElementById(id) { if (!elements.has(id)) elements.set(id, { addEventListener() {} }); return elements.get(id); },
+    getElementById(id) { if (!elements.has(id)) elements.set(id, { value: '', textContent: '', setAttribute() {}, classList: { toggle() {} }, addEventListener() {} }); return elements.get(id); },
     addEventListener() {}
   };
   globalThis.window = { addEventListener() {} };
@@ -764,4 +767,55 @@ test('player uses the last required splitter through a one-extruder drum', () =>
     state.drums[2].color='yellow-green';
     assert.equal(planner.result(state.drums[1],1).headChange,false);
   }, getSetup);
+});
+
+
+test('one status button cycles through production and keeps journal numbers when reordered', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES }, journalLast: '100' };
+  restorePlanner({ journalLast: '100', drums: [oldDrum({ id: 'a', coreClass: 3 }), oldDrum({ id: 'b', coreClass: 3 }), oldDrum({ id: 'c', coreClass: 5 })] }, state);
+  withPlannerHarness(state, ({ planner, element, clickAction }) => {
+    planner.renderQueue();
+    assert.deepEqual(state.drums.map(d => planner.journalNumber(d)), [101, 102, 103]);
+    assert.equal((element('drums').innerHTML.match(/data-action="cycle-status"/g) || []).length, 3);
+    assert.match(element('drums').innerHTML, /Жила: 5 клас/);
+    clickAction('a', 'cycle-status'); assert.equal(state.drums[0].status, 'active');
+    assert.equal(state.drums[0].journalNumber, 101);
+    clickAction('a', 'cycle-status'); assert.equal(state.drums[0].status, 'done');
+    clickAction('a', 'down');
+    assert.deepEqual(state.drums.map(d => [d.id, planner.journalNumber(d)]), [['b', 102], ['a', 101], ['c', 103]]);
+    const restored = initialState(); restorePlanner(structuredClone(state), restored);
+    assert.equal(restored.journalLast, '100');
+    assert.equal(restored.drums.find(d => d.id === 'a').journalNumber, 101);
+    clickAction('a', 'cycle-status');
+    assert.equal(state.drums.find(d => d.id === 'a').status, 'queued');
+    assert.equal(state.drums.find(d => d.id === 'a').journalNumber, undefined);
+    assert.deepEqual(state.drums.map(d => planner.journalNumber(d)), [101, 102, 103]);
+  });
+});
+
+test('legacy fault and joint marks are combined and remain editable', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  restorePlanner({ drums: [oldDrum({ id: 'legacy', cableId: globalCable.id, section: 2.5, breakdowns: '250', joints: '700', length: '1000' })] }, state);
+  assert.equal(state.drums[0].breakdowns, '250; 700');
+  assert.equal(state.drums[0].joints, undefined);
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.renderQueue();
+    assert.match(element('drums').innerHTML, /Пробій \/ з’єднання, м/);
+    assert.doesNotMatch(element('drums').innerHTML, /data-field="joints"/);
+    assert.equal(planner.result(state.drums[0], 0).splice.label, '(250+450+300)');
+    assert.equal(planner.result(state.drums[0], 0).target, 1000);
+  });
+});
+
+
+test('numbering starts after the last journal entry and skips previously completed rows', () => {
+  const state = { ...initialState(), rules: { ...DEFAULT_RULES } };
+  restorePlanner({ journalLast: '100', drums: [oldDrum({ id: 'old', status: 'done' }), oldDrum({ id: 'active', status: 'active' }), oldDrum({ id: 'next' })] }, state);
+  withPlannerHarness(state, ({ planner, clickAction }) => {
+    planner.renderQueue();
+    assert.deepEqual(state.drums.map(drum => planner.journalNumber(drum)), [undefined, 101, 102]);
+    clickAction('active', 'cycle-status');
+    assert.equal(state.drums[1].journalNumber, 101);
+    assert.equal(planner.journalNumber(state.drums[2]), 102);
+  });
 });

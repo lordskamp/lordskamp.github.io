@@ -17,12 +17,11 @@ export function coilLength(brand, section) {
 }
 
 // Marks are counter readings. Each interrupted segment loses its incomplete coil.
-export function calculateProduction(lengthInput, faults, joints, coiling, size, reserve = 30) {
+export function calculateProduction(lengthInput, faults, joints, coiling, size) {
   const length = number(lengthInput);
   const a = parseBreakdowns(faults), b = parseBreakdowns(joints);
   const errors = [a.error, b.error].filter(Boolean);
   if (!Number.isSafeInteger(length) || length <= 0) errors.push('Вкажи додатну цілу довжину в метрах.');
-  if (!Number.isSafeInteger(number(reserve)) || number(reserve) < 0) errors.push('Перевір запас на з’єднання.');
   if (coiling && !size) errors.push('Для цієї марки та перерізу довжина бухти невідома.');
   const marks = [...a.values, ...b.values].sort((x, y) => x - y);
   if (new Set(marks).size !== marks.length || marks.some(x => x <= 0)) errors.push('Позначки мають бути різними додатними числами.');
@@ -39,7 +38,5 @@ export function calculateProduction(lengthInput, faults, joints, coiling, size, 
   }
   const splice = planSplices(length, marks.join(';'), 0);
   errors.push(...splice.errors);
-  target = length + b.values.length * number(reserve);
-  if (!Number.isSafeInteger(target)) errors.push('Завелика довжина.');
-  return { errors, target, splice, jointCount: b.values.length };
+  return { errors, target, splice };
 }

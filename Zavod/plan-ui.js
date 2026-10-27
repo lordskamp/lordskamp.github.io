@@ -1,9 +1,9 @@
-import { calculateProduction, coilLength, isCoilingBrand } from './coiling.js?v=2';
+import { calculateProduction, coilLength, isCoilingBrand } from './coiling.js?v=3';
 import { estimateColorLead2 } from './color-lead.js?v=27';
 import { VALUE_LABELS } from './setup-data.js?v=33';
 import { normalizeDyeSlots, planDyeSlots, EMPTY_DYE } from './dye-slots.js?v=1';
 import { COLORS, colorName, dyePlan, fmt, number, planDrum, splitterFor } from './core.js?v=29';
-import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=33';
+import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary, journalNumbers, lastJournalNumber, nextDrumStatus } from './planner.js?v=34';
 import { CATALOG_CABLES, optionFor } from './catalog-base.js?v=27';
 import { shiftSettings, coreClass, conductorRequirements, estimateShift, requiredTools } from './plan-resources.js?v=29';
 
@@ -27,6 +27,7 @@ const colorOptions = selected => COLORS.map(c => `<option value="${c.id}" ${c.id
 const swatch = color => `<span class="color-dot" data-color="${esc(color)}" style="--swatch:${COLORS.find(c => c.id === color)?.hex ?? '#aaa'}" aria-hidden="true"></span>`;
 const classOptions = selected => `<option value="">Обери клас</option>${[1, 2, 3, 4, 5, 6].map(value => `<option value="${value}" ${coreClass(selected) === value ? 'selected' : ''}>${value}</option>`).join('')}`;
 const classLabel = item => coreClass(item.coreClass) ? ` · ${coreClass(item.coreClass)} клас` : '';
+const combinedMarks = drum => [drum.breakdowns, drum.joints].map(value => String(value ?? '').trim()).filter(Boolean).join('; ').slice(0, 4002);
 const timeLabel = minutes => `${Math.floor(Math.ceil(minutes) / 60)} год ${Math.ceil(minutes) % 60} хв`;
 const pluralRules = new Intl.PluralRules('uk-UA');
 const countWord = (count, one, few, many) => ({ one, few, many, other: many })[pluralRules.select(count)];
@@ -72,6 +73,7 @@ export function syncPlannerSelection(state) {
 /** Keep the old locally saved queue, labels and faults when adding task planning. */
 export function restorePlanner(saved, state) {
   state.dyeSlots = normalizeDyeSlots(saved?.dyeSlots);
+  state.journalLast = String(saved?.journalLast ?? '').slice(0, 15);
   state.shiftSettings = shiftSettings(saved?.shiftSettings);
   state.coreStock = Object.fromEntries(Object.entries(saved?.coreStock ?? {}).filter(([key, entry]) => /^\d+(?:\.\d+)?:[1-6?]$/u.test(key) && entry && typeof entry === 'object')
     .slice(0, 200).map(([key, entry]) => [key, { ...(entry.fullLengthKm === undefined ? {} : { fullLengthKm: String(entry.fullLengthKm).slice(0, 20) }), piecesText: String(entry.piecesText ?? '').slice(0, 2000) }]));
@@ -101,7 +103,7 @@ export function restorePlanner(saved, state) {
       jobId: typeof d.jobId === 'string' ? d.jobId : '', cableId: cable.id,
       section: cable.sections.includes(Number(d.section)) ? Number(d.section) : cable.sections.includes(state.section) ? state.section : cable.sections[0],
       ...(!isThread(cable.id) && coreClass(d.coreClass) ? { coreClass: coreClass(d.coreClass) } : {}),
-      color: d.color, length: String(d.length ?? '').slice(0, 20), name: String(d.name ?? '').slice(0, 80), breakdowns: String(d.breakdowns ?? '').slice(0, 2000), ...(d.joints ? { joints: String(d.joints).slice(0, 2000) } : {}), ...(d.coiling === true ? { coiling: true } : {}), status,
+      color: d.color, length: String(d.length ?? '').slice(0, 20), name: String(d.name ?? '').slice(0, 80), breakdowns: combinedMarks(d), ...(Number.isSafeInteger(d.journalNumber) && d.journalNumber > 0 ? { journalNumber: d.journalNumber } : {}), ...(d.coiling === true ? { coiling: true } : {}), status,
       ...(['single', 'dual'].includes(d.mode) ? { mode: d.mode } : {}),
       ...(isThread(cable.id) ? { finalDiameter: savedDiameter(d.finalDiameter) } : {}) };
     });
@@ -117,11 +119,23 @@ export function restorePlanner(saved, state) {
 }
 
 export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCableInfo }) {
-  let drag = null, scrollFrame = null, playerId = null;
+  let drag = null, scrollFrame = null, playerId = null, numbering = new Map();
   const restartCounters = new Map();
   const setupCache = new Map();
 
   state.shiftSettings ??= shiftSettings(); state.coreStock ??= {}; state.dyeSlots = normalizeDyeSlots(state.dyeSlots);
+  const journalInput = $('journal-last'), journalHelp = $('journal-help');
+  journalInput.value = state.journalLast ?? '';
+  function journalValidity() {
+    const invalid = Boolean(journalInput.value.trim()) && lastJournalNumber(journalInput.value) === null;
+    journalInput.setAttribute('aria-invalid', String(invalid));
+    journalHelp.textContent = invalid ? 'Вкажи цілий невід’ємний номер.' : 'Останній записаний номер. Наступні номери — у черзі.';
+    journalHelp.classList.toggle('error', invalid);
+  }
+  journalValidity();
+  journalInput.addEventListener('input', () => {
+    state.journalLast = journalInput.value; journalValidity(); persist(); renderQueue();
+  });
   const slotPanel = $('dye-slots');
   slotPanel.innerHTML = '<summary>Барвники</summary><div class="dye-slot-panel"><p>Які барвники вже у відсіках?</p><div class="dye-slot-grid">' + state.dyeSlots.map((value, i) => `<label>№${Math.floor(i / 2) + 1} · відсік ${i % 2 + 1}<select data-dye-slot="${i}"><option value="">Невідомо</option><option value="empty" ${value === EMPTY_DYE ? 'selected' : ''}>Порожній</option>${COLORS.filter(color => color.id !== 'yellow-green').map(color => `<option value="${esc(color.id)}" ${color.id === value ? 'selected' : ''}>${esc(color.label)}</option>`).join('')}</select></label>`).join('') + '</div><small>Наявність у відсіку не означає, що він зараз подається.</small><button type="button" class="secondary" data-order-dyes>Перебудувати чергу</button></div>';
   slotPanel.addEventListener('change', event => {
@@ -163,7 +177,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     }
     const brand = optionFor(drum.cableId)?.brand;
     const coiling = isCoilingBrand(brand);
-    const production = calculateProduction(drum.length, drum.breakdowns, drum.joints, coiling, coilLength(brand, drum.section), rules.splice);
+    const production = calculateProduction(drum.length, drum.breakdowns, drum.joints, coiling, coilLength(brand, drum.section));
     // A one-extruder drum does not alter the installed splitter. Walk back
     // to the last known dual-extruder requirement; threads break that context.
     let mountedSplitter = null;
@@ -215,7 +229,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const supply = isThread(drum.cableId) ? '' : `<p class="drum-supply quiet">Жили на цей барабан: <b>${fmt(number(drum.length) / 1000, 3)} км</b>${esc(classLabel(drum))}. Технологічні втрати окремо.</p>`;
     return `${supply}${r.target > 0 ? `<div class="target"><span>Довжина на екрані</span><strong>${fmt(r.target)} <small>м</small></strong></div>` : ''}
       ${r.transition ? `<ol class="steps">${r.events.map(e => `<li><b>≈ ${fmt(e.at)} м</b> — барвник №${e.extruder}: ${esc(e.dye.toLowerCase())} (${e.fromStop ? `за ${fmt(e.lead)} м до планової зупинки` : `за ${fmt(e.lead)} м до кінця · старе налаштування`})</li>`).join('')}<li>Планова зупинка — ${fmt(r.stopAt)} м. Після зупинки стравити через байпас, потім через головку.</li><li>Коли колір придатний, запустити лінію. Після появи якісного кабелю додати 170 м до фактичного показу й встановити перекидання. На вихідному барабані відмотати неякісну ділянку, щоб залишився якісний попередній кабель.</li>${r.setupChange ? '<li>Розсікач або режим екструдерів змінити після зупинки.</li>' : ''}</ol><p class="quiet formula">${esc(r.formula)}</p>` : `<p class="quiet">${r.cableChange ? `Зупинися раніше: решта ${isThread(drum.cableId) ? 'нитки' : 'жили'} вже у ванні. Резерв зміни кольору не додається.` : r.setupChange ? isThread(drum.cableId) ? 'Перехід після зупинки. Без барвника.' : 'Перехід після зупинки. Випередження зміни барвника не розраховується.' : isThread(drum.cableId) ? 'Без барвника.' : 'Без поправки на зміну кольору.'}</p>${r.cableChange ? `<p class="quiet formula">${esc(r.formula)}</p>` : ''}`}
-      ${r.warnings.map(w => `<p class="error">${esc(w)}</p>`).join('')}${r.splice?.spliceCount ? `<p class="drum-splice-label">На лейбл: <b data-splice-label>${esc(r.splice.label)}</b></p>` : ''}${r.production.jointCount ? `<p class="quiet">З’єднань: ${r.production.jointCount} · +${fmt(r.production.target - number(drum.length))} м запасу.</p>` : ''}${r.coiling ? `<p class="drum-splice-label">Бухтовка: <b>${fmt(r.production.coils)} × ${fmt(r.production.size)} м</b>${r.production.remainder ? ` · залишок ${fmt(r.production.remainder)} м` : ''}</p><p class="quiet">Додатково: <b>+${fmt(r.production.waste)} м</b> · потрібна довжина: <b>${fmt(r.production.target)} м</b>. Неповні відрізки до позначок не входять у бухти.</p>` : ''}`;
+      ${r.warnings.map(w => `<p class="error">${esc(w)}</p>`).join('')}${r.splice?.spliceCount ? `<p class="drum-splice-label">На лейбл: <b data-splice-label>${esc(r.splice.label)}</b></p>` : ''}${r.coiling ? `<p class="drum-splice-label">Бухтовка: <b>${fmt(r.production.coils)} × ${fmt(r.production.size)} м</b>${r.production.remainder ? ` · залишок ${fmt(r.production.remainder)} м` : ''}</p><p class="quiet">Додатково: <b>+${fmt(r.production.waste)} м</b> · потрібна довжина: <b>${fmt(r.production.target)} м</b>. Неповні відрізки до позначок не входять у бухти.</p>` : ''}`;
   }
   function jobTotal(job) {
     if (!String(job.lengthsText ?? '').trim()) return '';
@@ -308,9 +322,14 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
   function compact(drum, i) {
     const r = result(drum, i), status = drumStatus(drum);
     const screen = r.target !== number(drum.length) && status !== 'done' && r.target > 0 ? `<small>Екран ${fmt(r.target)} м</small>` : '';
-    const title = isThread(drum.cableId) ? cableLabel(drum.cableId) + diameterLabel(drum.finalDiameter) : `${optionFor(drum.cableId)?.brand ?? cableLabel(drum.cableId)} ${fmt(drum.section)}${classLabel(drum)}`;
+    const title = isThread(drum.cableId) ? cableLabel(drum.cableId) + diameterLabel(drum.finalDiameter) : `${optionFor(drum.cableId)?.brand ?? cableLabel(drum.cableId)} ${fmt(drum.section)}`;
     const cue = status === 'done' ? '' : r.errors.length ? 'Перевір довжину' : r.target === 0 ? 'Перевір зупинку' : r.transition ? r.events.map(event => `№${event.extruder}: ${fmt(event.at)} м`).join(' · ') + (r.setupChange ? ' · стоп' : '') : r.cableChange ? isThread(drum.cableId) ? 'Зміна нитки' : 'Зміна жили' : r.headChange ? 'Змінити розсікач' : r.modeChange ? 'Перемкнути екструдери' : r.matrixChange ? 'Змінити матрицю' : '';
-    return `${isThread(drum.cableId) ? '' : swatch(drum.color)}<span class="sr-only">${streamLabel(drum)}. </span><span class="drum-title"><b>${esc(title)}</b>${cue ? `<small class="queue-alert">${r.transition ? 'Барвник ' : ''}${esc(cue)}</small>` : ''}</span><span class="drum-length"><b>${fmt(number(drum.length) === null ? null : number(drum.length) / 1000, 3)} км</b>${screen}</span>`;
+    const priorClass = coreClass(state.drums[i - 1]?.coreClass), currentClass = coreClass(drum.coreClass);
+    const classChange = status !== 'done' && priorClass && currentClass && priorClass !== currentClass ? `Жила: ${currentClass} клас` : '';
+    const journal = numbering.get(drum.id);
+    const cues = cue ? (r.transition ? 'Барвник ' : '') + cue : '';
+    return `${journal == null ? '' : `<span class="journal-number" title="Номер у журналі">№${journal}</span>`}${isThread(drum.cableId) ? '' : swatch(drum.color)}<span class="sr-only">${streamLabel(drum)}. </span><span class="drum-title"><b>${esc(title)}</b>${classChange ? `<small class="queue-class-change">${esc(classChange)}</small>` : ''}${cues ? `<small class="queue-alert">${esc(cues)}</small>` : ''}</span><span class="drum-length"><b>${fmt(number(drum.length) === null ? null : number(drum.length) / 1000, 3)} км</b>${screen}</span>`;
+
   }
   function neighborIndex(i, direction) {
     const target = i + direction;
@@ -318,12 +337,14 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
   }
   function cardMarkup(drum, i, opened) {
     const status = drumStatus(drum), locked = status !== 'queued' ? 'disabled' : '';
+    const statusLabel = { queued: 'Не готово', active: 'В роботі', done: 'Готово' }[status];
+    const nextLabel = { queued: 'Почати', active: 'Позначити готовим', done: 'Повернути до черги' }[status];
     const label = `${drumTitle(drum)}, ${streamLabel(drum).toLowerCase()}, ${fmt(drum.length)} м`;
     const modeField = `<label class="drum-mode-picker" data-mode-picker ${modePicker(drum) ? '' : 'hidden'}>Екструдери<select data-field="mode" ${locked}><option value="" ${!drum.mode ? 'selected' : ''}>Авто</option><option value="single" ${drum.mode === 'single' ? 'selected' : ''}>1</option><option value="dual" ${drum.mode === 'dual' ? 'selected' : ''}>2</option></select></label><label data-class-picker ${isThread(drum.cableId) ? 'hidden' : ''}>Клас жили<select data-field="coreClass" ${locked}>${classOptions(drum.coreClass)}</select></label>`;
     return `<article class="card drum queue-card ${status === 'active' ? 'is-active' : status === 'done' ? 'is-done' : ''}" data-drum="${esc(drum.id)}" data-status="${status}" data-color="${esc(drum.color)}" style="--done-color:${COLORS.find(c => c.id === drum.color)?.hex ?? '#aaa'}">
       <div class="queue-row"><button class="drag-handle icon-button" type="button" data-drag-handle aria-label="Перетягнути: ${esc(label)}. Стрілки переміщують вгору та вниз.">☰</button>
-      <details class="drum-details" data-details="${esc(drum.id)}" ${opened.has(drum.id) ? 'open' : ''}><summary class="drum-summary">${compact(drum, i)}</summary><div class="drum-fields"><div class="form-grid"><label>Провід<select data-field="cableId" ${locked}>${options(drum.cableId)}</select></label><label ${isThread(drum.cableId) ? 'hidden' : ''}>Переріз, мм²<select data-field="section" ${locked}>${sections(drum.cableId, drum.section)}</select></label><label data-diameter-picker ${isThread(drum.cableId) ? '' : 'hidden'}>Фінальний діаметр, мм<input data-field="finalDiameter" inputmode="decimal" maxlength="12" value="${esc(drum.finalDiameter)}" placeholder="Із завдання" ${locked}></label><label data-color-picker ${isThread(drum.cableId) ? 'hidden' : ''}>Колір<select data-field="color" ${locked}>${colorOptions(drum.color)}</select></label>${modeField}<label>Потрібна довжина, м<input data-field="length" inputmode="numeric" value="${esc(drum.length)}" maxlength="20" ${locked}></label><label>Номер барабана<input data-field="name" maxlength="80" value="${esc(drum.name)}"></label><label>Пробій на метрі<input data-field="breakdowns" maxlength="2000" placeholder="3682; 9240" value="${esc(drum.breakdowns)}"></label><label>З’єднання жили на метрі<input data-field="joints" maxlength="2000" placeholder="3682; 9240" value="${esc(drum.joints)}"></label></div><p class="quiet">Пробої та з’єднання вказуй за загальним лічильником у метрах, через крапку з комою.</p><div data-output="${esc(drum.id)}">${output(drum, i)}</div><p class="drum-transition" data-transition="${esc(drum.id)}" ${transitionText(drum, i) ? '' : 'hidden'}>${esc(transitionText(drum, i))}</p>${locked ? '<p class="quiet">Для редагування поверни запис до черги.</p>' : ''}</div></details></div>
-      <div class="drum-actions">${status !== 'done' ? `<button type="button" class="queue-status" data-action="active" aria-pressed="${status === 'active'}" title="${status === 'active' ? 'Повернути до черги' : 'Почати цей барабан'}" aria-label="${status === 'active' ? 'Повернути до черги' : 'Почати цей барабан'}">В роботі</button>` : ''}<button type="button" class="queue-status" data-action="done" aria-pressed="${status === 'done'}" title="${status === 'done' ? 'Повернути до черги' : 'Позначити виконаним'}" aria-label="${status === 'done' ? 'Повернути до черги' : 'Позначити виконаним'}">${status === 'done' ? 'Не готово' : 'Готово'}</button><details class="queue-more"><summary aria-label="Інші дії" title="Інші дії">⋯</summary><div class="order-controls"><button type="button" class="cable-info icon-button" data-action="info" aria-label="Налаштування: ${esc(label)}" title="Налаштування проводу">ⓘ</button><button type="button" class="icon-button" data-action="up" aria-label="Перемістити вгору" ${neighborIndex(i, -1) < 0 ? 'disabled' : ''}>↑</button><button type="button" class="icon-button" data-action="down" aria-label="Перемістити вниз" ${neighborIndex(i, 1) < 0 ? 'disabled' : ''}>↓</button><button type="button" class="icon-button" data-action="remove" aria-label="Прибрати запис">×</button></div></details></div>
+      <details class="drum-details" data-details="${esc(drum.id)}" ${opened.has(drum.id) ? 'open' : ''}><summary class="drum-summary">${compact(drum, i)}</summary><div class="drum-fields"><div class="form-grid"><label>Провід<select data-field="cableId" ${locked}>${options(drum.cableId)}</select></label><label ${isThread(drum.cableId) ? 'hidden' : ''}>Переріз, мм²<select data-field="section" ${locked}>${sections(drum.cableId, drum.section)}</select></label><label data-diameter-picker ${isThread(drum.cableId) ? '' : 'hidden'}>Фінальний діаметр, мм<input data-field="finalDiameter" inputmode="decimal" maxlength="12" value="${esc(drum.finalDiameter)}" placeholder="Із завдання" ${locked}></label><label data-color-picker ${isThread(drum.cableId) ? 'hidden' : ''}>Колір<select data-field="color" ${locked}>${colorOptions(drum.color)}</select></label>${modeField}<label>Потрібна довжина, м<input data-field="length" inputmode="numeric" value="${esc(drum.length)}" maxlength="20" ${locked}></label><label>Примітка до барабана<input data-field="name" maxlength="80" value="${esc(drum.name)}"></label><label>Пробій / з’єднання, м<input data-field="breakdowns" maxlength="4002" placeholder="3682; 9240" value="${esc(combinedMarks(drum))}"></label></div><p class="quiet">Пробої та з’єднання вказуй за загальним лічильником у метрах, через крапку з комою.</p><div data-output="${esc(drum.id)}">${output(drum, i)}</div><p class="drum-transition" data-transition="${esc(drum.id)}" ${transitionText(drum, i) ? '' : 'hidden'}>${esc(transitionText(drum, i))}</p>${locked ? '<p class="quiet">Для редагування поверни запис до черги.</p>' : ''}</div></details></div>
+      <div class="drum-actions"><button type="button" class="queue-status" data-action="cycle-status" data-current-status="${status}" aria-label="${statusLabel}. ${nextLabel}" title="${nextLabel}">${statusLabel}</button><details class="queue-more"><summary aria-label="Інші дії" title="Інші дії">⋯</summary><div class="order-controls"><button type="button" class="cable-info icon-button" data-action="info" aria-label="Налаштування: ${esc(label)}" title="Налаштування проводу">ⓘ</button><button type="button" class="icon-button" data-action="up" aria-label="Перемістити вгору" ${neighborIndex(i, -1) < 0 ? 'disabled' : ''}>↑</button><button type="button" class="icon-button" data-action="down" aria-label="Перемістити вниз" ${neighborIndex(i, 1) < 0 ? 'disabled' : ''}>↓</button><button type="button" class="icon-button" data-action="remove" aria-label="Прибрати запис">×</button></div></details></div>
       </article>`;
   }
   function renderPlayer() {
@@ -362,7 +383,8 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
       const replace = step.replaces === EMPTY_DYE ? 'порожній відсік' : `замість ${colorName(step.replaces).toLowerCase()}`;
       return `№${step.extruder}, відсік ${step.slot}: підготуй ${label} ${replace} ${when}; перевір активний відсік`;
     };
-    panel.innerHTML = `<div class="player-top"><span>Барабан ${index + 1} / ${state.drums.length}</span><span>${status}</span></div>
+    const journal = numbering.get(drum.id);
+    panel.innerHTML = `<div class="player-top"><span>Барабан ${index + 1} / ${state.drums.length}${journal == null ? '' : ` · журнал №${journal}`}</span><span>${status}</span></div>
       <div class="player-title">${thread ? '' : swatch(drum.color)}<div><h2>${esc(drumTitle(drum))}</h2><p>${esc(streamLabel(drum))} · ${fmt(number(drum.length))} м${drum.name ? ' · №' + esc(drum.name) : ''}</p></div></div>
       <div class="player-grid player-tools">${metric('Розсікач', thread || info.mode === 'unknown' ? 'Уточни' : info.mode === 'single' ? 'Будь-який' : drum.color === 'yellow-green' ? 'Смугастий' : 'Звичайний')}${metric('Дорн', value('dorn'), 'мм', info.sources?.dorn)}${metric('Матриця', value('matrix'), 'мм', info.sources?.matrix)}</div>
       <div class="player-grid">${metric('Шнек №1', value('extruder1'), 'об/хв', info.sources?.extruder1)}${metric('Шнек №2', info.mode === 'single' ? 'Вимкнено' : value('extruder2'), info.mode === 'single' ? '' : 'об/хв', info.mode === 'single' ? '' : info.sources?.extruder2)}${metric('Швидкість', value('workingSpeed'), 'м/хв', info.sources?.workingSpeed)}${thread ? '' : metric('SIKORA · жила', value('sikoraWire'), 'мм', info.sources?.sikoraWire) + metric('SIKORA · ізоляція', value('sikoraOuter'), 'мм', info.sources?.sikoraOuter)}${metric('На екрані', esc(screen))}</div>
@@ -396,13 +418,13 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     renderPlayer();
   });
   function renderQueue() {
-    setupCache.clear();
+    setupCache.clear(); numbering = journalNumbers(state.drums, state.journalLast);
     const opened = new Set([...$('drums').querySelectorAll('.drum-details[open]')].map(el => el.dataset.details));
     renderSummary(); renderPlayer();
     $('drums').innerHTML = state.drums.map((drum, i) => cardMarkup(drum, i, opened)).join('') || '<div class="empty-queue"><p>Черга порожня.</p><button class="primary" type="button" data-generate-queue>Скласти із завдання</button></div>';
   }
   function renderOutputs() {
-    setupCache.clear(); renderSummary(); renderPlayer();
+    setupCache.clear(); numbering = journalNumbers(state.drums, state.journalLast); renderSummary(); renderPlayer();
     state.drums.forEach((drum, i) => {
       const card = $('drums').querySelector(`[data-drum="${window.CSS.escape(drum.id)}"]`);
       if (!card) return;
@@ -514,6 +536,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     if (!card || !field) return;
     const drum = state.drums.find(d => d.id === card.dataset.drum);
     drum[field] = field === 'section' ? Number(event.target.value) : field === 'coiling' ? event.target.value === 'true' : event.target.value;
+    if (field === 'breakdowns') delete drum.joints;
     if (field === 'coreClass') { if (coreClass(event.target.value)) drum.coreClass = coreClass(event.target.value); else delete drum.coreClass; }
     if (field === 'mode' && !['single', 'dual'].includes(drum.mode)) delete drum.mode;
     if (field === 'cableId') {
@@ -535,14 +558,15 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const i = state.drums.findIndex(d => d.id === button.closest('[data-drum]').dataset.drum);
     if (i < 0) return;
     if (button.dataset.action === 'info') { onCableInfo?.(state.drums[i]); return; }
-    if (['active', 'done'].includes(button.dataset.action)) {
-      const drum = state.drums[i], desired = button.dataset.action;
-      savePrevious('status'); state.drums = setDrumStatus(state.drums, drum.id, drumStatus(drum) === desired ? 'queued' : desired);
+    if (button.dataset.action === 'cycle-status') {
+      const drum = state.drums[i], desired = nextDrumStatus(drum), assigned = journalNumbers(state.drums, state.journalLast).get(drum.id);
+      savePrevious('status'); state.drums = setDrumStatus(state.drums, drum.id, desired);
+      const updated = state.drums.find(row => row.id === drum.id);
+      if (desired === 'queued') delete updated.journalNumber;
+      else if (assigned != null) updated.journalNumber = assigned;
       persist(); renderQueue(); haptic();
-      $('plan-live').textContent = `${drumTitle(drum)}, ${streamLabel(drum)}: ${drumStatus(state.drums[i]) === 'done' ? 'готово' : drumStatus(state.drums[i]) === 'active' ? 'в роботі' : 'повернуто до черги'}.`;
-      const focusId = drumStatus(state.drums[i]) === 'done' ? (nextDrum(i) ?? state.drums.find(d => drumStatus(d) !== 'done'))?.id : drum.id;
-      if (focusId) $('drums').querySelector(`[data-drum="${window.CSS.escape(focusId)}"] [data-action="active"]`)?.focus({ preventScroll: true });
-      else $('drums').querySelector(`[data-drum="${window.CSS.escape(drum.id)}"] [data-action="done"]`)?.focus({ preventScroll: true });
+      $('plan-live').textContent = `${drumTitle(drum)}, ${streamLabel(drum)}: ${desired === 'done' ? 'готово' : desired === 'active' ? 'в роботі' : 'не готово'}.`;
+      $('drums').querySelector(`[data-drum="${window.CSS.escape(drum.id)}"] [data-action="cycle-status"]`)?.focus({ preventScroll: true });
       return;
     }
     if (button.dataset.action === 'remove') { savePrevious(); state.drums.splice(i, 1); state.manualOrder = true; persist(); renderQueue(); }
@@ -567,6 +591,11 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const insertion = index + (after ? 1 : 0);
     drag.target = Math.max(0, Math.min(state.drums.length - 1, insertion - (drag.from < insertion ? 1 : 0)));
     if (drag.target !== drag.from) card.classList.add(after ? 'drop-after' : 'drop-before');
+    if (drag.preview) {
+      drag.preview.style.left = `${Math.min(window.innerWidth - 12, Math.max(12, drag.x))}px`;
+      drag.preview.style.top = `${Math.max(10, drag.y - 12)}px`;
+      drag.preview.querySelector('small').textContent = `Позиція ${drag.from + 1} → ${drag.target + 1}`;
+    }
   }
   function scrollDrag() {
     if (!drag?.started) return;
@@ -580,6 +609,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     scrollFrame = null;
     $('drums').querySelectorAll('.is-dragging,.drop-before,.drop-after').forEach(el => el.classList.remove('is-dragging', 'drop-before', 'drop-after'));
     const previous = drag; drag = null;
+    previous?.preview?.remove();
     if (previous?.handle.hasPointerCapture(previous.pointer)) previous.handle.releasePointerCapture(previous.pointer);
   }
   $('drums').addEventListener('pointerdown', event => {
@@ -593,7 +623,14 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
   $('drums').addEventListener('pointermove', event => {
     if (!drag || event.pointerId !== drag.pointer) return;
     drag.x = event.clientX; drag.y = event.clientY;
-    if (!drag.started && Math.abs(drag.y - drag.startY) > 5) { drag.started = true; drag.card.classList.add('is-dragging'); haptic(); scrollDrag(); }
+    if (!drag.started && Math.abs(drag.y - drag.startY) > 5) {
+      drag.started = true; drag.card.classList.add('is-dragging');
+      const drum = state.drums[drag.from], preview = document.createElement('div');
+      preview.className = 'drag-preview'; preview.setAttribute('aria-hidden', 'true');
+      preview.innerHTML = `${isThread(drum.cableId) ? '' : swatch(drum.color)}<span><b>${esc(drumTitle(drum))}</b><small></small></span>`;
+      document.body.append(preview); drag.preview = preview;
+      haptic(); scrollDrag();
+    }
     markDrop();
   });
   $('drums').addEventListener('pointerup', event => {
@@ -612,5 +649,5 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
   });
   window.addEventListener('afterprint', () => { printOpened?.forEach(el => { el.open = false; }); printOpened = null; });
   if (state.planJobs.length && !state.planDirty) $('job-builder').open = false;
-  return { render, renderQueue, renderOutputs, result, transitionText, setup, drumTitle, syncSelection, resourcesText };
+  return { render, renderQueue, renderOutputs, result, transitionText, setup, drumTitle, syncSelection, resourcesText, journalNumber: drum => journalNumbers(state.drums, state.journalLast).get(drum.id) };
 }

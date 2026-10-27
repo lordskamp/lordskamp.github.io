@@ -6,6 +6,30 @@ export const MAX_DRUMS = 500;
 const validColors = new Set(COLORS.map(color => color.id));
 const unique = values => [...new Set(values)];
 const validStatuses = new Set(['queued', 'active', 'done']);
+
+export function lastJournalNumber(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d+$/u.test(text)) return null;
+  const result = Number(text);
+  return Number.isSafeInteger(result) && result >= 0 && result <= Number.MAX_SAFE_INTEGER - MAX_DRUMS ? result : null;
+}
+
+// Started drums keep their numbers; waiting drums follow the current queue.
+export function journalNumbers(drums, last) {
+  const rows = Array.isArray(drums) ? drums : [], base = lastJournalNumber(last), result = new Map();
+  const reserved = new Set(rows.map(row => row.journalNumber).filter(value => Number.isSafeInteger(value) && value > 0));
+  let next = base === null ? null : base + 1;
+  for (const row of rows) {
+    if (Number.isSafeInteger(row.journalNumber) && row.journalNumber > 0) result.set(row.id, row.journalNumber);
+    else if (next !== null && drumStatus(row) !== 'done') {
+      while (reserved.has(next)) next++;
+      if (Number.isSafeInteger(next)) { result.set(row.id, next); next++; }
+    }
+  }
+  return result;
+}
+
+export const nextDrumStatus = drum => ({ queued: 'active', active: 'done', done: 'queued' })[drumStatus(drum)];
 const isThread = record => typeof record?.cableId === 'string' && record.cableId.trim() === 'thread-bundle';
 const blankDiameter = value => value === null || value === undefined || typeof value === 'string' && !value.trim();
 const validDiameter = value => blankDiameter(value) || (typeof value === 'number'
@@ -240,6 +264,7 @@ export function scheduleJobs(jobs, existingDrums = [], options = {}) {
     const mode = isThread(drum) ? 'single' : ['black', 'yellow-green'].includes(drum.color) ? 'dual'
       : unchanged && ['single', 'dual'].includes(saved?.mode) ? saved.mode : drum.mode;
     const restored = { ...saved, ...drum, name: saved?.name ?? '', breakdowns: saved?.breakdowns ?? '', status };
+    if (!unchanged) delete restored.journalNumber;
     if (!drum.coiling) delete restored.coiling;
     if (!Object.hasOwn(drum, 'coreClass')) delete restored.coreClass;
     if (['single', 'dual'].includes(mode)) restored.mode = mode; else delete restored.mode;

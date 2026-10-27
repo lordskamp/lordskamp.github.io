@@ -48,14 +48,14 @@ export function initSplicePlanner({ toast = () => {}, initialDraft } = {}) {
     lengthInput.setAttribute('aria-invalid', String(hasLength && !validLength));
     breakdownsInput.setAttribute('aria-invalid', String(Boolean(validLength && result.errors.length)));
     if (!hasLength) {
-      message.textContent = 'Вкажи потрібну довжину та позначки пробоїв.';
+      message.textContent = 'Вкажи потрібну довжину та позначки пробоїв або з’єднань.';
     } else if (!valid) {
       message.textContent = result.errors.join(' ');
     } else if (result.spliceCount) {
       const rounding = result.marks.map((mark, i) => `${fmt(mark)} → ${fmt(result.roundedMarks[i])}`).join('; ');
-      message.textContent = `${rounding} м. Пробій не додає запас до довжини.`;
+      message.textContent = `${rounding} м. Пробій або з’єднання не додає запас до довжини.`;
     } else {
-      message.textContent = 'Додай пробої через кому, коли вони з’являться.';
+      message.textContent = 'Додай пробої або з’єднання через кому, коли вони з’являться.';
     }
     return result;
   }
