@@ -722,7 +722,7 @@ test('Telegram image documents and photos share a batch and Gemini receives the 
     if (url.includes('/file/bot')) return new Response(png);
     if (url.includes('generativelanguage.googleapis.com')) {
       calls.push({url,headers:options.headers,body:JSON.parse(options.body)});
-      return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,coreClass:4,colors:['blue'],totalKm:'15,350',lengthsText:'10,200 + 5,150'}]})}]}}]});
+      return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,coreClass:4,colors:['blue'],totalKm:'15,350',lengthsText:'10,200 + 5,150',highlighted:calls.length===1,highlightText:'терміново'}]})}]}}]});
     }
     sent.push(JSON.parse(options.body)); return Response.json({ok:true,result:{message_id:42}});
   };
@@ -735,14 +735,69 @@ test('Telegram image documents and photos share a batch and Gemini receives the 
   assert.match(sent.at(-1).text,/10 МБ/);
   await processPhotoBatches(env,new Date(Date.now()+30000));
   assert.equal(calls.length,2);
+  assert.match(calls[0].url,/gemini-3\.8-flash:generateContent$/);
   assert.equal(calls[0].headers['x-goog-api-key'],'test-gemini-secret');
   assert(!calls[0].url.includes('test-gemini-secret'));
+  assert.equal(calls[0].body.generationConfig.thinkingConfig.thinkingLevel,'high');
+  assert.match(calls[0].body.contents[0].parts[0].text,/never omit a row/i);
+  assert.match(calls[0].body.contents[0].parts[0].text,/Do not treat ordinary pen check marks alone as highlighting/);
   assert.equal(calls[0].body.contents[0].parts[1].inlineData.mimeType,'image/png');
   assert.equal(calls[0].body.contents[0].parts[1].inlineData.data,Buffer.from(png).toString('base64'));
   const id=db.prepare('SELECT id FROM photo_batches').get().id;
   const opened=await call('/photos/batch',{method:'POST',body:{id},initData:signed({id:200})});
   assert.equal(opened.data.state,'ready'); assert.equal(opened.data.rows.length,2);
   assert.equal(opened.data.rows[0].lengthsText,'10,200 + 5,150');
+  assert.equal(opened.data.rows[0].highlighted,true);
+  assert.equal(opened.data.rows[0].photoNumber,1);
+  assert.match(sent.at(-1).text,/Зверни увагу:.*маркером/);
+  assert.match(sent.at(-1).text,/Фото 1, рядок 1:.*ПВ3.*1\.5\/4.*терміново/);
+  assert.doesNotMatch(sent.at(-1).text,/Фото 2, рядок 2/);
+});
+
+test('highlighted rows survive completion notification retries', async t => {
+  const {db,env}=fixture(); t.after(()=>db.close()); env.TELEGRAM_WEBHOOK_SECRET='0123456789abcdef'; env.GEMINI_API_KEY='test-secret';
+  const oldFetch=globalThis.fetch, sent=[]; let allowFinal=false; t.after(()=>{globalThis.fetch=oldFetch;});
+  globalThis.fetch=async (url,options={})=>{
+    url=String(url);
+    if(url.endsWith('/getFile')) return Response.json({ok:true,result:{file_path:'photo/a.jpg',file_size:4}});
+    if(url.includes('/file/bot')) return new Response(new Uint8Array([255,216,255,0]));
+    if(url.includes('generativelanguage.googleapis.com')) return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,colors:['blue'],highlighted:true,highlightText:'увага',uncertain:true}]})}]}}]});
+    const body=JSON.parse(options.body); sent.push(body);
+    if(body.text.startsWith('Фото розпізнано:')&&!allowFinal) return Response.json({ok:false},{status:500});
+    return Response.json({ok:true,result:{message_id:42}});
+  };
+  const request=new Request('https://test.invalid/telegram/webhook',{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':env.TELEGRAM_WEBHOOK_SECRET},body:JSON.stringify({update_id:1,message:{from:{id:200},chat:{id:200,type:'private'},photo:[{file_id:'photo'}]}})});
+  await worker.fetch(request,env); await processPhotoBatches(env,new Date(Date.now()+30000));
+  assert.equal(db.prepare('SELECT completion_notified_at FROM photo_processing').get().completion_notified_at,null);
+  allowFinal=true; await processPhotoBatches(env,new Date(Date.now()+60000));
+  assert.match(sent.at(-1).text,/маркером/); assert.match(sent.at(-1).text,/увага/); assert.match(sent.at(-1).text,/потрібно звірити/);
+  assert.ok(db.prepare('SELECT completion_notified_at FROM photo_processing').get().completion_notified_at);
+});
+
+test('Gemini falls back on quota, server failure and network errors, but not a bad request', async t => {
+  const {call,db,env}=fixture(); t.after(()=>db.close()); env.GEMINI_API_KEY='test-gemini-secret';
+  db.prepare('INSERT INTO photo_inbox(update_id,telegram_id,file_id,received_at) VALUES(?,?,?,?)').run(10,'200','file','2026-10-27T00:00:00Z');
+  const oldFetch=globalThis.fetch; t.after(()=>{globalThis.fetch=oldFetch;}); let mode, calls;
+  globalThis.fetch=async (url,options={})=>{
+    url=String(url);
+    if(url.endsWith('/getFile')) return Response.json({ok:true,result:{file_path:'photo/a.jpg',file_size:4}});
+    if(url.includes('/file/bot')) return new Response(new Uint8Array([255,216,255,0]));
+    calls.push({url,body:JSON.parse(options.body),headers:options.headers});
+    if(calls.length===1 && mode==='network') throw new Error('connection failed');
+    if(calls.length===1 && typeof mode==='number') return Response.json({error:{}},{status:mode});
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,highlighted:true}]})}]}}]});
+  };
+  for(mode of [429,503,'network']) {
+    calls=[];
+    const result=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
+    assert.equal(result.status,200); assert.equal(result.data.rows[0].highlighted,true);
+    assert.equal(calls.length,2); assert.match(calls[0].url,/gemini-3\.8-flash:/); assert.match(calls[1].url,/gemini-3\.5-flash-lite:/);
+    assert.deepEqual(calls[0].body,calls[1].body); assert.equal(calls[1].body.generationConfig.thinkingConfig.thinkingLevel,'high');
+    assert.equal(calls[1].headers['x-goog-api-key'],'test-gemini-secret');
+  }
+  mode=400; calls=[];
+  const invalid=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
+  assert.equal(invalid.status,502); assert.equal(calls.length,1);
 });
 
 test('Gemini quota errors remain visible and are not mistaken for success', async t => {
