@@ -13,6 +13,18 @@ export function speedLimit(info) {
   return speeds.length ? Math.max(...speeds) : null;
 }
 
+/** Preserve the chosen line speed even when the new mode lacks a usable RPM basis. */
+export function retainWorkingSpeed(info, target) {
+  const speed = positive(target);
+  if (!speed) return info;
+  const result = speedSetup(info, speed);
+  if (!result.error) return result.info;
+  return { ...info, effective: { ...info.effective, workingSpeed: speed, extruder1: null, extruder2: null },
+    sources: { ...info.sources, workingSpeed: 'manual', extruder1: null, extruder2: null },
+    stages: { first: firstSpeed(speed), second: secondSpeed(speed), working: speed, source: 'manual' },
+    speedWarning: 'Для цієї швидкості бракує даних про оберти.' };
+}
+
 /** Always take an unmodified setup; never scale a previous local adjustment. */
 export function speedSetup(info, target) {
   const speed = positive(target);

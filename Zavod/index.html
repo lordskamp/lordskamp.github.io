@@ -4,15 +4,14 @@
   <meta name="description" content="Налаштування проводу та робоча таблиця ділянки обпресування."><title>Обпресування</title>
   <link rel="icon" href="./DORN.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=25">
   <link rel="stylesheet" href="./plan.css?v=3">
-  <link rel="stylesheet" href="./interface.css?v=1">
-  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=36"></script>
+  <link rel="stylesheet" href="./interface.css?v=4">
+  <script src="https://telegram.org/js/telegram-web-app.js?63" async></script><script type="module" src="./app.js?v=40"></script>
 </head><body>
-  <header class="header"><button type="button" class="brand" data-view="setup"><span class="brand-mark" aria-hidden="true"></span><span>Обпресування</span></button><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></header>
   <main>
     <section id="view-setup" class="work-view">
       <button class="back" id="return-to-plan" type="button" hidden>← До черги</button>
-      <div class="workspace-heading"><h1>Налаштування лінії</h1></div>
-      <div class="pickers"><label>Провід<select id="cable"></select></label><label>Переріз, мм²<select id="section"></select></label><label id="thread-diameter-picker" hidden>Фінальний діаметр, мм<input id="thread-final-diameter" inputmode="decimal" maxlength="12" autocomplete="off" placeholder="Із завдання"></label><label class="color-picker">Колір<select id="color"></select></label></div>
+      <div class="workspace-heading"><h1>Налаштування лінії</h1><nav aria-label="Розділи"><button type="button" data-view="table">Таблиця</button><button type="button" data-view="admin">Адмін</button></nav></div>
+      <div class="pickers"><label>Провід<select id="cable"></select></label><label>Переріз, мм²<select id="section"></select></label><label id="thread-diameter-picker" hidden>Фінальний діаметр, мм<input id="thread-final-diameter" inputmode="decimal" maxlength="12" autocomplete="off" placeholder="Із завдання"></label><label class="color-picker" hidden>Колір<select id="color"></select></label></div>
       <div id="values" aria-live="polite"></div>
       <div class="actions"><button class="primary" id="open-plan" type="button">План барабанів</button></div>
       <div class="setup-footer"><details id="source-details" class="source-details"><summary>Деталі та джерела</summary><div id="source-content"></div></details><p id="connection" class="quiet" role="status">Оновлюю таблицю…</p></div>
@@ -32,7 +31,7 @@
       <div id="plan-summary" aria-live="polite"></div>
       <section id="drum-player" class="drum-player" aria-label="Налаштування барабана" aria-live="polite" hidden></section>
       <p id="plan-order-status" class="quiet" role="status"></p>
-      <div class="queue-heading"><h2>Черга</h2><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Порядок</button><button class="secondary" id="clear-plan" type="button">Очистити</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>
+      <div class="queue-heading"><h2>Черга</h2><details id="dye-slots" class="dye-slots"></details><div class="queue-tools"><button class="secondary" id="restore-plan-order" type="button">Порядок</button><button class="secondary" id="clear-plan" type="button">Очистити</button><button class="secondary" id="restore-cleared-plan" type="button" hidden>Скасувати дію</button></div></div>
       <div id="drums" class="drums"></div>
       <p id="plan-live" class="sr-only" role="status" aria-live="polite"></p>
       <div class="actions"><button class="secondary" id="copy-plan" type="button">Копіювати план</button><button class="secondary" id="print-plan" type="button">Друк</button></div>

@@ -1,4 +1,4 @@
-import { number } from './core.js?v=28';
+import { number, splitterFor } from './core.js?v=29';
 import { drumStatus } from './planner.js?v=28';
 
 export const SHIFT_MINUTES = 12 * 60;
@@ -71,16 +71,19 @@ export function estimateShift(drums, getSetup, savedSettings) {
   const available = Math.max(0, SHIFT_MINUTES - settings.lunch - settings.alarms - settings.breaks);
   let elapsed = pending.length ? settings.startup : 0, running = 0, setup = elapsed;
   let possibleMetres = 0, completedDrums = 0, partial = null, previous = null, previousInfo = null;
-  let blocked = false, fallbackSpeeds = 0;
+  let blocked = false, fallbackSpeeds = 0, mountedHead = null;
   const rows = [];
   for (const drum of pending) {
     const info = getSetup(drum), speed = productionSpeed(info), length = metres(drum.length);
     if (length === null || speed.value === null) { blocked = true; break; }
     if (speed.source !== 'reference') fallbackSpeeds++;
     let overhead = settings.drum;
+    const requiredHead = thread(drum) ? null : splitterFor(drum.color, info?.mode, info?.noDye);
+    const headChanged = requiredHead && mountedHead && requiredHead !== mountedHead;
+    if (thread(drum)) mountedHead = null; else if (requiredHead) mountedHead = requiredHead;
     if (previous) {
       if (previous.cableId !== drum.cableId || number(previous.section) !== number(drum.section) || coreClass(previous.coreClass) !== coreClass(drum.coreClass)) overhead += settings.conductor;
-      if (JSON.stringify([previousInfo?.effective?.dorn, previousInfo?.effective?.matrix, previousInfo?.mode]) !== JSON.stringify([info?.effective?.dorn, info?.effective?.matrix, info?.mode])) overhead += settings.tooling;
+      if (headChanged || JSON.stringify([previousInfo?.effective?.dorn, previousInfo?.effective?.matrix, previousInfo?.mode]) !== JSON.stringify([info?.effective?.dorn, info?.effective?.matrix, info?.mode])) overhead += settings.tooling;
       if (!thread(previous) && !thread(drum) && previous.color !== drum.color) overhead += settings.color;
     }
     const duration = length / speed.value, start = elapsed + overhead;

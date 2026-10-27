@@ -691,7 +691,7 @@ test('drum player shows tools and settings and navigation does not change produc
     const button = { dataset: { player: 'next' }, disabled: false };
     panel.listeners.get('click')({ target: { closest: () => button } });
     assert.match(panel.innerHTML, /Барабан 2 \/ 2/);
-    assert.match(panel.innerHTML, /Звичайний/);
+    assert.match(panel.innerHTML, /Будь-який/);
     assert.deepEqual(state.drums.map(drum => drum.status), ['active', 'queued']);
     button.dataset.player = 'previous';
     panel.listeners.get('click')({ target: { closest: () => button } });
@@ -745,4 +745,23 @@ test('coiling is determined by the confirmed brand, regardless of old manual cho
   const other = { id: 'plain', cableId: globalCable.id, section: 1.5, color: 'blue', length: '1000', coiling: true, breakdowns: '50' };
   const state = { ...initialState(), rules: { ...DEFAULT_RULES }, jobs: [], planJobs: [], drums: [other] };
   withPlannerHarness(state, ({ planner }) => assert.equal(planner.result(other, 0).coiling, false));
+});
+
+test('player uses the last required splitter through a one-extruder drum', () => {
+  const cable = optionFor('pv3');
+  const state = { ...initialState(), rules:{ ...DEFAULT_RULES }, jobs:[], planJobs:[], drums:[
+    { id:'s', cableId:cable.id, section:1, color:'yellow-green', length:'15000', mode:'dual' },
+    { id:'one', cableId:cable.id, section:1, color:'blue', length:'15000', mode:'single' },
+    { id:'b', cableId:cable.id, section:1, color:'black', length:'15000', mode:'dual' },
+  ] };
+  const getSetup = (id, section, color, diameter, mode) => setupFor(id, section, {}, color, { mode, finalDiameter:diameter });
+  withPlannerHarness(state, ({ planner, element }) => {
+    planner.renderQueue();
+    assert.equal(planner.result(state.drums[0],0).headChange,false);
+    assert.equal(planner.result(state.drums[1],1).headChange,true);
+    assert.match(planner.transitionText(state.drums[1],1), /поставити розсікач для суцільного/);
+    assert.match(element('plan-summary').innerHTML, /розсікач: <b>1<\/b>/);
+    state.drums[2].color='yellow-green';
+    assert.equal(planner.result(state.drums[1],1).headChange,false);
+  }, getSetup);
 });

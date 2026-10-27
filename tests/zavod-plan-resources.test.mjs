@@ -167,3 +167,17 @@ test('classes, inventory, shift assumptions and undo metadata survive restoratio
   assert.deepEqual(saved, before);
   assert.deepEqual(shiftSettings({ alarms: -1, lunch: 'oops', breaks: 721 }), SHIFT_DEFAULTS);
 });
+
+test('shift estimate accounts for real splitter changes and carries the splitter across single-extruder drums', () => {
+  const striped = drum({id:'s', color:'yellow-green', mode:'dual'});
+  const black = drum({id:'b', color:'black', mode:'dual'});
+  const single = drum({id:'one', color:'blue', mode:'single'});
+  const getSetup = item => setup({mode:item.mode});
+  const settings = {...zeroTime, tooling:20};
+  const direct = estimateShift([striped,black],getSetup,settings);
+  assert.equal(direct.setupMinutes,20, 'two extruders need a real splitter change');
+  const viaSingle = estimateShift([striped,single,black],getSetup,settings);
+  assert.equal(viaSingle.setupMinutes,40, 'mode changes cover tooling; splitter change is not counted twice');
+  const sameSplitter = estimateShift([striped,single,{...striped,id:'s2'}],getSetup,settings);
+  assert.equal(sameSplitter.setupMinutes,40, 'single-mode operation does not require an extra splitter change');
+});

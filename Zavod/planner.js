@@ -1,9 +1,9 @@
-import { COLORS, number } from './core.js';
+import { COLORS, number, splitterFor } from './core.js';
+import { dyeRequirements, dyeMode, normalizeDyeSlots, EMPTY_DYE } from './dye-slots.js';
 
 export const MAX_DRUMS = 500;
 
 const validColors = new Set(COLORS.map(color => color.id));
-const striped = 'yellow-green';
 const unique = values => [...new Set(values)];
 const validStatuses = new Set(['queued', 'active', 'done']);
 const isThread = record => typeof record?.cableId === 'string' && record.cableId.trim() === 'thread-bundle';
@@ -149,9 +149,19 @@ function generatedIndex(drum) {
  * splitter requirements are not known. Within each block the encounter order
  * is retained as the tie-breaker, making repeated recommendations stable.
  */
-export function recommendOrder(drums) {
+export function recommendOrder(drums, options = {}) {
   if (!Array.isArray(drums)) return [];
-  const result = [...drums];
+  const result = [...drums], slots = normalizeDyeSlots(options?.slots);
+  const modeOf = dyeMode;
+  const headOf = drum => splitterFor(drum.color, modeOf(drum)) ?? 'any';
+  const slotMatches = drum => dyeRequirements(drum).reduce((count, color, extruder) => count + (color && slots.slice(extruder * 2, extruder * 2 + 2).includes(color) ? 1 : 0), 0);
+  const useSlots = drum => dyeRequirements(drum).forEach((color, extruder) => {
+    if (!color) return;
+    const offset = extruder * 2, pair = slots.slice(offset, offset + 2);
+    if (pair.includes(color) || pair.includes('')) return;
+    const index = pair.indexOf(EMPTY_DYE);
+    slots[offset + (index < 0 ? 0 : index)] = color;
+  });
   let start = 0;
   while (start < result.length) {
     if (drumStatus(result[start]) !== 'queued' || isThread(result[start]) || !validColors.has(result[start]?.color)) { start++; continue; }
@@ -159,22 +169,47 @@ export function recommendOrder(drums) {
     while (end < result.length && drumStatus(result[end]) === 'queued' && !isThread(result[end]) && validColors.has(result[end]?.color)) end++;
     const block = result.slice(start, end);
     const previous = start > 0 && !isThread(result[start - 1]) && validColors.has(result[start - 1]?.color) ? result[start - 1] : null;
-    const heads = unique(block.map(drum => drum.color === striped ? 'striped' : 'plain'));
-    const initialHead = previous ? (previous.color === striped ? 'striped' : 'plain') : 'striped';
-    if (heads.includes(initialHead)) heads.sort((a, b) => (a === initialHead ? -1 : b === initialHead ? 1 : 0));
+    const hasAny = block.some(d => headOf(d) === 'any');
+    const heads = unique(block.map(headOf).filter(head => head !== 'any'));
+    // A previous single-extruder drum does not tell us which splitter is mounted.
+    let previousHead = null;
+    for (let i = start - 1; i >= 0 && !isThread(result[i]); i--) {
+      const candidate = headOf(result[i]);
+      if (candidate !== 'any') { previousHead = candidate; break; }
+    }
+    const initialHead = previousHead ?? 'striped';
+    if (!previousHead && slots.some(Boolean)) heads.sort((a,b) => Math.max(...block.filter(d => headOf(d) === b).map(slotMatches)) - Math.max(...block.filter(d => headOf(d) === a).map(slotMatches)) || (a === initialHead ? -1 : 1));
+    else if (heads.includes(initialHead)) heads.sort((a,b) => a === initialHead ? -1 : b === initialHead ? 1 : 0);
+    if (hasAny) {
+      const anyScore = Math.max(...block.filter(d => headOf(d) === 'any').map(slotMatches));
+      const firstScore = heads.length ? Math.max(...block.filter(d => headOf(d) === heads[0]).map(slotMatches)) : -1;
+      if (previous && modeOf(previous) === 'single' || !previous && slots.some(Boolean) && anyScore > firstScore) heads.unshift('any');
+      else heads.push('any');
+    }
     const ordered = [];
     for (const head of heads) {
-      const group = block.filter(drum => (drum.color === striped ? 'striped' : 'plain') === head);
-      const colors = unique(group.map(drum => drum.color));
-      const priorColor = ordered.at(-1)?.color ?? (previous && (previous.color === striped ? 'striped' : 'plain') === head ? previous.color : null);
-      if (colors.includes(priorColor)) colors.sort((a, b) => a === priorColor ? -1 : b === priorColor ? 1 : 0);
-      for (const color of colors) {
-        const colorGroup = group.filter(drum => drum.color === color);
-        const keys = unique(colorGroup.map(drum => JSON.stringify([drum.cableId, number(drum.section), conductorClass(drum)])));
+      const pool = block.filter(drum => headOf(drum) === head);
+      while (pool.length) {
         const prior = ordered.at(-1) ?? previous;
+        const candidates = unique(pool.map(drum => JSON.stringify([drum.color, modeOf(drum)]))).map(key => pool.find(drum => JSON.stringify([drum.color, modeOf(drum)]) === key));
+        candidates.sort((a,b) => {
+          const sameColor = d => prior && prior.color === d.color ? 1 : 0;
+          const nextHead = heads[heads.indexOf(head) + 1];
+          // Put black at the plain/striped boundary, even when other plain
+          // colours also use two extruders or already have dyes loaded.
+          const boundary = d => head !== 'plain' ? 0
+            : nextHead === 'striped' ? (d.color === 'black' ? -1 : 0)
+              : prior && headOf(prior) === 'striped' ? (d.color === 'black' ? 1 : 0) : 0;
+          const desiredMode = prior ? modeOf(prior) : nextHead === 'striped' ? 'single' : null;
+          const sameMode = d => desiredMode && modeOf(d) === desiredMode ? 1 : 0;
+          return boundary(b) - boundary(a) || sameColor(b) - sameColor(a) || sameMode(b) - sameMode(a) || (slots.some(Boolean) ? slotMatches(b) - slotMatches(a) : 0);
+        });
+        const first = candidates[0], matching = pool.filter(drum => drum.color === first.color && modeOf(drum) === modeOf(first));
+        const keys = unique(matching.map(drum => JSON.stringify([drum.cableId, number(drum.section), conductorClass(drum)])));
         const priorKey = prior && JSON.stringify([prior.cableId, number(prior.section), conductorClass(prior)]);
-        if (keys.includes(priorKey)) keys.sort((a, b) => a === priorKey ? -1 : b === priorKey ? 1 : 0);
-        for (const key of keys) ordered.push(...colorGroup.filter(drum => JSON.stringify([drum.cableId, number(drum.section), conductorClass(drum)]) === key));
+        if (keys.includes(priorKey)) keys.sort((a,b) => a === priorKey ? -1 : b === priorKey ? 1 : 0);
+        for (const key of keys) for (const drum of matching.filter(d => JSON.stringify([d.cableId, number(d.section), conductorClass(d)]) === key)) { ordered.push(drum); pool.splice(pool.indexOf(drum), 1); }
+        useSlots(first);
       }
     }
     result.splice(start, end - start, ...ordered);
@@ -183,7 +218,7 @@ export function recommendOrder(drums) {
   return result;
 }
 
-export function scheduleJobs(jobs, existingDrums = []) {
+export function scheduleJobs(jobs, existingDrums = [], options = {}) {
   const validated = validateJobs(jobs);
   if (validated.errors.length) return { drums: [], errors: validated.errors, warnings: [] };
   const existing = new Map((Array.isArray(existingDrums) ? existingDrums : []).filter(drum => drum && typeof drum === 'object').map(drum => [drum.id, drum]));
@@ -217,7 +252,7 @@ export function scheduleJobs(jobs, existingDrums = []) {
   }
   const positions = new Map((Array.isArray(existingDrums) ? existingDrums : []).map((drum, index) => [drum?.id, index]));
   drums.sort((left, right) => (positions.get(left.id) ?? Infinity) - (positions.get(right.id) ?? Infinity));
-  return { drums: recommendOrder(drums), errors: [], warnings };
+  return { drums: recommendOrder(drums, options), errors: [], warnings };
 }
 
 /** targetIndex is the desired final zero-based position, clamped to the array. */
@@ -244,6 +279,7 @@ function summarizePlan(drums, jobs, plannedDrums) {
   if (!Array.isArray(drums)) summary.errors.push('Не вдалося прочитати план барабанів.');
   if (items.length > MAX_DRUMS) summary.errors.push(`У плані може бути не більше ${MAX_DRUMS} барабанів.`);
   const ids = new Set();
+  let mountedHead = null;
   items.forEach((drum, index) => {
     const length = number(drum?.length);
     if (!drum || !validColors.has(drum.color)) summary.errors.push(`Барабан ${index + 1}: оберіть відомий колір.`);
@@ -253,9 +289,14 @@ function summarizePlan(drums, jobs, plannedDrums) {
     if (typeof drum?.id !== 'string' || !drum.id || ids.has(drum.id)) summary.errors.push(`Барабан ${index + 1}: ідентифікатор має бути непорожнім і унікальним.`);
     ids.add(drum?.id);
     const previous = items[index - 1];
+    if (drum && isThread(drum)) mountedHead = null;
+    else if (drum && validColors.has(drum.color)) {
+      const required = splitterFor(drum.color, dyeMode(drum));
+      if (required && mountedHead && required !== mountedHead) summary.headChanges++;
+      if (required) mountedHead = required;
+    }
     if (!drum || !previous) return;
     if (validColors.has(drum.color) && validColors.has(previous.color)) {
-      if (!isThread(drum) && !isThread(previous) && (drum.color === striped) !== (previous.color === striped)) summary.headChanges++;
       if (!isThread(drum) && !isThread(previous) && drum.color !== previous.color) summary.colorChanges++;
     }
     if (drum.cableId !== previous.cableId || number(drum.section) !== number(previous.section) || !sameDiameter(previous, drum) || !sameClass(previous, drum)) summary.cableChanges++;

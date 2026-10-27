@@ -1,10 +1,11 @@
 import { calculateProduction, coilLength, isCoilingBrand } from './coiling.js?v=2';
 import { estimateColorLead2 } from './color-lead.js?v=27';
 import { VALUE_LABELS } from './setup-data.js?v=30';
-import { COLORS, colorName, dyePlan, fmt, number, planDrum } from './core.js?v=28';
-import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=30';
+import { normalizeDyeSlots, planDyeSlots, EMPTY_DYE } from './dye-slots.js?v=1';
+import { COLORS, colorName, dyePlan, fmt, number, planDrum, splitterFor } from './core.js?v=29';
+import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary } from './planner.js?v=33';
 import { CATALOG_CABLES, optionFor } from './catalog-base.js?v=27';
-import { shiftSettings, coreClass, conductorRequirements, estimateShift, requiredTools } from './plan-resources.js?v=28';
+import { shiftSettings, coreClass, conductorRequirements, estimateShift, requiredTools } from './plan-resources.js?v=29';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -70,6 +71,7 @@ export function syncPlannerSelection(state) {
 
 /** Keep the old locally saved queue, labels and faults when adding task planning. */
 export function restorePlanner(saved, state) {
+  state.dyeSlots = normalizeDyeSlots(saved?.dyeSlots);
   state.shiftSettings = shiftSettings(saved?.shiftSettings);
   state.coreStock = Object.fromEntries(Object.entries(saved?.coreStock ?? {}).filter(([key, entry]) => /^\d+(?:\.\d+)?:[1-6?]$/u.test(key) && entry && typeof entry === 'object')
     .slice(0, 200).map(([key, entry]) => [key, { ...(entry.fullLengthKm === undefined ? {} : { fullLengthKm: String(entry.fullLengthKm).slice(0, 20) }), piecesText: String(entry.piecesText ?? '').slice(0, 2000) }]));
@@ -119,7 +121,21 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
   const restartCounters = new Map();
   const setupCache = new Map();
 
-  state.shiftSettings ??= shiftSettings(); state.coreStock ??= {};
+  state.shiftSettings ??= shiftSettings(); state.coreStock ??= {}; state.dyeSlots = normalizeDyeSlots(state.dyeSlots);
+  const slotPanel = $('dye-slots');
+  slotPanel.innerHTML = '<summary>Барвники</summary><div class="dye-slot-panel"><p>Які барвники вже у відсіках?</p><div class="dye-slot-grid">' + state.dyeSlots.map((value, i) => `<label>№${Math.floor(i / 2) + 1} · відсік ${i % 2 + 1}<select data-dye-slot="${i}"><option value="">Невідомо</option><option value="empty" ${value === EMPTY_DYE ? 'selected' : ''}>Порожній</option>${COLORS.filter(color => color.id !== 'yellow-green').map(color => `<option value="${esc(color.id)}" ${color.id === value ? 'selected' : ''}>${esc(color.label)}</option>`).join('')}</select></label>`).join('') + '</div><small>Наявність у відсіку не означає, що він зараз подається.</small><button type="button" class="secondary" data-order-dyes>Перебудувати чергу</button></div>';
+  slotPanel.addEventListener('change', event => {
+    const index = Number(event.target.dataset.dyeSlot);
+    if (!Number.isInteger(index) || index < 0 || index > 3) return;
+    state.dyeSlots[index] = normalizeDyeSlots([event.target.value])[0];
+    if (!state.manualOrder) state.drums = recommendOrder(state.drums, { slots: state.dyeSlots });
+    persist(); renderQueue();
+  });
+  slotPanel.addEventListener('click', event => {
+    if (!event.target.closest('[data-order-dyes]')) return;
+    if (state.drums.length > 1) { savePrevious(); state.drums = recommendOrder(state.drums, { slots: state.dyeSlots }); state.manualOrder = false; persist(); renderQueue(); }
+    slotPanel.open = false;
+  });
   const drumTitle = drum => {
     const job = state.planJobs.find(j => j.id === drum.jobId);
     return isThread(drum.cableId) ? cableLabel(drum.cableId) + diameterLabel(drum.finalDiameter) : `${cableLabel(drum.cableId)} ${job ? fmt(job.colors.length) + '×' : ''}${fmt(drum.section)}${classLabel(drum)}`;
@@ -148,7 +164,17 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const brand = optionFor(drum.cableId)?.brand;
     const coiling = isCoilingBrand(brand);
     const production = calculateProduction(drum.length, drum.breakdowns, drum.joints, coiling, coilLength(brand, drum.section), rules.splice);
-    const planned = planDrum({ ...drum, length: production.target ?? drum.length, mode: info.mode, noDye: info.noDye }, next ? { ...next, mode: nextInfo.mode, noDye: nextInfo.noDye } : null, info.mode, rules);
+    // A one-extruder drum does not alter the installed splitter. Walk back
+    // to the last known dual-extruder requirement; threads break that context.
+    let mountedSplitter = null;
+    for (let pos = i; pos >= 0; pos--) {
+      const earlier = state.drums[pos];
+      if (isThread(earlier.cableId)) break;
+      const earlierInfo = setup(earlier);
+      mountedSplitter = splitterFor(earlier.color, earlierInfo.mode, earlierInfo.noDye);
+      if (mountedSplitter) break;
+    }
+    const planned = planDrum({ ...drum, length: production.target ?? drum.length, mode: info.mode, noDye: info.noDye }, next ? { ...next, mode: nextInfo.mode, noDye: nextInfo.noDye } : null, info.mode, { ...rules, currentSplitter: mountedSplitter });
     const errors = [...new Set([...planned.errors, ...production.errors])];
     const stopAt = planned.transition ? Math.max(0, planned.length - rules.bath) : null;
     if (lead2FromStop && planned.transition) {
@@ -171,9 +197,10 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
       const events = r.events.map(e => `Барвник №${e.extruder} — ${e.fromStop ? 'орієнтовно за ' + fmt(e.lead) + ' м до зупинки' : 'за ' + fmt(e.lead) + ' м до кінця (старе налаштування)'}, на ${fmt(e.at)} м.`);
       colorTransition = `Далі — ${colorName(next.color).toLowerCase()}. Екран: ${r.formula}. Планова зупинка: ${fmt(r.stopAt)} м. ${events.join(' ')}${r.warnings.length ? ' ' + r.warnings.join(' ') : ''}`.trim();
     }
-    if (!r.setupChange) return colorTransition;
+    if (!r.setupChange && !r.headUnknown) return colorTransition;
     const changes = [];
     if (r.headChange) changes.push(next.color === 'yellow-green' ? 'поставити розсікач для жовто-зеленого' : 'поставити розсікач для суцільного кольору');
+    else if (r.headUnknown) changes.push(next.color === 'yellow-green' ? 'перевірити розсікач для жовто-зеленого' : 'перевірити розсікач для суцільного кольору');
     if (r.cableChange) changes.push(`перейти на ${drumTitle(next)}`);
     if (r.modeChange) changes.push('змінити режим екструдерів');
     if (r.matrixChange) changes.push(`змінити матрицю на ${fmt(setup(next).effective.matrix, 3)} мм`);
@@ -202,7 +229,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     $('jobs').innerHTML = state.jobs.map((job, i) => `<article class="job-card" data-job="${esc(job.id)}">
       <div class="job-heading"><h2>Провід ${i + 1}</h2><div><button type="button" class="icon-button" data-job-action="up" aria-label="Провід ${i + 1} вгору" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="icon-button" data-job-action="down" aria-label="Провід ${i + 1} вниз" ${i === state.jobs.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="icon-button" data-job-action="remove" aria-label="Прибрати провід ${i + 1}" ${state.jobs.length === 1 ? 'disabled' : ''}>×</button></div></div>
       <div class="job-fields form-grid"><label>Марка<select data-job-field="cableId">${options(job.cableId)}</select></label><label ${isThread(job.cableId) ? 'hidden' : ''}>Переріз жили, мм²<select data-job-field="section">${sections(job.cableId, job.section)}</select></label>${isThread(job.cableId) ? `<label>Фінальний діаметр, мм<input data-job-field="finalDiameter" inputmode="decimal" maxlength="12" value="${esc(job.finalDiameter)}" placeholder="Із завдання"></label>` : `<label>Клас жили<select data-job-field="coreClass">${classOptions(job.coreClass)}</select></label>`}<label class="job-lengths">${isThread(job.cableId) ? 'Довжини барабанів' : 'Довжини кожного кольору'}, км<input data-job-field="lengthsText" maxlength="2000" value="${esc(job.lengthsText)}" placeholder="3×15 + 3×15 + 11"></label></div>
-      <fieldset class="job-colors" ${isThread(job.cableId) ? 'hidden' : ''}><legend>Кольори жил</legend>${COLORS.map(c => `<label class="color-choice" title="${c.label}"><input type="checkbox" data-job-color="${c.id}" aria-label="${c.label}" ${job.colors.includes(c.id) ? 'checked' : ''}>${swatch(c.id)}<span class="color-name">${esc(c.label)}</span></label>`).join('')}</fieldset>
+      <fieldset class="job-colors" ${isThread(job.cableId) ? 'hidden' : ''}><legend>Кольори жил</legend>${COLORS.map(c => `<label class="color-choice" title="${c.label}"><input type="checkbox" data-job-color="${c.id}" aria-label="${c.label}" ${job.colors.includes(c.id) ? 'checked' : ''}>${swatch(c.id)}</label>`).join('')}</fieldset>
       <p class="job-total quiet" data-job-total="${esc(job.id)}">${esc(jobTotal(job))}</p></article>`).join('');
   }
   function resourceData() {
@@ -265,7 +292,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
   }
   function renderSummary() {
     renderResources();
-    const s = planSummary(state.drums, state.planJobs), progress = productionSummary(state.drums, state.planJobs);
+    const s = planSummary(state.drums.map(drum => ({ ...drum, mode: setup(drum).mode })), state.planJobs), progress = productionSummary(state.drums, state.planJobs);
     const pending = state.drums.filter(d => drumStatus(d) !== 'done');
     $('plan-summary').innerHTML = `${s.drumCount ? `<div class="queue-progress"><div><b>${progress.doneCount} / ${s.drumCount} готово</b><span>${fmt(s.totalMetres / 1000, 3)} км</span></div><progress value="${progress.doneCount}" max="${s.drumCount}" aria-label="Виконання черги"></progress></div>` : ''}
       ${s.drumCount > 1 ? `<p class="queue-changes">Переходи в черзі · розсікач: <b>${s.headChanges}</b> · колір: <b>${s.colorChanges}</b> · жила: <b>${s.cableChanges}</b></p>` : ''}
@@ -296,7 +323,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     return `<article class="card drum queue-card ${status === 'active' ? 'is-active' : status === 'done' ? 'is-done' : ''}" data-drum="${esc(drum.id)}" data-status="${status}" data-color="${esc(drum.color)}" style="--done-color:${COLORS.find(c => c.id === drum.color)?.hex ?? '#aaa'}">
       <div class="queue-row"><button class="drag-handle icon-button" type="button" data-drag-handle aria-label="Перетягнути: ${esc(label)}. Стрілки переміщують вгору та вниз.">☰</button>
       <details class="drum-details" data-details="${esc(drum.id)}" ${opened.has(drum.id) ? 'open' : ''}><summary class="drum-summary">${compact(drum, i)}</summary><div class="drum-fields"><div class="form-grid"><label>Провід<select data-field="cableId" ${locked}>${options(drum.cableId)}</select></label><label ${isThread(drum.cableId) ? 'hidden' : ''}>Переріз, мм²<select data-field="section" ${locked}>${sections(drum.cableId, drum.section)}</select></label><label data-diameter-picker ${isThread(drum.cableId) ? '' : 'hidden'}>Фінальний діаметр, мм<input data-field="finalDiameter" inputmode="decimal" maxlength="12" value="${esc(drum.finalDiameter)}" placeholder="Із завдання" ${locked}></label><label data-color-picker ${isThread(drum.cableId) ? 'hidden' : ''}>Колір<select data-field="color" ${locked}>${colorOptions(drum.color)}</select></label>${modeField}<label>Потрібна довжина, м<input data-field="length" inputmode="numeric" value="${esc(drum.length)}" maxlength="20" ${locked}></label><label>Номер барабана<input data-field="name" maxlength="80" value="${esc(drum.name)}"></label><label>Пробій на метрі<input data-field="breakdowns" maxlength="2000" placeholder="3682; 9240" value="${esc(drum.breakdowns)}"></label><label>З’єднання жили на метрі<input data-field="joints" maxlength="2000" placeholder="3682; 9240" value="${esc(drum.joints)}"></label></div><p class="quiet">Пробої та з’єднання вказуй за загальним лічильником у метрах, через крапку з комою.</p><div data-output="${esc(drum.id)}">${output(drum, i)}</div><p class="drum-transition" data-transition="${esc(drum.id)}" ${transitionText(drum, i) ? '' : 'hidden'}>${esc(transitionText(drum, i))}</p>${locked ? '<p class="quiet">Для редагування поверни запис до черги.</p>' : ''}</div></details></div>
-      <div class="drum-actions">${status !== 'done' ? `<button type="button" class="queue-status" data-action="active" aria-pressed="${status === 'active'}" title="${status === 'active' ? 'Повернути до черги' : 'Почати цей барабан'}">В роботі</button>` : ''}<button type="button" class="queue-status" data-action="done" aria-pressed="${status === 'done'}" title="${status === 'done' ? 'Повернути до черги' : 'Позначити виконаним'}">${status === 'done' ? 'Не готово' : 'Готово'}</button><button type="button" class="cable-info icon-button" data-action="info" aria-label="Налаштування: ${esc(label)}" title="Налаштування проводу">ⓘ</button><details class="queue-more"><summary aria-label="Інші дії" title="Інші дії">⋯</summary><div class="order-controls"><button type="button" class="icon-button" data-action="up" aria-label="Перемістити вгору" ${neighborIndex(i, -1) < 0 ? 'disabled' : ''}>↑</button><button type="button" class="icon-button" data-action="down" aria-label="Перемістити вниз" ${neighborIndex(i, 1) < 0 ? 'disabled' : ''}>↓</button><button type="button" class="icon-button" data-action="remove" aria-label="Прибрати запис">×</button></div></details></div>
+      <div class="drum-actions">${status !== 'done' ? `<button type="button" class="queue-status" data-action="active" aria-pressed="${status === 'active'}" title="${status === 'active' ? 'Повернути до черги' : 'Почати цей барабан'}" aria-label="${status === 'active' ? 'Повернути до черги' : 'Почати цей барабан'}">В роботі</button>` : ''}<button type="button" class="queue-status" data-action="done" aria-pressed="${status === 'done'}" title="${status === 'done' ? 'Повернути до черги' : 'Позначити виконаним'}" aria-label="${status === 'done' ? 'Повернути до черги' : 'Позначити виконаним'}">${status === 'done' ? 'Не готово' : 'Готово'}</button><details class="queue-more"><summary aria-label="Інші дії" title="Інші дії">⋯</summary><div class="order-controls"><button type="button" class="cable-info icon-button" data-action="info" aria-label="Налаштування: ${esc(label)}" title="Налаштування проводу">ⓘ</button><button type="button" class="icon-button" data-action="up" aria-label="Перемістити вгору" ${neighborIndex(i, -1) < 0 ? 'disabled' : ''}>↑</button><button type="button" class="icon-button" data-action="down" aria-label="Перемістити вниз" ${neighborIndex(i, 1) < 0 ? 'disabled' : ''}>↓</button><button type="button" class="icon-button" data-action="remove" aria-label="Прибрати запис">×</button></div></details></div>
       </article>`;
   }
   function renderPlayer() {
@@ -322,11 +349,25 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const dye = dyePlan(drum.color, info.mode, { noDye: info.noDye });
     const status = { queued: 'У черзі', active: 'В роботі', done: 'Готово' }[drumStatus(drum)];
     const screen = r.errors.length ? 'Перевір дані барабана' : r.target > 0 ? `${fmt(r.target)} м` : 'Перевір зупинку';
+    const slotPlan = planDyeSlots(state.drums.map(item => ({ ...item, mode: setup(item).mode })), state.dyeSlots);
+    const currentSteps = slotPlan.find(item => item.id === drum.id)?.steps ?? [];
+    const next = nextDrum(index), nextSteps = slotPlan.find(item => item.id === next?.id)?.steps ?? [];
+    const description = (step, after) => {
+      const label = colorName(step.color).toLowerCase();
+      const event = after ? r.events.find(item => item.extruder === step.extruder) : null;
+      const timing = event ? `; орієнтир перемикання — ${fmt(event.at)} м` : '';
+      if (step.kind === 'available') return `№${step.extruder}, відсік ${step.slot}: ${label} вже є${timing}; перевір подачу`;
+      if (step.kind === 'unknown') return `№${step.extruder}: потрібен ${label}${timing}; перевір невказані відсіки`;
+      const when = event ? `до перемикання на ${fmt(event.at)} м` : 'до початку барабана';
+      const replace = step.replaces === EMPTY_DYE ? 'порожній відсік' : `замість ${colorName(step.replaces).toLowerCase()}`;
+      return `№${step.extruder}, відсік ${step.slot}: підготуй ${label} ${replace} ${when}; перевір активний відсік`;
+    };
     panel.innerHTML = `<div class="player-top"><span>Барабан ${index + 1} / ${state.drums.length}</span><span>${status}</span></div>
       <div class="player-title">${thread ? '' : swatch(drum.color)}<div><h2>${esc(drumTitle(drum))}</h2><p>${esc(streamLabel(drum))} · ${fmt(number(drum.length))} м${drum.name ? ' · №' + esc(drum.name) : ''}</p></div></div>
-      <div class="player-grid player-tools">${metric('Розсікач', thread ? 'Уточни' : drum.color === 'yellow-green' ? 'Смугастий' : 'Звичайний')}${metric('Дорн', value('dorn'), 'мм', info.sources?.dorn)}${metric('Матриця', value('matrix'), 'мм', info.sources?.matrix)}</div>
+      <div class="player-grid player-tools">${metric('Розсікач', thread || info.mode === 'unknown' ? 'Уточни' : info.mode === 'single' ? 'Будь-який' : drum.color === 'yellow-green' ? 'Смугастий' : 'Звичайний')}${metric('Дорн', value('dorn'), 'мм', info.sources?.dorn)}${metric('Матриця', value('matrix'), 'мм', info.sources?.matrix)}</div>
       <div class="player-grid">${metric('Шнек №1', value('extruder1'), 'об/хв', info.sources?.extruder1)}${metric('Шнек №2', info.mode === 'single' ? 'Вимкнено' : value('extruder2'), info.mode === 'single' ? '' : 'об/хв', info.mode === 'single' ? '' : info.sources?.extruder2)}${metric('Швидкість', value('workingSpeed'), 'м/хв', info.sources?.workingSpeed)}${thread ? '' : metric('SIKORA · жила', value('sikoraWire'), 'мм', info.sources?.sikoraWire) + metric('SIKORA · ізоляція', value('sikoraOuter'), 'мм', info.sources?.sikoraOuter)}${metric('На екрані', esc(screen))}</div>
       ${!thread && dye?.valid ? `<p class="player-dye">Барвник: №1 — ${esc(dye.first)} · №2 — ${esc(dye.second)}</p>` : ''}
+      ${state.dyeSlots.some(Boolean) && currentSteps.length ? `<div class="dye-cues"><b>На цей барабан</b>${currentSteps.map(step => `<p>${esc(description(step, false))}.</p>`).join('')}${nextSteps.some(step => step.kind === 'load' || r.events.some(event => event.extruder === step.extruder)) ? `<b>Підготувати далі</b>${nextSteps.filter(step => step.kind === 'load' || r.events.some(event => event.extruder === step.extruder)).map(step => `<p>${esc(description(step, true))}.</p>`).join('')}` : ''}<small>Який відсік зараз подає барвник, потрібно перевірити на установці.</small></div>` : ''}
       ${r.errors.length ? `<p class="error">${r.errors.map(esc).join(' · ')}</p>` : ''}
       ${r.coiling && !r.errors.length ? `<p class="player-dye">Бухтовка: ${fmt(r.production.coils)} × ${fmt(r.production.size)} м · додатково ${fmt(r.production.waste)} м</p>` : ''}
       ${transitionText(drum, index) ? `<p class="player-next">${esc(transitionText(drum, index))}</p>` : ''}
@@ -388,7 +429,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     if (focus) $('drums').querySelector(`[data-drum="${window.CSS.escape(id)}"] [data-drag-handle]`)?.focus({ preventScroll: true });
   }
   function generate() {
-    const planned = scheduleJobs(state.jobs, state.drums);
+    const planned = scheduleJobs(state.jobs, state.drums, { slots: state.dyeSlots });
     if (planned.errors.length) { $('job-message').textContent = planned.errors.join('\n'); return; }
     savePrevious(); state.drums = planned.drums; state.planJobs = copy(state.jobs); state.planDirty = false; state.manualOrder = false;
     persist(); renderQueue(); $('job-builder').open = false;
@@ -441,7 +482,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
   });
   $('generate-plan').addEventListener('click', generate);
   $('restore-plan-order').addEventListener('click', () => {
-    savePrevious(); state.drums = recommendOrder(state.drums, state.planJobs); state.manualOrder = false; persist(); renderQueue(); haptic();
+    savePrevious(); state.drums = recommendOrder(state.drums, { slots: state.dyeSlots }); state.manualOrder = false; persist(); renderQueue(); haptic();
   });
   function undo() {
     if (!state.previousPlan) return;

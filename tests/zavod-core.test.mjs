@@ -262,7 +262,7 @@ test('невідомий режим та жовто-зелений з одним
   }
   for (const [current, next] of [['blue', 'yellow-green'], ['yellow-green', 'brown']]) {
     const result = planDrum(drum(current), drum(next), 'single');
-    assert.equal(result.headChange, true);
+    assert.equal(result.headChange, false, 'one extruder does not require a specific splitter');
     assert.equal(result.target, 15850);
     assert.deepEqual(result.events, []);
   }
@@ -316,7 +316,8 @@ test('перехід між джгутом та проводом зберіга�
     const result = planDrum(current, next, mode);
     assert.equal(result.target, 14850);
     assert.equal(result.cableChange, true);
-    assert.equal(result.headChange, true, 'the striped metal cable still needs its real splitter');
+    assert.equal(result.headChange, false, 'thread splitter is unknown, not a confirmed change');
+    assert.equal(result.headUnknown, current.noDye === true, 'check the metal splitter after an unknown thread setup');
     assert.equal(result.modeChange, true);
     assert.equal(result.transition, false);
     assert.deepEqual(result.events, []);
@@ -446,4 +447,22 @@ test('план скрутки не приховує пробої, які окр�
     assert.equal(result.spliceCount, parseBreakdowns(marks).values.length);
     assert.equal(result.roundedMarks.length, result.spliceCount);
   }
+});
+
+test('splitter stays mounted through a single-extruder drum and is checked if unknown', () => {
+  const rows = [
+    { id:'s', cableId:'pv3', section:1, color:'yellow-green', length:'15000', mode:'dual' },
+    { id:'one', cableId:'pv3', section:1, color:'blue', length:'15000', mode:'single' },
+    { id:'b', cableId:'pv3', section:1, color:'black', length:'15000', mode:'dual' },
+  ];
+  const [striped, single, black] = rows;
+  const first = planDrum(striped, single, 'dual');
+  assert.equal(first.headChange, false);
+  const second = planDrum(single, black, 'single', { currentSplitter:'striped' });
+  assert.equal(second.headChange, true);
+  const unchanged = planDrum(single, black, 'single', { currentSplitter:'plain' });
+  assert.equal(unchanged.headChange, false);
+  const unknown = planDrum(single, black, 'single');
+  assert.equal(unknown.headChange, false);
+  assert.equal(unknown.headUnknown, true);
 });

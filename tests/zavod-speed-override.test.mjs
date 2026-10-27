@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { speedRpm } from '../Zavod/rpm.js';
-import { speedKey, speedLimit, speedSetup } from '../Zavod/speed-override.js';
+import { speedKey, speedLimit, speedSetup, retainWorkingSpeed } from '../Zavod/speed-override.js';
 import { setupFor } from '../Zavod/setup-data.js';
 
 const base = (changes = {}) => ({
@@ -133,4 +133,17 @@ test('a partial thread RPM without same-diameter speed cannot be scaled using th
   assert.equal(speedSetup(known, 600).info.effective.extruder1, 64.3);
   const missing = setupFor('thread-bundle', 1, {}, 'white');
   assert.match(speedSetup(missing, 500).error, /фінальний діаметр/);
+});
+
+test('keeping line speed through a mode switch scales from that mode or leaves RPM unknown', () => {
+  const dual = base();
+  const single = base({ mode: 'single' });
+  const selected = 250;
+  assert.equal(retainWorkingSpeed(dual, selected).effective.workingSpeed, selected);
+  assert.equal(retainWorkingSpeed(single, selected).effective.workingSpeed, selected);
+  const missing = { ...single, effective: { ...single.effective, extruder1: null } };
+  const result = retainWorkingSpeed(missing, selected);
+  assert.equal(result.effective.workingSpeed, selected);
+  assert.equal(result.effective.extruder1, null);
+  assert.match(result.speedWarning, /бракує даних/);
 });

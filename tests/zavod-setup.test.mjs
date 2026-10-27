@@ -446,3 +446,19 @@ test('all primary predicted RPM use the displayed speed and physical extruder mo
     }
   }
 });
+
+test('manual setup mode keeps single and dual practical values separate, including explicit colour override', () => {
+  const id = 'h07v-k--h05v-k', records = catalog(), base = baseFor(id, .5);
+  records.calibrations = [
+    { id:'single', baseId:base.id, optionId:id, section:.5, mode:'single', origin:'measurement', extruder1:28, extruder2:0, maxSpeed:150, updatedAt:'2026-10-27T10:00:00Z' },
+    { id:'dual', baseId:base.id, optionId:id, section:.5, mode:'dual', origin:'measurement', extruder1:24, extruder2:60, maxSpeed:150, updatedAt:'2026-10-27T10:01:00Z' },
+  ];
+  const single = setupFor(id,.5,records,'blue',{mode:'single',allowColorOverride:true});
+  const dual = setupFor(id,.5,records,'blue',{mode:'dual',allowColorOverride:true});
+  assert.equal(single.mode,'single');
+  assert.equal(single.effective.extruder1,28);
+  assert.equal(dual.mode,'dual');
+  assert.deepEqual([dual.effective.extruder1,dual.effective.extruder2],[24,60]);
+  assert.equal(setupFor(id,.5,records,'yellow-green',{mode:'single',allowColorOverride:true}).mode,'single');
+  assert.equal(setupFor(id,.5,records,'yellow-green',{mode:'single'}).mode,'dual');
+});

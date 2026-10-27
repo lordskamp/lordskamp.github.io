@@ -79,6 +79,12 @@ export function dyePlan(color, mode, options = {}) {
   };
 }
 
+/** Single-extruder runs can use either splitter; threads have no confirmed requirement. */
+export function splitterFor(color, mode, noDye = false) {
+  if (noDye || mode !== 'dual' || !COLORS.some(item => item.id === color)) return null;
+  return color === 'yellow-green' ? 'striped' : 'plain';
+}
+
 /** Every counter here is local to one output drum. No automatic machine control. */
 export function planDrum(drum, nextDrum, mode, inputRules = {}) {
   const rules = { ...DEFAULT_RULES, ...inputRules };
@@ -89,12 +95,15 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
     supplied(drum.section) && supplied(nextDrum.section) && (number(drum.section) ?? drum.section) !== (number(nextDrum.section) ?? nextDrum.section) ||
     !drum.noDye && !nextDrum.noDye && number(drum.coreClass) !== number(nextDrum.coreClass)
   ));
-  const headChange = Boolean(nextDrum && (!drum.noDye && drum.color === 'yellow-green') !== (!nextDrum.noDye && nextDrum.color === 'yellow-green'));
+  const currentHead = splitterFor(drum.color, drum.mode ?? mode, drum.noDye) ?? (['plain', 'striped'].includes(inputRules.currentSplitter) ? inputRules.currentSplitter : null);
+  const nextHead = nextDrum ? splitterFor(nextDrum.color, nextDrum.mode ?? mode, nextDrum.noDye) : null;
+  const headChange = Boolean(nextHead && currentHead && currentHead !== nextHead);
+  const headUnknown = Boolean(nextHead && !currentHead);
   const modeChange = Boolean(nextDrum && supplied(drum.mode) && supplied(nextDrum.mode) && drum.mode !== nextDrum.mode);
   const matrixChange = Boolean(nextDrum && drum.noDye && nextDrum.noDye && positive(drum.finalDiameter) !== null
     && positive(nextDrum.finalDiameter) !== null && positive(drum.finalDiameter) !== positive(nextDrum.finalDiameter));
   const setupChange = cableChange || headChange || modeChange || matrixChange;
-  const changes = { setupChange, cableChange, headChange, modeChange, matrixChange };
+  const changes = { setupChange, cableChange, headChange, headUnknown, modeChange, matrixChange };
   const errors = [];
   for (const key of ['bath', 'reserve', 'lead1', 'lead2', 'splice']) {
     const value = number(rules[key]);

@@ -42,7 +42,8 @@ export function setupFor(optionId, section, catalog, color = 'blue', options = {
     .sort((a, b) => Number(b.section === Number(section)) - Number(a.section === Number(section)) || Number(Boolean(b.optionId)) - Number(Boolean(a.optionId))
       || String(b.updatedAt ?? b.createdAt ?? '').localeCompare(String(a.updatedAt ?? a.createdAt ?? '')) || Number(b.revision ?? 0) - Number(a.revision ?? 0))[0];
   const normalMode = option.mode !== 'unknown' ? option.mode : ownRecords.some(record => record.origin === 'measurement' && record.mode === 'single') ? 'single' : measured?.mode ?? base.mode;
-  const selectedMode = modeFor(option, color, ['single', 'dual'].includes(options.mode) ? options.mode : normalMode);
+  const selectedMode = options.allowColorOverride && ['single', 'dual'].includes(options.mode)
+    ? options.mode : modeFor(option, color, ['single', 'dual'].includes(options.mode) ? options.mode : normalMode);
   const stored = practicalFor(option.id, section, catalog, selectedMode === 'unknown' ? undefined : selectedMode, color);
   const practical = metric(stored);
   const annotations = SOURCE_ANNOTATIONS.filter(annotation => annotation[0] === card.source && annotation[2] === Number(section) && (annotation[1] === option.brand || annotation[1] === 'ПВС / ШВВП' && ['ПВС','ШВВП'].includes(option.brand)));

@@ -590,7 +590,7 @@ test('recommendation respects fixed barriers and never assumes a thread splitter
   assert.equal(ordered[1].id, 'thread');
   assert.equal(ordered[4].id, 'active');
   assert.deepEqual(ordered.slice(2, 4).map(d => d.color), ['yellow-green', 'brown']);
-  assert.equal(planSummary(input).headChanges, 2);
+  assert.equal(planSummary(input).headChanges, 0);
   assert.equal(planSummary(input.slice(0, 2)).headChanges, 0);
 });
 
