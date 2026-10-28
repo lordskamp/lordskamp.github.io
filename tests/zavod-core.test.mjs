@@ -45,7 +45,7 @@ test('перехід на жовто-зелений зберігає резер�
   assert.equal(result.modeChange, false);
   assert.deepEqual(result.events, [
     { extruder: 2, at: 13000, lead: 2000, dye: 'Зелений' },
-    { extruder: 1, at: 14700, lead: 300, dye: 'Жовтий' }
+    { extruder: 1, at: 14550, lead: 300, dye: 'Жовтий', fromStop: true }
   ]);
   assert.deepEqual(result.warnings, []);
   assert.equal(dyePlan('yellow-green', 'dual').first, 'Жовтий');
@@ -60,7 +60,7 @@ test('після жовто-зеленого видно обидві метро�
   assert.equal(result.transition, true);
   assert.deepEqual(result.events, [
     { extruder: 2, at: 13000, lead: 2000, dye: 'Синій' },
-    { extruder: 1, at: 14700, lead: 300, dye: 'Біла основа' }
+    { extruder: 1, at: 14550, lead: 300, dye: 'Біла основа', fromStop: true }
   ]);
   assert.deepEqual(result.warnings, []);
 });
@@ -154,8 +154,7 @@ test('зміна кількості екструдерів потребує зу
     assert.equal(result.target, color === 'blue' ? 15000 : 15850);
     assert.equal(result.transition, color !== 'blue');
     assert.deepEqual(result.events, color === 'blue' ? [] : [
-      { extruder: 2, at: 13000, lead: 2000, dye: 'Вимкнений' },
-      { extruder: 1, at: 14700, lead: 300, dye: 'Коричневий' }
+      { extruder: 1, at: 14550, lead: 300, dye: 'Коричневий', fromStop: true }
     ]);
     assert.deepEqual(result.warnings, []);
   }
@@ -166,7 +165,7 @@ test('перехід з одного екструдера на два не пі�
   assert.equal(result.target, 15850);
   assert.equal(result.modeChange, true);
   assert.equal(result.transition, true);
-  assert.deepEqual(result.events, [{ extruder: 1, at: 14700, lead: 300, dye: 'Біла основа' }]);
+  assert.deepEqual(result.events, [{ extruder: 1, at: 14550, lead: 300, dye: 'Біла основа', fromStop: true }]);
 });
 
 test('останній барабан та відсутні поля старого плану не вигадують зміни налаштування', () => {
@@ -272,7 +271,7 @@ test('невідомий режим та жовто-зелений з одним
 
 test('з одним екструдером звичайний колір подається тільки в Е1', () => {
   const result = planDrum(drum('blue'), drum('brown'), 'single');
-  assert.deepEqual(result.events, [{ extruder: 1, at: 14700, lead: 300, dye: 'Коричневий' }]);
+  assert.deepEqual(result.events, [{ extruder: 1, at: 14550, lead: 300, dye: 'Коричневий', fromStop: true }]);
   assert.equal(dyePlan('brown', 'single').second, 'Вимкнений');
 });
 
@@ -465,4 +464,14 @@ test('splitter stays mounted through a single-extruder drum and is checked if un
   const unknown = planDrum(single, black, 'single');
   assert.equal(unknown.headChange, false);
   assert.equal(unknown.headUnknown, true);
+});
+
+test('перемикання №1 відраховується від зупинки з урахуванням заданої ванни', () => {
+  const current = { ...drum('yellow-green'), mode: 'dual' };
+  const next = { ...drum('brown'), mode: 'single' };
+  const event = planDrum(current, next, 'dual', { bath: 200, lead1: 400 }).events.find(item => item.extruder === 1);
+  assert.deepEqual(event, { extruder: 1, at: 14400, lead: 400, dye: 'Коричневий', fromStop: true });
+  const atStop = planDrum(current, next, 'dual', { bath: 200, lead1: 0 }).events.find(item => item.extruder === 1);
+  assert.equal(atStop.at, 14800);
+  assert.equal(planDrum(current, next, 'dual', { bath: 200, lead1: 14900 }).events.some(item => item.extruder === 1), false);
 });

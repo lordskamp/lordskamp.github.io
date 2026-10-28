@@ -3,7 +3,7 @@ import { estimateColorLead2 } from './color-lead.js?v=27';
 import { applyMarkingSpeed } from './marking.js?v=1';
 import { VALUE_LABELS } from './setup-data.js?v=33';
 import { normalizeDyeSlots, planDyeSlots, EMPTY_DYE } from './dye-slots.js?v=2';
-import { COLORS, colorName, dyePlan, fmt, number, planDrum, splitterFor } from './core.js?v=29';
+import { COLORS, colorName, dyePlan, fmt, number, planDrum, splitterFor } from './core.js?v=30';
 import { MAX_DRUMS, parseJobLengths, scheduleJobs, recommendOrder, moveDrum, planSummary, drumStatus, setDrumStatus, productionSummary, journalNumbers, lastJournalNumber, nextDrumStatus } from './planner.js?v=35';
 import { CATALOG_CABLES, optionFor } from './catalog-base.js?v=27';
 import { shiftSettings, coreClass, conductorRequirements, estimateShift, requiredTools } from './plan-resources.js?v=29';
@@ -168,7 +168,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const info = setup(drum), next = drumStatus(drum) === 'done' ? null : nextDrum(i);
     const nextInfo = next ? setup(next) : null;
     const rules = { ...state.rules };
-    let lead2FromStop = false;
+    let lead2FromStop = false, firstLeadMeasured = false;
     for (const [field, rule] of [['colorLead1', 'lead1'], ['colorLead2', 'lead2']]) {
       const own = [info.practical?.[field], info.stored?.[field]].map(number).find(value => value !== null && value >= 0);
       const explicitClass = coreClass(drum.coreClass);
@@ -176,9 +176,16 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
       const modeled = ['operator-anchor', 'operator-interpolation'].includes(info.forecast?.fieldMethods?.[field]);
       const model = field === 'colorLead2' && explicitClass ? classEstimate?.value : modeled ? number(info.effective?.[field]) : null;
       const lead = own ?? (model !== null && model !== undefined && model >= 0 ? model : null);
+      if (field === 'colorLead1') firstLeadMeasured = own !== undefined;
       if (lead !== null && lead >= 0) rules[rule] = lead;
       if (field === 'colorLead2' && own === undefined && model !== null && model !== undefined && model >= 0) lead2FromStop = true;
     }
+    // The PVS observation does not establish a stop-relative lead: the actual
+    // operating settings and exact stop reading are unknown. Do not schedule
+    // a calculated switch until a suitable practical lead is recorded.
+    const uncalibratedPvsTransition = optionFor(drum.cableId)?.id === 'pvs-380--pvs'
+      && drum.color === 'yellow-green' && next?.color === 'brown' && nextInfo?.mode === 'single' && !firstLeadMeasured;
+    if (uncalibratedPvsTransition) rules.lead1 = 0;
     const brand = optionFor(drum.cableId)?.brand;
     const coiling = isCoilingBrand(brand);
     const production = calculateProduction(drum.length, drum.breakdowns, drum.joints, coiling, coilLength(brand, drum.section));
@@ -194,6 +201,12 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     }
     const planned = planDrum({ ...drum, length: production.target ?? drum.length, mode: info.mode, noDye: info.noDye }, next ? { ...next, mode: nextInfo.mode, noDye: nextInfo.noDye } : null, info.mode, { ...rules, currentSplitter: mountedSplitter });
     const errors = [...new Set([...planned.errors, ...production.errors])];
+    if (planned.transition && uncalibratedPvsTransition) {
+      planned.events = planned.events.filter(event => event.extruder !== 1);
+      planned.warnings.push('Для №1 момент перемикання не визначено: потрібен практичний замір для цього переходу.');
+    } else if (planned.transition && planned.events.some(event => event.extruder === 1) && !firstLeadMeasured) {
+      planned.warnings.push('Для №1 використано загальне налаштування, а не перевірений замір. Момент перемикання потрібно уточнити.');
+    }
     const stopAt = planned.transition ? Math.max(0, planned.length - rules.bath) : null;
     if (lead2FromStop && planned.transition) {
       planned.events = planned.events.flatMap(event => {
@@ -212,7 +225,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     if (r.errors.length) return r.errors.join(' ');
     let colorTransition = '';
     if (r.transition) {
-      const events = r.events.map(e => `Барвник №${e.extruder} — ${e.fromStop ? 'орієнтовно за ' + fmt(e.lead) + ' м до зупинки' : 'за ' + fmt(e.lead) + ' м до кінця (старе налаштування)'}, на ${fmt(e.at)} м.`);
+      const events = r.events.map(e => `Барвник №${e.extruder} — ${e.fromStop ? e.lead === 0 ? 'після зупинки' : 'орієнтовно за ' + fmt(e.lead) + ' м до зупинки' : 'за ' + fmt(e.lead) + ' м до кінця (старе налаштування)'}, на ${fmt(e.at)} м.`);
       colorTransition = `Далі — ${colorName(next.color).toLowerCase()}. Екран: ${r.formula}. Планова зупинка: ${fmt(r.stopAt)} м. ${events.join(' ')}${r.warnings.length ? ' ' + r.warnings.join(' ') : ''}`.trim();
     }
     if (!r.setupChange && !r.headUnknown) return colorTransition;
@@ -232,7 +245,7 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     if (r.errors.length) return `<p class="error">${r.errors.map(esc).join('<br>')}</p>`;
     const supply = isThread(drum.cableId) ? '' : `<p class="drum-supply quiet">Жили на цей барабан: <b>${fmt(number(drum.length) / 1000, 3)} км</b>${esc(classLabel(drum))}. Технологічні втрати окремо.</p>`;
     return `${supply}${r.target > 0 ? `<div class="target"><span>Довжина на екрані</span><strong>${fmt(r.target)} <small>м</small></strong></div>` : ''}
-      ${r.transition ? `<ol class="steps">${r.events.map(e => `<li><b>≈ ${fmt(e.at)} м</b> — барвник №${e.extruder}: ${esc(e.dye.toLowerCase())} (${e.fromStop ? `за ${fmt(e.lead)} м до планової зупинки` : `за ${fmt(e.lead)} м до кінця · старе налаштування`})</li>`).join('')}<li>Планова зупинка — ${fmt(r.stopAt)} м. Після зупинки стравити через байпас, потім через головку.</li><li>Коли колір придатний, запустити лінію. Після появи якісного кабелю додати 170 м до фактичного показу й встановити перекидання. На вихідному барабані відмотати неякісну ділянку, щоб залишився якісний попередній кабель.</li>${r.setupChange ? '<li>Розсікач або режим екструдерів змінити після зупинки.</li>' : ''}</ol><p class="quiet formula">${esc(r.formula)}</p>` : `<p class="quiet">${r.cableChange ? `Зупинися раніше: решта ${isThread(drum.cableId) ? 'нитки' : 'жили'} вже у ванні. Резерв зміни кольору не додається.` : r.setupChange ? isThread(drum.cableId) ? 'Перехід після зупинки. Без барвника.' : 'Перехід після зупинки. Випередження зміни барвника не розраховується.' : isThread(drum.cableId) ? 'Без барвника.' : 'Без поправки на зміну кольору.'}</p>${r.cableChange ? `<p class="quiet formula">${esc(r.formula)}</p>` : ''}`}
+      ${r.transition ? `<ol class="steps">${r.events.filter(e => !(e.fromStop && e.lead === 0)).map(e => `<li><b>≈ ${fmt(e.at)} м</b> — барвник №${e.extruder}: ${esc(e.dye.toLowerCase())} (${e.fromStop ? `за ${fmt(e.lead)} м до планової зупинки` : `за ${fmt(e.lead)} м до кінця · старе налаштування`})</li>`).join('')}<li>Планова зупинка — ${fmt(r.stopAt)} м.</li>${r.events.filter(e => e.fromStop && e.lead === 0).map(e => `<li>Після зупинки перемкнути барвник №${e.extruder}: ${esc(e.dye.toLowerCase())}.</li>`).join('')}<li>Стравити через байпас, потім через головку.</li><li>Коли колір придатний, запустити лінію. Після появи якісного кабелю додати 170 м до фактичного показу й встановити перекидання. На вихідному барабані відмотати неякісну ділянку, щоб залишився якісний попередній кабель.</li>${r.setupChange ? '<li>Розсікач або режим екструдерів змінити після зупинки.</li>' : ''}</ol><p class="quiet formula">${esc(r.formula)}</p>` : `<p class="quiet">${r.cableChange ? `Зупинися раніше: решта ${isThread(drum.cableId) ? 'нитки' : 'жили'} вже у ванні. Резерв зміни кольору не додається.` : r.setupChange ? isThread(drum.cableId) ? 'Перехід після зупинки. Без барвника.' : 'Перехід після зупинки. Випередження зміни барвника не розраховується.' : isThread(drum.cableId) ? 'Без барвника.' : 'Без поправки на зміну кольору.'}</p>${r.cableChange ? `<p class="quiet formula">${esc(r.formula)}</p>` : ''}`}
       ${r.warnings.map(w => `<p class="error">${esc(w)}</p>`).join('')}${r.splice?.spliceCount ? `<p class="drum-splice-label">На лейбл: <b data-splice-label>${esc(r.splice.label)}</b></p>` : ''}${r.coiling ? `<p class="drum-splice-label">Бухтовка: <b>${fmt(r.production.coils)} × ${fmt(r.production.size)} м</b>${r.production.remainder ? ` · залишок ${fmt(r.production.remainder)} м` : ''}</p><p class="quiet">Додатково: <b>+${fmt(r.production.waste)} м</b> · потрібна довжина: <b>${fmt(r.production.target)} м</b>. Неповні відрізки до позначок не входять у бухти.</p>` : ''}`;
   }
   function jobTotal(job) {
@@ -328,11 +341,11 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const r = result(drum, i), status = drumStatus(drum);
     const screen = r.target !== number(drum.length) && status !== 'done' && r.target > 0 ? `<small>Екран ${fmt(r.target)} м</small>` : '';
     const title = isThread(drum.cableId) ? cableLabel(drum.cableId) + diameterLabel(drum.finalDiameter) : `${optionFor(drum.cableId)?.brand ?? cableLabel(drum.cableId)} ${fmt(drum.section)}`;
-    const cue = status === 'done' ? '' : r.errors.length ? 'Перевір довжину' : r.target === 0 ? 'Перевір зупинку' : r.transition ? r.events.map(event => `№${event.extruder}: ${fmt(event.at)} м`).join(' · ') + (r.setupChange ? ' · стоп' : '') : r.cableChange ? isThread(drum.cableId) ? 'Зміна нитки' : 'Зміна жили' : r.headChange ? 'Змінити розсікач' : r.modeChange ? 'Перемкнути екструдери' : r.matrixChange ? 'Змінити матрицю' : '';
+    const cue = status === 'done' ? '' : r.errors.length ? 'Перевір довжину' : r.target === 0 ? 'Перевір зупинку' : r.transition ? r.events.length ? r.events.map(event => `№${event.extruder}: ${fmt(event.at)} м`).join(' · ') + (r.setupChange ? ' · стоп' : '') : 'Перевір зміну барвника' : r.cableChange ? isThread(drum.cableId) ? 'Зміна нитки' : 'Зміна жили' : r.headChange ? 'Змінити розсікач' : r.modeChange ? 'Перемкнути екструдери' : r.matrixChange ? 'Змінити матрицю' : '';
     const priorClass = coreClass(state.drums[i - 1]?.coreClass), currentClass = coreClass(drum.coreClass);
     const classChange = status !== 'done' && priorClass && currentClass && priorClass !== currentClass ? `Жила: ${currentClass} клас` : '';
     const journal = numbering.get(drum.id);
-    const cues = cue ? (r.transition ? 'Барвник ' : '') + cue : '';
+    const cues = cue ? (r.transition && r.events.length ? 'Барвник ' : '') + cue : '';
     return `${journal == null ? '' : `<span class="journal-number" title="Номер у журналі">№${journal}</span>`}${isThread(drum.cableId) ? '' : swatch(drum.color)}<span class="sr-only">${streamLabel(drum)}. </span><span class="drum-title"><b>${esc(title)}</b>${classChange ? `<small class="queue-class-change">${esc(classChange)}</small>` : ''}${drum.marking ? '<small class="queue-alert">Принтер · до 150 м/хв</small>' : ''}${cues ? `<small class="queue-alert">${esc(cues)}</small>` : ''}</span><span class="drum-length"><b>${fmt(number(drum.length) === null ? null : number(drum.length) / 1000, 3)} км</b>${screen}</span>`;
 
   }

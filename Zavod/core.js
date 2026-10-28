@@ -137,11 +137,14 @@ export function planDrum(drum, nextDrum, mode, inputRules = {}) {
       warnings.push('Для цього режиму спочатку уточніть схему барвників. Метрові підказки зміни барвника не розраховано.');
     } else {
       const addEvent = (extruder, lead, dye) => {
-        const at = length - lead;
-        if (at < 0) warnings.push(`Для №${extruder} випередження ${fmt(lead)} м більше за довжину барабана. Перехід потребує окремого плану.`);
-        else events.push({ extruder, at, lead, dye });
+        // E1 advance is measured from the planned stop; legacy E2 settings
+        // retain their existing end-of-drum basis.
+        const fromStop = extruder === 1;
+        const at = (fromStop ? length - rules.bath : length) - lead;
+        if (at < 0) warnings.push(`Для №${extruder} випередження ${fmt(lead)} м раніше початку барабана. Перехід потребує окремого плану.`);
+        else events.push(fromStop ? { extruder, at, lead, dye, fromStop: true } : { extruder, at, lead, dye });
       };
-      if (mode === 'dual' && first.second !== next.second) addEvent(2, rules.lead2, next.second);
+      if (mode === 'dual' && next.second !== 'Вимкнений' && first.second !== next.second) addEvent(2, rules.lead2, next.second);
       if (first.first !== next.first) addEvent(1, rules.lead1, next.first);
     }
   }

@@ -252,7 +252,7 @@ test('compact rows keep essential dye timing while formulas and explanations sta
     assert.match(first, /15\s?000 − 150 \+ 1\s?000 = 15\s?850 м/);
     assert.match(first, /№2 — за 2\s?000 м до кінця \(старе налаштування\), на 13\s?000 м/);
     const head = planner.transitionText(state.drums[1], 1);
-    assert.match(head, /№1 — за 300 м до кінця \(старе налаштування\), на 14\s?700 м/);
+    assert.match(head, /№1 — орієнтовно за 300 м до зупинки, на 14\s?550 м/);
     assert.match(head, /розсікач/);
     const html = element('drums').innerHTML;
     assert.ok(html.includes(`<p class="drum-transition" data-transition="blue" >${first}</p>`));
@@ -407,7 +407,7 @@ test('the queue uses practical lead measurements for each extruder and falls bac
       state: { ...initialState(), drums, planJobs: [], rules: { ...DEFAULT_RULES } },
       getSetup: () => ({ mode, stored }), persist() {}, toast() {}, haptic() {}
     });
-    assert.equal(single.result(drums[0], 0).events[0].at, 14550, 'E1 uses its own practical lead');
+    assert.equal(single.result(drums[0], 0).events[0].at, 14400, 'E1 uses its own practical lead from the stop');
     stored = { colorLead1: null, colorLead2: -1 }; mode = 'dual';
     const fallback = createPlannerUI({
       state: { ...initialState(), drums, planJobs: [], rules: { ...DEFAULT_RULES } },
@@ -818,4 +818,43 @@ test('numbering starts after the last journal entry and skips previously complet
     assert.equal(state.drums[1].journalNumber, 101);
     assert.equal(planner.journalNumber(state.drums[2]), 102);
   });
+});
+
+test('ПВС: один неповний замір не створює точку перемикання, практичне значення зберігається', () => {
+  const pvs = optionFor('pvs-380--pvs').id;
+  const current = oldDrum({ id: 'yg', cableId: pvs, section: 6, color: 'yellow-green', breakdowns: '' });
+  const next = oldDrum({ id: 'brown', cableId: pvs, section: 6, color: 'brown', idealColor: true, breakdowns: '' });
+  const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [current, next] };
+  const setup = (id, section, color, diameter, mode) => ({ mode: mode ?? 'dual', stored: {} });
+  withPlannerHarness(state, ({ planner }) => {
+    let result = planner.result(current, 0);
+    let first = result.events.find(item => item.extruder === 1);
+    assert.equal(first, undefined);
+    assert.match(result.warnings.join(' '), /момент перемикання не визначено/);
+    next.idealColor = false;
+    result = planner.result(current, 0);
+    first = result.events.find(item => item.extruder === 1);
+    assert.equal(first.at, 14550);
+    assert.match(result.warnings.join(' '), /не перевірений замір/);
+  }, setup);
+  next.idealColor = true;
+  withPlannerHarness(state, ({ planner }) => {
+    const result = planner.result(current, 0);
+    assert.equal(result.events.find(item => item.extruder === 1).at, 14650);
+    assert.doesNotMatch(result.warnings.join(' '), /момент перемикання не визначено/);
+  }, (id, section, color, diameter, mode) => ({ mode: mode ?? 'dual', stored: color === 'yellow-green' ? { colorLead1: 200 } : {} }));
+});
+
+test('other PVS sections do not use an unvalidated lead and show a clear warning', () => {
+  const pvs = optionFor('pvs-380--pvs').id;
+  const current = oldDrum({ id: 'yg', cableId: pvs, section: 2.5, color: 'yellow-green', breakdowns: '' });
+  const next = oldDrum({ id: 'brown', cableId: pvs, section: 2.5, color: 'brown', idealColor: true, breakdowns: '' });
+  const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [current, next] };
+  withPlannerHarness(state, ({ planner, element }) => {
+    const result = planner.result(current, 0);
+    assert.equal(result.events.find(event => event.extruder === 1), undefined);
+    planner.renderQueue();
+    assert.match(element('drums').innerHTML, /момент перемикання не визначено/);
+    assert.match(element('drums').innerHTML, /Перевір зміну барвника/);
+  }, (id, section, color, diameter, mode) => ({ mode: mode ?? 'dual', stored: {} }));
 });
