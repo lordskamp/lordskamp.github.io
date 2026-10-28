@@ -717,7 +717,7 @@ test('second extruder operator lead is measured from the planned manual stop', (
     planner.renderQueue();
     assert.match(element('drums').innerHTML, /Планова зупинка/);
     assert.match(element('drum-player').innerHTML, /Показ після запуску/);
-    assert.match(element('drums').innerHTML, /через байпас, потім через головку/);
+    assert.match(element('drums').innerHTML, /Відкрити байпаси.*Стравити через основну головку/);
   }, () => info);
 });
 
@@ -857,4 +857,28 @@ test('other PVS sections do not use an unvalidated lead and show a clear warning
     assert.match(element('drums').innerHTML, /момент перемикання не визначено/);
     assert.match(element('drums').innerHTML, /Перевір зміну барвника/);
   }, (id, section, color, diameter, mode) => ({ mode: mode ?? 'dual', stored: {} }));
+});
+
+test('splitter replacement is the fourth step during the stop with bypasses open, before head purge', () => {
+  for (const [from, to, expected] of [['yellow-green', 'blue', 'звичайний'], ['brown', 'yellow-green', 'смугастий']]) {
+    const state = { ...initialState(), jobs: [], planJobs: [], rules: { ...DEFAULT_RULES }, drums: [
+      oldDrum({ id: 'first', cableId: globalCable.id, section: 2.5, color: from, breakdowns: '' }),
+      oldDrum({ id: 'next', cableId: globalCable.id, section: 2.5, color: to, breakdowns: '' })
+    ] };
+    withPlannerHarness(state, ({ planner, element }) => {
+      planner.renderQueue();
+      const match = element('drums').innerHTML.match(/<ol class="steps">([\s\S]*?)<\/ol>/);
+      assert.ok(match);
+      const steps = [...match[1].matchAll(/<li>([\s\S]*?)<\/li>/g)].map(item => item[1]);
+      assert.match(steps[0], /барвник №1/);
+      assert.match(steps[0], /барвник №2/);
+      assert.match(steps[1], /Планова зупинка/);
+      assert.match(steps[2], /Відкрити байпаси/);
+      assert.match(steps[3], new RegExp('Змінити розсікач на ' + expected));
+      assert.match(steps[3], /під час зупинки, поки байпаси відкриті/);
+      assert.match(steps[4], /Стравити через основну головку/);
+      assert.match(steps[5], /Запустити лінію/);
+      assert.match(element('drum-player').innerHTML, /розсікач.*під час зупинки з відкритими байпасами/);
+    }, () => ({ mode: 'dual', stored: {} }));
+  }
 });

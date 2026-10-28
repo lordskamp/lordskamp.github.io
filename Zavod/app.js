@@ -1,7 +1,7 @@
 import { initPhotoImport } from './photo-ui.js?v=6';
 import { CATALOG_CABLES as CABLES, CATALOG_BASES as RECIPES, optionFor, baseFor, recipeIdFor } from './catalog-base.js?v=27';
 import { COLORS, DEFAULT_RULES, number, fmt, colorName } from './core.js?v=28';
-import { createPlannerUI, restorePlanner } from './plan-ui.js?v=49';
+import { createPlannerUI, restorePlanner } from './plan-ui.js?v=50';
 import { drumStatus } from './planner.js?v=30';
 import { initTelegram, haptic, openSource, setBackHandler } from './telegram.js';
 import { FIELDS, cachedCatalog, loadCatalog, api } from './store.js?v=29';

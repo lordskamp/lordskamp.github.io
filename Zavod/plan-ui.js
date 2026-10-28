@@ -230,8 +230,9 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     }
     if (!r.setupChange && !r.headUnknown) return colorTransition;
     const changes = [];
-    if (r.headChange) changes.push(next.color === 'yellow-green' ? 'поставити розсікач для жовто-зеленого' : 'поставити розсікач для суцільного кольору');
-    else if (r.headUnknown) changes.push(next.color === 'yellow-green' ? 'перевірити розсікач для жовто-зеленого' : 'перевірити розсікач для суцільного кольору');
+    const splitterTiming = r.transition ? ' під час зупинки з відкритими байпасами' : '';
+    if (r.headChange) changes.push((next.color === 'yellow-green' ? 'поставити розсікач для жовто-зеленого' : 'поставити розсікач для суцільного кольору') + splitterTiming);
+    else if (r.headUnknown) changes.push((next.color === 'yellow-green' ? 'перевірити розсікач для жовто-зеленого' : 'перевірити розсікач для суцільного кольору') + splitterTiming);
     if (r.cableChange) changes.push(`перейти на ${drumTitle(next)}`);
     if (r.modeChange) changes.push('змінити режим екструдерів');
     if (r.matrixChange) changes.push(`змінити матрицю на ${fmt(setup(next).effective.matrix, 3)} мм`);
@@ -240,12 +241,24 @@ export function createPlannerUI({ state, getSetup, persist, toast, haptic, onCab
     const stop = r.cableChange && r.target > 0 ? `Зупинка на ${fmt(r.length - r.target)} м раніше для зміни ${core}` : r.cableChange && r.target === 0 ? `Для зміни ${core} потрібен окремий план зупинки` : 'Далі — зупинка';
     return `${colorTransition ? colorTransition + ' ' : ''}${stop}: ${changes.join('; ')}.`;
   }
+  function transitionSteps(r) {
+    const before = r.events.filter(event => !(event.fromStop && event.lead === 0));
+    const after = r.events.filter(event => event.fromStop && event.lead === 0);
+    const timing = event => event.fromStop ? `за ${fmt(event.lead)} м до планової зупинки` : `за ${fmt(event.lead)} м до кінця · старе налаштування`;
+    const first = before.length ? before.map(event => `<b>≈ ${fmt(event.at)} м</b> — барвник №${event.extruder}: ${esc(event.dye.toLowerCase())} (${timing(event)})`).join('<br>')
+      : after.length ? 'Перемкнути барвник після зупинки.' : 'Уточнити момент перемикання барвників.';
+    const stoppedDyes = after.map(event => ` Після зупинки перемкнути барвник №${event.extruder}: ${esc(event.dye.toLowerCase())}.`).join('');
+    const splitter = r.headChange ? `Змінити розсікач на ${r.nextColor === 'yellow-green' ? 'смугастий' : 'звичайний'}`
+      : r.headUnknown ? `Перевірити, чи встановлено ${r.nextColor === 'yellow-green' ? 'смугастий' : 'звичайний'} розсікач` : '';
+    const setup = [splitter ? `${splitter} під час зупинки, поки байпаси відкриті.` : '', r.modeChange ? 'Змінити режим екструдерів під час зупинки.' : ''].filter(Boolean).join(' ');
+    return `<ol class="steps"><li>${first}</li><li>Планова зупинка — ${fmt(r.stopAt)} м.${stoppedDyes}</li><li>Відкрити байпаси та стравлювати пластикат.</li>${setup ? `<li>${setup}</li>` : ''}<li>Стравити через основну головку до нормального кольору.</li><li>Запустити лінію. Після появи якісного кабелю додати 170 м до фактичного показу й встановити перекидання. На вихідному барабані відмотати неякісну ділянку, щоб залишився якісний попередній кабель.</li></ol><p class="quiet formula">${esc(r.formula)}</p>`;
+  }
   function output(drum, i) {
     const r = result(drum, i);
     if (r.errors.length) return `<p class="error">${r.errors.map(esc).join('<br>')}</p>`;
     const supply = isThread(drum.cableId) ? '' : `<p class="drum-supply quiet">Жили на цей барабан: <b>${fmt(number(drum.length) / 1000, 3)} км</b>${esc(classLabel(drum))}. Технологічні втрати окремо.</p>`;
     return `${supply}${r.target > 0 ? `<div class="target"><span>Довжина на екрані</span><strong>${fmt(r.target)} <small>м</small></strong></div>` : ''}
-      ${r.transition ? `<ol class="steps">${r.events.filter(e => !(e.fromStop && e.lead === 0)).map(e => `<li><b>≈ ${fmt(e.at)} м</b> — барвник №${e.extruder}: ${esc(e.dye.toLowerCase())} (${e.fromStop ? `за ${fmt(e.lead)} м до планової зупинки` : `за ${fmt(e.lead)} м до кінця · старе налаштування`})</li>`).join('')}<li>Планова зупинка — ${fmt(r.stopAt)} м.</li>${r.events.filter(e => e.fromStop && e.lead === 0).map(e => `<li>Після зупинки перемкнути барвник №${e.extruder}: ${esc(e.dye.toLowerCase())}.</li>`).join('')}<li>Стравити через байпас, потім через головку.</li><li>Коли колір придатний, запустити лінію. Після появи якісного кабелю додати 170 м до фактичного показу й встановити перекидання. На вихідному барабані відмотати неякісну ділянку, щоб залишився якісний попередній кабель.</li>${r.setupChange ? '<li>Розсікач або режим екструдерів змінити після зупинки.</li>' : ''}</ol><p class="quiet formula">${esc(r.formula)}</p>` : `<p class="quiet">${r.cableChange ? `Зупинися раніше: решта ${isThread(drum.cableId) ? 'нитки' : 'жили'} вже у ванні. Резерв зміни кольору не додається.` : r.setupChange ? isThread(drum.cableId) ? 'Перехід після зупинки. Без барвника.' : 'Перехід після зупинки. Випередження зміни барвника не розраховується.' : isThread(drum.cableId) ? 'Без барвника.' : 'Без поправки на зміну кольору.'}</p>${r.cableChange ? `<p class="quiet formula">${esc(r.formula)}</p>` : ''}`}
+      ${r.transition ? transitionSteps(r) : `<p class="quiet">${r.cableChange ? `Зупинися раніше: решта ${isThread(drum.cableId) ? 'нитки' : 'жили'} вже у ванні. Резерв зміни кольору не додається.` : r.setupChange ? isThread(drum.cableId) ? 'Перехід після зупинки. Без барвника.' : 'Перехід після зупинки. Випередження зміни барвника не розраховується.' : isThread(drum.cableId) ? 'Без барвника.' : 'Без поправки на зміну кольору.'}</p>${r.cableChange ? `<p class="quiet formula">${esc(r.formula)}</p>` : ''}`}
       ${r.warnings.map(w => `<p class="error">${esc(w)}</p>`).join('')}${r.splice?.spliceCount ? `<p class="drum-splice-label">На лейбл: <b data-splice-label>${esc(r.splice.label)}</b></p>` : ''}${r.coiling ? `<p class="drum-splice-label">Бухтовка: <b>${fmt(r.production.coils)} × ${fmt(r.production.size)} м</b>${r.production.remainder ? ` · залишок ${fmt(r.production.remainder)} м` : ''}</p><p class="quiet">Додатково: <b>+${fmt(r.production.waste)} м</b> · потрібна довжина: <b>${fmt(r.production.target)} м</b>. Неповні відрізки до позначок не входять у бухти.</p>` : ''}`;
   }
   function jobTotal(job) {
