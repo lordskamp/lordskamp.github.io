@@ -581,7 +581,8 @@ function fit(glass: HTMLElement, options: LensOptions): Fit | null {
   const strength = Number.isFinite(tuned) ? tuned : own;
   const split = options.dispersionProperty ? parseFloat(style.getPropertyValue(options.dispersionProperty)) : NaN;
   const dispersion = Number.isFinite(split) ? Math.max(0, split) : options.dispersion;
-  const density = Math.min(devicePixelRatio || 1, 2);
+  // A 1x map avoids four times the work on high-density screens.
+  const density = 1;
   // Glass that paints its own light uses only where the map bends, which is
   // the same on any page.
   const theme = page < 0 && !options.paintsLight ? LIGHT : DARK;

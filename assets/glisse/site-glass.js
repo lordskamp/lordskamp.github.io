@@ -328,7 +328,7 @@
     const strength = Number.isFinite(tuned) ? tuned : own;
     const split = options.dispersionProperty ? parseFloat(style.getPropertyValue(options.dispersionProperty)) : NaN;
     const dispersion = Number.isFinite(split) ? Math.max(0, split) : options.dispersion;
-    const density = Math.min(devicePixelRatio || 1, 2);
+    const density = 1;
     const theme = page < 0 && !options.paintsLight ? LIGHT : DARK;
     const light = options.edgeWidth === void 0 ? theme : { ...theme, edgeWidth: options.edgeWidth };
     const key = [width, height, radius, density, JSON.stringify(light), JSON.stringify(options)].join("|");
@@ -368,208 +368,55 @@
     relative: true,
     paintsLight: true
   };
-  var clamp2 = (value, min, max) => Math.min(max, Math.max(min, value));
-  var RIM_WIDTH = 1.22;
-  var EDGE_WIDTH = 0.5;
-  function rimMap({ width, height, radius }, shine, density, edge = [0, 0, 0, 0]) {
-    const columns = Math.max(1, Math.round(width * density));
-    const rows = Math.max(1, Math.round(height * density));
-    const data = new Uint8ClampedArray(columns * rows * 4);
-    const halfWidth = width / 2;
-    const halfHeight = height / 2;
-    const corner = clamp2(radius, 0, Math.min(halfWidth, halfHeight));
-    const half = 0.5 / density;
-    for (let row = 0; row < rows; row++) {
-      for (let column = 0; column < columns; column++) {
-        const x = (column + 0.5) / columns * width - halfWidth;
-        const y = (row + 0.5) / rows * height - halfHeight;
-        const depth = -distance(x, y, halfWidth, halfHeight, corner);
-        if (depth < -half || depth > 2 * RIM_WIDTH) continue;
-        const qx = Math.abs(x) - halfWidth + corner;
-        const qy = Math.abs(y) - halfHeight + corner;
-        let nx = 0;
-        let ny = 0;
-        if (qx > 0 && qy > 0) {
-          const length = Math.hypot(qx, qy);
-          nx = Math.sign(x) * qx / length;
-          ny = Math.sign(y) * qy / length;
-        } else if (qx > qy) nx = Math.sign(x);
-        else ny = Math.sign(y);
-        const facing = Math.abs(nx + ny);
-        const along = Math.max(0, depth) / (RIM_WIDTH * Math.sqrt(Math.max(1, facing)));
-        const cover = clamp2((depth + half) * density, 0, 1);
-        const lined = clamp2((Math.min(EDGE_WIDTH, depth + half) - Math.max(0, depth - half)) * density, 0, 1);
-        const light = along < 1 ? shine * Math.min(1, facing) ** 1.5 * (1 - along ** 1.5) * cover : 0;
-        const line = edge[3] * lined * (1 - light);
-        const alpha = light + line;
-        if (alpha <= 0) continue;
-        const i = (row * columns + column) * 4;
-        for (let channel = 0; channel < 3; channel++) data[i + channel] = Math.round((255 * light + edge[channel] * line) / alpha);
-        data[i + 3] = Math.round(255 * alpha);
-      }
-    }
-    return { columns, rows, data };
-  }
-  function parseColour(context, colour) {
-    context.fillStyle = "#0000";
-    context.fillStyle = colour;
-    const value = String(context.fillStyle);
-    if (value.startsWith("#")) {
-      const [r2, g2, b2] = [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
-      return [r2, g2, b2, 1];
-    }
-    const [r = 0, g = 0, b = 0, a = 1] = (value.match(/[\d.]+/g) ?? []).map(Number);
-    return [r, g, b, a];
-  }
-  var rims = /* @__PURE__ */ new Map();
-  var palette;
-  function paintRim(element) {
-    const style = getComputedStyle(element);
-    const shape = shapeOf(element, style);
-    palette ?? (palette = document.createElement("canvas").getContext("2d"));
-    if (!shape || !palette) return;
-    const tuned = parseFloat(style.getPropertyValue("--lg-rim-shine"));
-    const shine = Number.isFinite(tuned) ? clamp2(tuned, 0, 1) : 0.13;
-    const edge = parseColour(palette, style.getPropertyValue("--lg-edge").trim() || "transparent");
-    const density = Math.min(devicePixelRatio || 1, 3);
-    const key = [shape.width, shape.height, shape.radius, shine, edge, density].join("|");
-    let url = rims.get(key);
-    if (!url) {
-      const { columns, rows, data } = rimMap(shape, shine, density, edge);
-      const canvas = document.createElement("canvas");
-      canvas.width = columns;
-      canvas.height = rows;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      const image = context.createImageData(columns, rows);
-      image.data.set(data);
-      context.putImageData(image, 0, 0);
-      url = `url("${canvas.toDataURL()}")`;
-      rims.set(key, url);
-    }
-    element.style.setProperty("--lg-rim", url);
-    element.setAttribute("data-rim", "");
-  }
 
   // assets/glisse/site-glass.ts
-  var selectors = [
-    ".site-header__brand",
-    ".site-header__back",
-    ".site-control",
-    ".profile-card-modal__panel",
-    ".lazy-video-play",
-    ".link-item",
-    ".island",
-    ".award-card",
-    ".section-content-shell",
-    ".top-bar",
-    ".back-btn",
-    ".ctrl-btn",
-    ".case-card",
-    ".lottie-item",
-    ".logo-cell",
-    ".poster-item",
-    ".volunteer-card",
-    ".volunteer-tap-hint",
-    ".video-item",
-    ".unwordle-card",
-    ".game-action",
-    ".daily-timer",
-    ".shyfr-shell",
-    ".toast",
-    ".connection"
-  ].join(",");
-  var chrome = /Chrom(?:e|ium)\//.test(navigator.userAgent) && !/EdgiOS|CriOS/.test(navigator.userAgent);
-  var surfaces = /* @__PURE__ */ new Map();
-  var pending = /* @__PURE__ */ new Set();
-  var scheduled = false;
-  function fit2(element) {
-    if (!element.isConnected || document.documentElement.classList.contains("performance-mode")) return;
-    const rect = element.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    if (rect.width * rect.height > 6e4) {
+  var candidates = ".site-header__brand, .site-header__back, .site-control, .game-action, .daily-timer, .connection";
+  var chromium = /Chrom(?:e|ium)\//.test(navigator.userAgent) && !/EdgiOS|CriOS/.test(navigator.userAgent);
+  var maxLenses = window.matchMedia("(pointer: coarse)").matches ? 1 : 3;
+  var maxMaps = 3;
+  var shapes = /* @__PURE__ */ new Set();
+  var active = /* @__PURE__ */ new Set();
+  var resizeTimer = 0;
+  function clearLenses() {
+    active.forEach((element) => {
+      element.classList.remove("glisse-lens");
       element.style.removeProperty("--lg-filter");
-      element.style.removeProperty("--lg-rim");
-      return;
-    }
-    paintRim(element);
-    if (chrome) fitBackdropLens(element, GLASS);
-  }
-  function queue(element) {
-    pending.add(element);
-    if (scheduled) return;
-    scheduled = true;
-    const run = () => {
-      scheduled = false;
-      const next = pending.values().next().value;
-      if (!next) return;
-      pending.delete(next);
-      fit2(next);
-      if (pending.size) queue(pending.values().next().value);
-    };
-    if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 500 });
-    else window.setTimeout(run, 50);
-  }
-  var resize = new ResizeObserver((entries) => entries.forEach((entry) => queue(entry.target)));
-  var visibility = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      const element = entry.target;
-      if (entry.isIntersecting) {
-        resize.observe(element);
-        queue(element);
-      } else {
-        resize.unobserve(element);
-        pending.delete(element);
-      }
     });
-  }, { rootMargin: "100px" }) : null;
-  function scan() {
-    for (const [element, rim] of surfaces) {
-      if (element.isConnected) continue;
-      visibility?.unobserve(element);
-      resize.unobserve(element);
-      pending.delete(element);
-      rim.remove();
-      surfaces.delete(element);
-    }
-    document.querySelectorAll(selectors).forEach((element) => {
-      const existingRim = surfaces.get(element);
-      if (existingRim) {
-        if (!existingRim.isConnected) element.append(existingRim);
-        return;
-      }
+    active.clear();
+  }
+  function refreshLenses() {
+    clearLenses();
+    if (!chromium || document.documentElement.classList.contains("performance-mode")) return;
+    if (navigator.deviceMemory && navigator.deviceMemory <= 4) return;
+    for (const element of document.querySelectorAll(candidates)) {
+      if (active.size >= maxLenses) break;
+      if (document.body.classList.contains("telegram-mini-app") && element.closest(".unwordle-card, .shyfr-shell")) continue;
+      const width = element.offsetWidth;
+      const height = element.offsetHeight;
+      if (!width || !height || width * height > 12e3) continue;
       const style = getComputedStyle(element);
-      if ((style.backdropFilter || style.getPropertyValue("-webkit-backdrop-filter")) === "none") return;
-      if (document.body.classList.contains("telegram-mini-app") && element.matches(".unwordle-card, .shyfr-shell")) return;
-      const rim = document.createElement("span");
-      rim.className = "glisse-rim";
-      rim.setAttribute("aria-hidden", "true");
-      if (style.position === "static") element.classList.add("glisse-positioned");
-      element.classList.add("glisse-surface");
-      element.append(rim);
-      surfaces.set(element, rim);
-      if (visibility) visibility.observe(element);
-      else {
-        resize.observe(element);
-        queue(element);
-      }
-    });
+      if (style.visibility === "hidden" || style.display === "none") continue;
+      const key = `${width}|${height}|${style.borderTopLeftRadius}`;
+      if (!shapes.has(key) && shapes.size >= maxMaps) continue;
+      shapes.add(key);
+      fitBackdropLens(element, GLASS);
+      if (!element.style.getPropertyValue("--lg-filter")) continue;
+      element.classList.add("glisse-lens");
+      active.add(element);
+    }
+  }
+  function schedule() {
+    if ("requestIdleCallback" in window) window.requestIdleCallback(refreshLenses, { timeout: 1200 });
+    else window.setTimeout(refreshLenses, 250);
   }
   function start() {
-    scan();
-    let scanPending = false;
-    new MutationObserver(() => {
-      if (scanPending) return;
-      scanPending = true;
-      requestAnimationFrame(() => {
-        scanPending = false;
-        scan();
-      });
-    }).observe(document.body, { childList: true, subtree: true });
-    new MutationObserver(() => {
-      scan();
-      surfaces.forEach((_rim, element) => queue(element));
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
+    window.setTimeout(schedule, 250);
+    window.addEventListener("resize", () => {
+      clearLenses();
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(schedule, 300);
+    }, { passive: true });
+    window.addEventListener("lordskamp:performancemode", clearLenses);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
   else start();

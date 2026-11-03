@@ -3,48 +3,57 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 
-function environment({ telegram = false } = {}) {
-  const observers = [];
-  const classes = new Set();
-  const rimClasses = new Set();
-  const card = {
-    isConnected: true,
-    classList: { add: name => classes.add(name), contains: name => classes.has(name) },
-    matches: selector => selector.includes('.unwordle-card'),
-    append(node) { this.rim = node; node.isConnected = true; },
-  };
-  const root = { classList: { contains: () => false } };
+function environment({ coarse = false, memory = 8, performance = false, telegram = false } = {}) {
+  const queue = [];
+  const listeners = {};
+  let canvases = 0;
+  const elements = Array.from({ length: 6 }, (_, index) => {
+    const classes = new Set();
+    const values = new Map();
+    return {
+      offsetWidth: 30 + index, offsetHeight: 20,
+      classList: { add: name => classes.add(name), remove: name => classes.delete(name), contains: name => classes.has(name) },
+      style: { setProperty: (key, value) => values.set(key, value), getPropertyValue: key => values.get(key) || '', removeProperty: key => values.delete(key) },
+      closest: () => telegram,
+    };
+  });
+  const node = () => ({ style: {}, isConnected: true, setAttribute() {}, append() {} });
   const document = {
-    readyState: 'complete', documentElement: root,
-    body: { classList: { contains: name => telegram && name === 'telegram-mini-app' } },
-    querySelectorAll: () => [card],
-    createElement: () => ({ classList: rimClasses, setAttribute() {}, remove() { this.isConnected = false; } }),
+    readyState: 'complete',
+    documentElement: { classList: { contains: name => performance && name === 'performance-mode' } },
+    body: { classList: { contains: name => telegram && name === 'telegram-mini-app' }, append() {} },
+    querySelectorAll: () => elements,
+    createElementNS: node,
+    createElement: () => {
+      canvases++;
+      return { width: 0, height: 0, getContext: () => ({ createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData() {} }), toDataURL: () => 'data:image/png;base64,AA==' };
+    },
   };
-  class MutationObserver { constructor(callback) { this.callback = callback; observers.push(this); } observe() {} }
-  class ResizeObserver { observe() {} unobserve() {} }
-  class IntersectionObserver { observe() {} unobserve() {} }
-  const window = { setTimeout() {}, requestIdleCallback() {}, IntersectionObserver };
-  const context = { document, navigator: { userAgent: 'Chrome/130' }, window, MutationObserver, ResizeObserver, IntersectionObserver,
-    getComputedStyle: () => ({ backdropFilter: 'blur(6px)', position: 'static' }),
-    requestAnimationFrame: callback => callback(), setTimeout() {}, Map, Set };
+  const window = {
+    matchMedia: () => ({ matches: coarse }),
+    setTimeout: callback => (queue.push(callback), queue.length), clearTimeout() {},
+    requestIdleCallback: callback => queue.push(callback),
+    addEventListener: (name, callback) => { listeners[name] = callback; },
+  };
+  const context = { document, navigator: { userAgent: 'Chrome/130', deviceMemory: memory }, window,
+    getComputedStyle: () => ({ visibility: 'visible', display: 'block', borderTopLeftRadius: '10px', getPropertyValue: () => '' }),
+    Uint8ClampedArray, Float32Array, Map, Set, Math };
   runInNewContext(readFileSync(new URL('../assets/glisse/site-glass.js', import.meta.url), 'utf8'), context);
-  return { card, classes, observers };
+  while (queue.length) queue.shift()();
+  return { elements, listeners, canvasCount: () => canvases };
 }
 
-test('adds a Glisse layer and restores it when dynamic content replaces its children', () => {
-  const { card, classes, observers } = environment();
-  assert.ok(classes.has('glisse-surface'));
-  assert.ok(classes.has('glisse-positioned'));
-  const rim = card.rim;
-  assert.equal(rim.className, 'glisse-rim');
-  rim.isConnected = false;
-  card.rim = undefined;
-  observers[0].callback();
-  assert.equal(card.rim, rim);
+test('limits expensive Glisse lenses and generated maps', () => {
+  const { elements, canvasCount, listeners } = environment();
+  assert.equal(elements.filter(element => element.classList.contains('glisse-lens')).length, 3);
+  assert.equal(canvasCount(), 3);
+  listeners['lordskamp:performancemode']();
+  assert.equal(elements.filter(element => element.classList.contains('glisse-lens')).length, 0);
 });
 
-test('does not replace the native Telegram game surface', () => {
-  const { card, classes } = environment({ telegram: true });
-  assert.equal(classes.has('glisse-surface'), false);
-  assert.equal(card.rim, undefined);
+test('uses one lens for touch and skips expensive effects in restricted modes', () => {
+  assert.equal(environment({ coarse: true }).canvasCount(), 1);
+  assert.equal(environment({ memory: 4 }).canvasCount(), 0);
+  assert.equal(environment({ performance: true }).canvasCount(), 0);
+  assert.equal(environment({ telegram: true }).canvasCount(), 0);
 });
