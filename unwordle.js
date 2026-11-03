@@ -80,11 +80,6 @@
         normal: { clueRows: 3, label: 'Звичайна' },
         hard: { clueRows: 5, label: 'Складна' }
     };
-    const MODES = {
-        daily: 'Щоденна',
-        unlimited: 'Нескінченна',
-        poop: 'Режим 💩'
-    };
     const SCORE_RANGES = {
         2: [
             { min: 1, max: 2 },
@@ -1999,21 +1994,6 @@
         };
     }
 
-    function currentPoopResultReference() {
-        if (!state.poopRecord?.solved) return null;
-        return {
-            id: String(state.poopRecord.entryId || ''),
-            mode: 'poop',
-            difficulty: 'normal',
-            dateKey: todayKey(),
-            target: POOP_TARGET,
-            startWord: state.poopStartWord,
-            name: String(state.poopRecord.playerName || 'Гравець'),
-            attempts: Math.max(1, Math.round(Number(state.poopRecord.attempts) || 0)),
-            solvedAt: state.poopRecord.solvedAt || ''
-        };
-    }
-
     async function fetchWithTimeout(url, options = {}) {
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), REMOTE_LEADERBOARD_TIMEOUT_MS);
@@ -2646,12 +2626,6 @@
             return;
         }
         if (currentPuzzleKey !== currentKey) generatePuzzle();
-    }
-
-    function formatDate(value) {
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return '';
-        return date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
     }
 
     function cleanAvatarUrl(value) {

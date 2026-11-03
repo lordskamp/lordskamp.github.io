@@ -2,11 +2,39 @@
 
 Статичний GitHub Pages-сайт Lordskamp із портфоліо та іграми. Серверні можливості працюють через Cloudflare Workers; «Довжина хвилі» має окремий Worker і Durable Objects для кімнат.
 
+## Локальний запуск
+
+Потрібні Node.js 22 або новіший і pnpm. Залежності зафіксовано в `pnpm-lock.yaml`.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run build:glass
+```
+
+Головна й портфоліо — звичайні HTML/CSS/JavaScript-сторінки. Відкрийте корінь репозиторію через локальний HTTP-сервер, наприклад `python -m http.server 4173 --bind 127.0.0.1`, і перейдіть на `http://127.0.0.1:4173/`. Для серверних функцій ігор потрібні окремі Workers; запуск через `file://` їх не замінює.
+
+## Структура
+
+| Шлях | Призначення |
+| --- | --- |
+| `index.html`, `home.css`, `home.js` | Головна, посилання та локалізація |
+| `portfolio.html`, `portfolio.css`, `portfolio-app.js` | Галерея, категорії та керування медіа |
+| `site-ui.css`, `site-ui.js` | Спільні тема, мова, меню та відеопрев’ю |
+| `assets/glisse/` | Адаптація Glisse, вихідний код, worker і ліцензія |
+| `portfolio/`, `logos/` | Роботи, прев’ю та логотипи |
+| `shyfr/`, `hvylia/`, `unwordle*`, `Zavod/` | Окремі застосунки |
+| `api/`, `migrations/`, `content/` | Workers, міграції та ігрові дані |
+| `scripts/`, `tests/`, `docs/` | Збірка, перевірки та документація |
+
+Текст головної з’являється одразу. Скло працює окремим фоновим шаром, без розмиття вмісту. Lottie завантажуються поблизу екрана, зупиняються поза ним і в прихованій вкладці, враховують налаштування зменшеного руху. Відеопрев’ю запускаються при взаємодії.
+
+Після зміни вихідного коду Glisse виконайте `pnpm run build:glass`: сайт використовує зібрані `site-glass.js` і `glass-worker.js`. Не редагуйте ці згенеровані файли вручну.
+
 ## Довжина хвилі
 
 `/hvylia/` — українська командна гра зі спільним спектром, прихованою ціллю, підказками Телепата та реальним multiplayer через WebSocket. Для старту потрібні чотири гравці, по двоє в команді. Нікнеймів достатньо; ведучий ділиться посиланням на кімнату. Сервер керує правилами й рахунком, а до відкриття цілі її бачить лише Телепат.
 
-Оригінальні 160 спектрів зберігаються окремо в `content/hvylia/spectra.js`. Локальний запуск — `pnpm run dev:hvylia`, розгортання ізольованого Worker — `pnpm run deploy:hvylia`. Архітектура, публікація на GitHub Pages, повернення до кімнати, TTL і перевірки описані у [HVYLIA.md](docs/HVYLIA.md).
+Спектри зберігаються окремо в `content/hvylia/spectra.js`. Локальний запуск — `pnpm run dev:hvylia`, розгортання ізольованого Worker — `pnpm run deploy:hvylia`. Архітектура, публікація на GitHub Pages, повернення до кімнати, TTL і перевірки описані у [HVYLIA.md](docs/HVYLIA.md).
 
 ## Обпресування
 
@@ -22,15 +50,19 @@
 
 Українська гра «Шифр» відкривається за маршрутом `/shyfr/`. Рівні зберігаються по одному JSON-файлу на категорію; кожен запис містить лише `text` і `source`. Інструкції для локального запуску, Cloudflare KV, Telegram Mini App, Stars і BotFather наведені в [`docs/SHYFR.md`](docs/SHYFR.md).
 
-```powershell
-pnpm install
+## Перевірки
+
+```sh
 pnpm run validate:shyfr-content
 pnpm run check:shyfr-duplicates
-pnpm run build:shyfr-content-index
 pnpm run lint
 pnpm run typecheck
 pnpm test
 pnpm run build
 ```
+
+`typecheck` перевіряє синтаксис JavaScript, це не статична перевірка типів TypeScript. Повна збірка також перевіряє контент «Шифру» й зупиняється, якщо він некоректний. Серверні інтеграційні тести «Довжини хвилі» запускають Wrangler і потребують дозволу на локальні порти.
+
+Результати очищення, відомі обмеження перевірок і список зайвих файлів: [PROJECT-MAINTENANCE.md](docs/PROJECT-MAINTENANCE.md).
 
 Не додавайте bot token, webhook secret, admin token або повний Telegram `initData` до репозиторію.

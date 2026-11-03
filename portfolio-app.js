@@ -231,10 +231,6 @@
         root.classList.toggle('light-theme', isLight);
         const btn = document.getElementById('themeBtn');
         if (btn) btn.innerHTML = `<i class="fas ${isLight ? 'fa-moon' : 'fa-sun'}"></i>`;
-        // Re-apply mono logo filters
-        document.querySelectorAll('.logo-mono').forEach(el => {
-            // CSS handles this via :root.light-theme
-        });
     }
 
     /* ── Data Model ── */

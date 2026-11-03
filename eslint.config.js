@@ -35,7 +35,8 @@ export default [
         requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
         setInterval: 'readonly', clearInterval: 'readonly', CustomEvent: 'readonly',
         IntersectionObserver: 'readonly', ResizeObserver: 'readonly', MutationObserver: 'readonly',
-        lottie: 'readonly', fetch: 'readonly', btoa: 'readonly', atob: 'readonly'
+        lottie: 'readonly', btoa: 'readonly', atob: 'readonly', alert: 'readonly',
+        DOMParser: 'readonly', XMLSerializer: 'readonly', AbortController: 'readonly'
       }
     },
     rules: { 'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }] }

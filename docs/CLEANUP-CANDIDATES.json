@@ -1,0 +1,220 @@
+{
+  "reviewed": "2026-11-03",
+  "status": "not-deleted",
+  "reason": "Removal was blocked by the execution environment. Review before deleting; this is not a build input.",
+  "totalBytes": 12507432,
+  "files": [
+    {
+      "path": "BG.css",
+      "bytes": 6319
+    },
+    {
+      "path": "glisse-main.zip",
+      "bytes": 95023
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/.gitignore",
+      "bytes": 24
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/LICENSE",
+      "bytes": 1069
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/README.md",
+      "bytes": 710
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/package-lock.json",
+      "bytes": 92586
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/package.json",
+      "bytes": 1745
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/button.tsx",
+      "bytes": 1814
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/css.d.ts",
+      "bytes": 77
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/glass.tsx",
+      "bytes": 715
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/index.ts",
+      "bytes": 705
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/input.tsx",
+      "bytes": 2184
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/controllable.ts",
+      "bytes": 648
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/cx.ts",
+      "bytes": 122
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/hold.ts",
+      "bytes": 435
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/lens.ts",
+      "bytes": 36793
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/press.ts",
+      "bytes": 4041
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/refraction.ts",
+      "bytes": 21017
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/segments.tsx",
+      "bytes": 19908
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/spring.ts",
+      "bytes": 2949
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/styles.ts",
+      "bytes": 447
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/internal/svg.ts",
+      "bytes": 750
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/menu.tsx",
+      "bytes": 12682
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/search-field.tsx",
+      "bytes": 871
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/segmented-control.tsx",
+      "bytes": 788
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/slider.tsx",
+      "bytes": 4300
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/styles.css",
+      "bytes": 26891
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/switch.tsx",
+      "bytes": 7895
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/src/tab-bar.tsx",
+      "bytes": 1093
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/button.test.tsx",
+      "bytes": 1763
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/glass.test.tsx",
+      "bytes": 12673
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/input.test.tsx",
+      "bytes": 1000
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/lens.test.tsx",
+      "bytes": 13631
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/menu.test.tsx",
+      "bytes": 1762
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/refraction.test.tsx",
+      "bytes": 874
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/search-field.test.tsx",
+      "bytes": 1253
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/segmented-control.test.tsx",
+      "bytes": 4994
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/setup.ts",
+      "bytes": 546
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/slider.test.tsx",
+      "bytes": 1408
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/styles.test.tsx",
+      "bytes": 343
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/switch.test.tsx",
+      "bytes": 2755
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/test/tab-bar.test.tsx",
+      "bytes": 15232
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/tsconfig.json",
+      "bytes": 471
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/tsdown.config.ts",
+      "bytes": 1302
+    },
+    {
+      "path": "outputs/glisse-source/glisse-main/vitest.config.ts",
+      "bytes": 196
+    },
+    {
+      "path": "outputs/zavod-live.png",
+      "bytes": 78584
+    },
+    {
+      "path": "outputs/zavod-mobile.png",
+      "bytes": 62783
+    },
+    {
+      "path": "outputs/zavod-worker-configuration.d.ts",
+      "bytes": 551207
+    },
+    {
+      "path": "outputs/zavod-worker/README.md",
+      "bytes": 111
+    },
+    {
+      "path": "outputs/zavod-worker/zavod-worker.js",
+      "bytes": 89479
+    },
+    {
+      "path": "outputs/zavod-worker/zavod-worker.js.map",
+      "bytes": 142229
+    },
+    {
+      "path": "portfolio/TEST.jpg",
+      "bytes": 10766379
+    },
+    {
+      "path": "profile.jpeg",
+      "bytes": 411856
+    }
+  ]
+}

@@ -71,7 +71,7 @@ document.getElementById('emailBtn').addEventListener('click', function (e) {
         try {
             document.execCommand('copy');
             showNote();
-        } catch (err) {
+        } catch {
             alert('Email: ' + email);
         }
         document.body.removeChild(textArea);
