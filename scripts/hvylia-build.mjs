@@ -12,6 +12,10 @@ const output = resolve('outputs/hvylia-site');
 await mkdir(output, { recursive: true });
 await cp(resolve('hvylia'), resolve(output, 'hvylia'), { recursive: true });
 await cp(resolve('fav'), resolve(output, 'fav'), { recursive: true });
+await mkdir(resolve(output, 'assets/glisse'), { recursive: true });
+for (const name of ['site-glass.css', 'site-glass.js', 'LICENSE']) {
+  await cp(resolve('assets/glisse', name), resolve(output, 'assets/glisse', name));
+}
 await mkdir(resolve(output, 'api'), { recursive: true });
 await mkdir(resolve(output, 'content/hvylia'), { recursive: true });
 await cp(resolve('api/hvylia-core.js'), resolve(output, 'api/hvylia-core.js'));
