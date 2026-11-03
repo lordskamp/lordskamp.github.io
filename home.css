@@ -452,29 +452,15 @@ body {
 
 .particles-container {
     position: fixed;
-    top: calc(-1 * var(--bg-overscan));
-    left: 0;
-    width: 100%;
-    height: calc(var(--bg-height) + (var(--bg-overscan) * 2));
-    min-height: 110vh;
-    min-height: -webkit-fill-available;
+    inset: 0;
     z-index: 5;
     pointer-events: none;
-    transform: translate3d(0, 0, 0);
-    backface-visibility: hidden;
 }
 
-.particle {
-    position: absolute;
-    left: 0;
-    top: 0;
-    background: var(--particle-color);
-    border-radius: 50%;
-    opacity: 0;
-    pointer-events: none;
-    transform: translate3d(0, 0, 0);
-    will-change: transform;
-    contain: layout style;
+.particles-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 /* ---------- Content overlay ---------- */
@@ -1164,10 +1150,6 @@ body:has(.island:hover iframe) {
 }
 
 /* Particles adaptation */
-:root.light-theme .particle {
-    background: #000000;
-}
-
 /* Custom cursor adaptation */
 :root.light-theme .custom-cursor {
     background: rgba(0, 0, 0, 0.3);

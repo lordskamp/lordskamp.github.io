@@ -34,8 +34,6 @@ html.performance-mode .grid-overlay {
     opacity: 0.18 !important;
 }
 
-html.performance-mode #tsparticles,
-html.performance-mode .particles-container,
 html.performance-mode .custom-cursor {
     display: none !important;
 }

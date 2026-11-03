@@ -87,198 +87,132 @@ document.getElementById('emailBtn').addEventListener('click', function (e) {
     }
 });
 
+/* ==== Floating particles: one bounded canvas, no external engine ==== */
 (() => {
-    const particlesContainer = document.getElementById('particles-container');
-    if (!particlesContainer || document.documentElement.classList.contains('performance-mode') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let particleEffectsEnabled = true;
+    const container = document.getElementById('particles-container');
+    if (!container) return;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.setAttribute('aria-hidden', 'true');
+    container.appendChild(canvas);
 
-    const isMobileExperience = window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches;
-    const supportsFineHover = !isMobileExperience && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-    const AMBIENT_COUNT = isMobileExperience ? 10 : 20;
-    const TRAIL_POOL_SIZE = 20;
-    const TRAIL_DURATION_MS = 1500;
-    const TRAIL_MAX_PER_SEC = 60; // smoother trail tracking
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const coarse = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const fineHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    const particles = [];
+    const trail = Array.from({ length: 20 }, () => ({ life: 0 }));
+    let trailIndex = 0;
+    let pointer = null;
+    let width = 1;
+    let height = 1;
+    let color = '#ffffff';
+    let frame = 0;
+    let lastTime = 0;
+    let economical = false;
 
-    const supportsWAAPI = typeof Element !== 'undefined' && typeof Element.prototype.animate === 'function';
-    const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
-    let trailOffsetX = 0;
-    let trailOffsetY = 0;
-
-    // Convert viewport pointer coords to particles container coords.
-    // The container is intentionally shifted by --bg-overscan, so we cache that offset.
-    function refreshTrailOffsets() {
-        const rect = particlesContainer.getBoundingClientRect();
-        trailOffsetX = -rect.left;
-        trailOffsetY = -rect.top;
-    }
-    refreshTrailOffsets();
-    window.addEventListener('resize', refreshTrailOffsets, { passive: true });
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', refreshTrailOffsets, { passive: true });
+    function updateTheme() {
+        color = getComputedStyle(document.documentElement).getPropertyValue('--particle-color').trim() || '#ffffff';
     }
 
-    function cancelAnimations(el) {
-        const anims = el.getAnimations?.();
-        if (anims && anims.length) anims.forEach(a => a.cancel());
+    function resize() {
+        width = Math.max(1, container.clientWidth);
+        height = Math.max(1, container.clientHeight);
+        const ratio = Math.min(window.devicePixelRatio || 1, economical || coarse ? 1 : 1.5);
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        particles.forEach(p => { p.x %= width; p.y %= height; });
     }
 
-    /* ==== Ambient particles (pooled, compositor transform/opacity) ==== */
-    const ambient = [];
-    for (let i = 0; i < AMBIENT_COUNT; i++) {
-        const p = document.createElement('div');
-        p.className = 'particle';
-        const size = Math.random() * 3 + 1;
-        p.style.width = `${size}px`;
-        p.style.height = `${size}px`;
-        particlesContainer.appendChild(p);
-        ambient.push(p);
-    }
-
-    function animateAmbient(p) {
-        if (!particleEffectsEnabled) return;
-        const startX = Math.random() * 100;
-        const startY = Math.random() * 100;
-        const endX = startX + (Math.random() * 20 - 10);
-        const endY = startY - Math.random() * 30;
-        const duration = (Math.random() * 10 + 10) * 1000;
-        const delay = Math.random() * 5000;
-        const peakOpacity = Math.random() * 0.3 + 0.1;
-
-        if (supportsWAAPI) {
-            cancelAnimations(p);
-            const anim = p.animate([
-                { transform: `translate3d(${startX}vw, ${startY}vh, 0)`, opacity: 0 },
-                { transform: `translate3d(${startX}vw, ${startY}vh, 0)`, opacity: peakOpacity, offset: 0.12 },
-                { transform: `translate3d(${endX}vw, ${endY}vh, 0)`, opacity: 0 }
-            ], { duration, delay, easing: 'linear', fill: 'forwards' });
-            anim.onfinish = () => animateAmbient(p);
-        } else {
-            // Fallback: still avoid left/top + transition:all to reduce layout/recalc
-            p.style.opacity = '0';
-            p.style.transition = 'none';
-            p.style.transform = `translate3d(${startX}vw, ${startY}vh, 0)`;
-            setTimeout(() => {
-                p.style.transition = `transform ${duration}ms linear, opacity ${duration}ms linear`;
-                p.style.opacity = String(peakOpacity);
-                p.style.transform = `translate3d(${endX}vw, ${endY}vh, 0)`;
-                setTimeout(() => animateAmbient(p), duration);
-            }, delay);
+    function setBudget() {
+        economical = document.documentElement.classList.contains('performance-mode');
+        resize();
+        const count = economical ? (coarse ? 8 : 12) : (coarse ? 12 : 24);
+        particles.length = Math.min(particles.length, count);
+        while (particles.length < count) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 8 + Math.random() * 10;
+            particles.push({ x: Math.random() * width, y: Math.random() * height,
+                vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 2 + Math.random() * 2 });
         }
     }
 
-    ambient.forEach(animateAmbient);
-
-    /* ==== Mouse trail particles (pool reuse, max 1 per frame) ==== */
-    const trailPool = [];
-    if (supportsFineHover) {
-        for (let i = 0; i < TRAIL_POOL_SIZE; i++) {
-            const p = document.createElement('div');
-            p.className = 'particle';
-            p.style.opacity = '0';
-            particlesContainer.appendChild(p);
-            trailPool.push(p);
+    function draw(now) {
+        frame = 0;
+        if (document.hidden || motion.matches) return;
+        frame = requestAnimationFrame(draw);
+        const elapsed = now - lastTime;
+        if (lastTime && elapsed < 1000 / (economical || coarse ? 20 : 30)) return;
+        const dt = lastTime ? Math.min(elapsed / 1000, 0.1) : 0;
+        lastTime = now;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        for (const p of particles) {
+            p.x = (p.x + p.vx * dt + width) % width;
+            p.y = (p.y + p.vy * dt + height) % height;
         }
+        // At most 276 pairs; skip connecting lines in the smaller rendering budget.
+        if (!economical) {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const a = particles[i];
+                    const b = particles[j];
+                    const distance = Math.hypot(a.x - b.x, a.y - b.y);
+                    if (distance >= 120) continue;
+                    ctx.globalAlpha = (1 - distance / 120) * 0.45;
+                    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+                }
+            }
+        }
+        ctx.globalAlpha = 0.72;
+        for (const p of particles) {
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+        }
+        if (pointer) {
+            const p = trail[trailIndex];
+            trailIndex = (trailIndex + 1) % trail.length;
+            Object.assign(p, pointer, { life: 1, vx: (Math.random() - 0.5) * 45,
+                vy: (Math.random() - 0.5) * 45, color: window.customCursorPos?.color || color });
+            pointer = null;
+        }
+        for (const p of trail) {
+            p.life = Math.max(0, p.life - dt);
+            if (!p.life) continue;
+            p.x += p.vx * dt; p.y += p.vy * dt;
+            ctx.globalAlpha = p.life * 0.6;
+            ctx.fillStyle = p.color;
+            ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
     }
 
-    let trailIdx = 0;
-    function spawnTrail(clientX, clientY) {
-        if (!trailPool.length) return;
-        const p = trailPool[trailIdx];
-        trailIdx = (trailIdx + 1) % trailPool.length;
-
-        const size = Math.random() * 4 + 2;
-        p.style.width = `${size}px`;
-        p.style.height = `${size}px`;
-
-        // Update particle color based on cursor state
-        const cursorColor = window.customCursorPos && window.customCursorPos.color;
-        if (cursorColor) {
-            p.style.backgroundColor = cursorColor;
-            p.style.boxShadow = `0 0 10px ${cursorColor}`;
-        } else {
-            p.style.backgroundColor = '';
-            p.style.boxShadow = '';
-        }
-
-        // Use exact pixel positions for precise cursor tracking
-        const x = clientX + trailOffsetX;
-        const y = clientY + trailOffsetY;
-        // Random drift direction (particles move away from cursor)
-        const driftX = (Math.random() - 0.5) * 80;
-        const driftY = (Math.random() - 0.5) * 80;
-        const endX = x + driftX;
-        const endY = y + driftY;
-
-        if (supportsWAAPI) {
-            cancelAnimations(p);
-            p.animate([
-                { transform: `translate3d(${x}px, ${y}px, 0)`, opacity: 0.6 },
-                { transform: `translate3d(${endX}px, ${endY}px, 0)`, opacity: 0 }
-            ], { duration: TRAIL_DURATION_MS, easing: 'ease-out', fill: 'forwards' });
-        } else {
-            p.style.transition = 'none';
-            p.style.opacity = '0.6';
-            p.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-            setTimeout(() => {
-                p.style.transition = `transform ${TRAIL_DURATION_MS}ms ease-out, opacity ${TRAIL_DURATION_MS}ms ease-out`;
-                p.style.opacity = '0';
-                p.style.transform = `translate3d(${endX}px, ${endY}px, 0)`;
-            }, 0);
-        }
+    function syncMotion() {
+        if (frame) cancelAnimationFrame(frame);
+        frame = 0;
+        lastTime = 0;
+        pointer = null;
+        trail.forEach(p => { p.life = 0; });
+        if (motion.matches) ctx.clearRect(0, 0, width, height);
+        if (!document.hidden && !motion.matches) frame = requestAnimationFrame(draw);
     }
 
-    /* ==== Pointer work (coalesced to rAF) ==== */
-    let lastX = innerWidth * 0.5;
-    let lastY = innerHeight * 0.5;
-    let rafPending = false;
-    let lastTrailTime = 0;
-
-    function tick() {
-        rafPending = false;
-
-
-
-        // Trail: cap to refresh-rate to keep effect but avoid runaway DOM work
-        const now = performance.now();
-        if (now - lastTrailTime >= (1000 / TRAIL_MAX_PER_SEC)) {
-            // Use raw pointer coordinates for zero-lag trail placement.
-            spawnTrail(lastX, lastY);
-            lastTrailTime = now;
-        }
+    if (fineHover) {
+        document.addEventListener(window.PointerEvent ? 'pointermove' : 'mousemove', event => {
+            if (document.hidden || motion.matches || (event.pointerType && event.pointerType !== 'mouse')) return;
+            pointer = { x: event.clientX, y: event.clientY };
+        }, { passive: true });
     }
-
-    function onMove(e) {
-        if (!particleEffectsEnabled) return;
-        // Keep original behavior: only react to mouse movement (not touch/pen)
-        if (e.pointerType && e.pointerType !== 'mouse') return;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        if (!rafPending) {
-            rafPending = true;
-            requestAnimationFrame(tick);
-        }
-    }
-
-    if (supportsFineHover) {
-        document.addEventListener(moveEvent, onMove, { passive: true });
-    }
-
-    // Pause/restart animations when tab is hidden/visible (saves CPU, no feature loss)
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            ambient.forEach(cancelAnimations);
-            trailPool.forEach(cancelAnimations);
-        } else if (particleEffectsEnabled) {
-            ambient.forEach(animateAmbient);
-        }
-    });
-
-    window.addEventListener('lordskamp:performancemode', () => {
-        particleEffectsEnabled = false;
-        ambient.forEach(cancelAnimations);
-        trailPool.forEach(cancelAnimations);
-        particlesContainer.replaceChildren();
-    }, { once: true });
+    window.addEventListener('resize', resize, { passive: true });
+    window.addEventListener('lordskamp:themechange', updateTheme);
+    window.addEventListener('lordskamp:performancemode', setBudget);
+    document.addEventListener('visibilitychange', syncMotion);
+    motion.addEventListener('change', syncMotion);
+    updateTheme();
+    setBudget();
+    syncMotion();
 })();
 
 /* ==== i18n (Internationalization) ==== */
@@ -530,13 +464,22 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
 (() => {
     if (window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
 
-    // Keep the avatar tilt without moving nested glass surfaces in 3D.
-    const elements = document.querySelectorAll('#profileImg');
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    // Rotate one hovered block at a time, keeping its Glisse material attached.
+    const elements = document.querySelectorAll('#profileImg, .island:not(.no-parallax)');
     if (!elements.length) return;
 
     const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';
+    const enterEvent = window.PointerEvent ? 'pointerenter' : 'mouseenter';
+    const leaveEvent = window.PointerEvent ? 'pointerleave' : 'mouseleave';
     const LEAVE_TOLERANCE_PX = 14;
     let activeTiltReset = null;
+    const resetActiveTilt = () => activeTiltReset?.();
+    window.addEventListener('blur', resetActiveTilt);
+    window.addEventListener('resize', resetActiveTilt, { passive: true });
+    window.addEventListener('scroll', resetActiveTilt, { passive: true });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) resetActiveTilt(); });
+    motion.addEventListener('change', () => { if (motion.matches) resetActiveTilt(); });
 
     function isInsideRect(rect, x, y, tolerance = 0) {
         if (!rect) return false;
@@ -574,9 +517,10 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             dx = Math.max(-1, Math.min(1, dx));
             dy = Math.max(-1, Math.min(1, dy));
 
-            const rx = -dy * 9;
-            const ry = dx * 9;
-            el.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.02) translateY(-4px)`;
+            const maxAngle = el.id === 'profileImg' ? 9 : 4;
+            const rx = -dy * maxAngle;
+            const ry = dx * maxAngle;
+            el.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-3px)`;
         }
 
         function stopTrackingDocumentMove() {
@@ -624,7 +568,8 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             if (!raf) raf = requestAnimationFrame(update);
         }
 
-        el.addEventListener('pointerenter', (e) => {
+        el.addEventListener(enterEvent, (e) => {
+            if (motion.matches || document.hidden) return;
             if (e.pointerType && e.pointerType !== 'mouse') return;
             if (activeTiltReset && activeTiltReset !== resetTilt) {
                 activeTiltReset({ fast: true });
@@ -650,18 +595,8 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             if (!raf) raf = requestAnimationFrame(update);
         }, { passive: true });
 
-        el.addEventListener('pointermove', (e) => {
-            if (!hovering) return;
-            if (activeTiltReset !== resetTilt) return;
-            if (e.pointerType && e.pointerType !== 'mouse') return;
-
-            lastX = e.clientX;
-            lastY = e.clientY;
-            if (!raf) raf = requestAnimationFrame(update);
-        }, { passive: true });
-
         // Ignore false leaves caused by transformed hit-testing at sharp corners.
-        el.addEventListener('pointerleave', (e) => {
+        el.addEventListener(leaveEvent, (e) => {
             const exitX = typeof e.clientX === 'number' ? e.clientX : lastX;
             const exitY = typeof e.clientY === 'number' ? e.clientY : lastY;
             if (isInsideRect(baseRect, exitX, exitY, LEAVE_TOLERANCE_PX)) return;
