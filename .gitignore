@@ -13,6 +13,11 @@ outputs/hvylia-site/
 outputs/hvylia-worker/
 outputs/hvylia-worker-configuration.d.ts
 outputs/hvylia-check/
+outputs/glisse-source/
+outputs/zavod-worker/
+outputs/*-configuration.d.ts
+outputs/*.png
+glisse-main.zip
 test-results/
 playwright-report/
 chat copy.html

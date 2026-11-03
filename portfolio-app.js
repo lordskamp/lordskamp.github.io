@@ -1751,6 +1751,64 @@
     }
 
     /* ── Init Lottie animations (IntersectionObserver lazy-load) ── */
+    const lottieAnimations = new WeakMap();
+    const visibleLottie = new Set();
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    function syncLottiePlayback() {
+        visibleLottie.forEach(animation => {
+            if (document.hidden || reducedMotion.matches) animation.pause();
+            else animation.play();
+        });
+    }
+    document.addEventListener('visibilitychange', syncLottiePlayback);
+    reducedMotion.addEventListener('change', syncLottiePlayback);
+    const lottieObserver = 'IntersectionObserver' in window
+        ? new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const animation = loadLottieItem(entry.target);
+                    if (animation) visibleLottie.add(animation);
+                } else {
+                    const animation = lottieAnimations.get(entry.target);
+                    animation?.pause();
+                    visibleLottie.delete(animation);
+                }
+            });
+            syncLottiePlayback();
+        }, { rootMargin: '100px' })
+        : null;
+
+    function loadLottieItem(el) {
+        const existing = lottieAnimations.get(el);
+        if (existing) return existing;
+        const src = el.dataset.lottieSrc;
+        if (!src || typeof lottie === 'undefined') return null;
+        el.dataset.lottieLoaded = 'true';
+        el.classList.add('is-lottie-loading');
+        const animation = lottie.loadAnimation({
+            container: el,
+            renderer: 'svg',
+            loop: true,
+            autoplay: false,
+            path: encodeURI(src),
+            rendererSettings: { progressiveLoad: true, preserveAspectRatio: 'xMidYMid meet' }
+        });
+        lottieAnimations.set(el, animation);
+        animation.addEventListener('DOMLoaded', () => {
+            el.classList.remove('is-lottie-loading', 'is-lottie-error');
+            el.classList.add('is-lottie-ready');
+            syncLottiePlayback();
+        });
+        animation.addEventListener('data_failed', () => {
+            el.classList.remove('is-lottie-loading');
+            el.classList.add('is-lottie-error');
+            visibleLottie.delete(animation);
+            animation.destroy();
+            lottieObserver?.unobserve(el);
+        });
+        return animation;
+    }
+
     function initLottie(rootNode = document) {
         const items = rootNode.querySelectorAll('[data-lottie-src]');
         if (typeof lottie === 'undefined') {
@@ -1758,48 +1816,14 @@
             return;
         }
 
-        const loadItem = el => {
-            const src = el.dataset.lottieSrc;
-            if (!src || el.dataset.lottieLoaded) return;
-
-            el.dataset.lottieLoaded = 'true';
-            el.classList.add('is-lottie-loading');
-            const animation = lottie.loadAnimation({
-                container: el,
-                renderer: 'svg',
-                loop: true,
-                autoplay: true,
-                path: encodeURI(src),
-                rendererSettings: {
-                    progressiveLoad: true,
-                    preserveAspectRatio: 'xMidYMid meet'
-                }
-            });
-
-            animation.addEventListener('DOMLoaded', () => {
-                el.classList.remove('is-lottie-loading', 'is-lottie-error');
-                el.classList.add('is-lottie-ready');
-            });
-            animation.addEventListener('data_failed', () => {
-                el.classList.remove('is-lottie-loading');
-                el.classList.add('is-lottie-error');
-            });
-        };
-
-        if (!('IntersectionObserver' in window)) {
-            items.forEach(loadItem);
-            return;
-        }
-
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (!entry.isIntersecting) return;
-                loadItem(entry.target);
-                observer.unobserve(entry.target);
-            });
-        }, { rootMargin: '300px' });
-
-        items.forEach(el => observer.observe(el));
+        items.forEach(el => {
+            if (lottieObserver) lottieObserver.observe(el);
+            else {
+                const animation = loadLottieItem(el);
+                if (animation) visibleLottie.add(animation);
+            }
+        });
+        if (!lottieObserver) syncLottiePlayback();
     }
 
     /* ── Category Filtering ── */

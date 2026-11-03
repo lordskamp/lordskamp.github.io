@@ -617,6 +617,11 @@
         return value.replace(/^portfolio\//, 'portfolio/thumbs/') + '.webp';
     }
 
+    const playingVideos = new Set();
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) [...playingVideos].forEach(stop => stop());
+    });
+
     function hydrateLazyVideo(card) {
         if (!card || card.dataset.lazyVideoReady) return;
         const src = card.dataset.videoSrc;
@@ -649,12 +654,14 @@
             }
 
             card.classList.add('is-loading', 'is-playing');
+            playingVideos.add(stopAndUnload);
             video.play().catch(() => {
                 card.classList.remove('is-loading', 'is-playing');
             });
         }
 
         function stopAndUnload() {
+            playingVideos.delete(stopAndUnload);
             if (video) {
                 video.pause();
                 video.removeAttribute('src');
@@ -665,15 +672,11 @@
             card.classList.remove('is-loading', 'is-loaded', 'is-playing');
         }
 
-        card.addEventListener('pointerenter', loadAndPlay, { passive: true });
-        card.addEventListener('pointerleave', stopAndUnload, { passive: true });
-        card.addEventListener('mouseenter', loadAndPlay, { passive: true });
-        card.addEventListener('mouseleave', stopAndUnload, { passive: true });
+        const pointerEvents = 'PointerEvent' in window;
+        card.addEventListener(pointerEvents ? 'pointerenter' : 'mouseenter', loadAndPlay, { passive: true });
+        card.addEventListener(pointerEvents ? 'pointerleave' : 'mouseleave', stopAndUnload, { passive: true });
         card.addEventListener('focusin', loadAndPlay, { passive: true });
         card.addEventListener('focusout', stopAndUnload, { passive: true });
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) stopAndUnload();
-        });
         card.dataset.lazyVideoReady = 'true';
     }
 

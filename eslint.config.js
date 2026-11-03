@@ -24,6 +24,23 @@ export default [
   },
   js.configs.recommended,
   {
+    files: ['home.js', 'site-ui.js', 'portfolio-app.js', 'unwordle.js', 'telegram-mini-app.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...sharedGlobals, window: 'readonly', document: 'readonly', navigator: 'readonly',
+        localStorage: 'readonly', sessionStorage: 'readonly', history: 'readonly', location: 'readonly',
+        Element: 'readonly', Image: 'readonly', CSS: 'readonly', caches: 'readonly', performance: 'readonly',
+        innerWidth: 'readonly', innerHeight: 'readonly', getComputedStyle: 'readonly',
+        requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
+        setInterval: 'readonly', clearInterval: 'readonly', CustomEvent: 'readonly',
+        IntersectionObserver: 'readonly', ResizeObserver: 'readonly', MutationObserver: 'readonly',
+        lottie: 'readonly', fetch: 'readonly', btoa: 'readonly', atob: 'readonly'
+      }
+    },
+    rules: { 'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }] }
+  },
+  {
     files: ['Zavod/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
