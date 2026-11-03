@@ -29,7 +29,6 @@
     <meta name="twitter:image" content="https://lordskamp.github.io/assets/lordskamp-home-og.png?v=20260703-large-bg">
     <meta name="twitter:image:alt" content="Lordskamp links page preview background">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.9.3/tsparticles.bundle.min.js"></script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="theme-color" content="#8c3dc1" />
@@ -550,13 +549,13 @@
 
             to {
                 opacity: 1;
-                filter: blur(0);
+                filter: none;
                 transform: translateY(0) scale(1);
             }
         }
 
         .animate-blur-up {
-            animation: blur-up 0.9s cubic-bezier(.25, .46, .45, .94) forwards;
+            animation: blur-up 0.9s cubic-bezier(.25, .46, .45, .94) backwards;
         }
 
         /* ---------- Magnetic Cursor ---------- */
@@ -1437,8 +1436,8 @@
         }
     </style>
     <link rel="stylesheet" href="site-ui.css?v=20260611-light-contrast">
-    <link rel="stylesheet" href="assets/glisse/site-glass.css?v=2">
-    <script defer src="assets/glisse/site-glass.js?v=2"></script>
+    <link rel="stylesheet" href="assets/glisse/site-glass.css?v=3">
+    <script defer src="assets/glisse/site-glass.js?v=3"></script>
     <script src="site-ui.js?v=20260703-clean-urls"></script>
 </head>
 
@@ -2334,28 +2333,6 @@
                 el.classList.add('animate-blur-up');
             });
 
-            /* ==== 3-D Tilt Cards (desktop/fine pointer only) ==== */
-            if (!window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-                const initVanillaTilt = () => {
-                    if (!window.VanillaTilt) return;
-                    window.VanillaTilt.init($$('.link-item:not(.portfolio-cta)'), {
-                        max: 5,
-                        speed: 600,
-                        glare: false
-                    });
-                };
-
-                if (window.VanillaTilt) {
-                    initVanillaTilt();
-                } else {
-                    const tiltScript = document.createElement('script');
-                    tiltScript.src = 'https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js';
-                    tiltScript.async = true;
-                    tiltScript.onload = initVanillaTilt;
-                    document.head.appendChild(tiltScript);
-                }
-            }
-
             /* ==== Ripple Click ==== */
             $$('.link-item:not(.portfolio-cta)').forEach((btn) => {
                 btn.addEventListener('click', (e) => {
@@ -2430,8 +2407,8 @@
             (() => {
                 if (window.matchMedia('(max-width: 768px), (hover: none), (pointer: coarse)').matches || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
 
-                // Target profile image and all island blocks
-                const elements = document.querySelectorAll('#profileImg, .island:not(.no-parallax)');
+                // Keep the avatar tilt without moving nested glass surfaces in 3D.
+                const elements = document.querySelectorAll('#profileImg');
                 if (!elements.length) return;
 
                 const moveEvent = window.PointerEvent ? 'pointermove' : 'mousemove';

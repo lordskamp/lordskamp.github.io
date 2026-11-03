@@ -1,17 +1,57 @@
-/* One lightweight material replaces the old nested backdrop blurs. */
-html :is(.site-header__brand, .site-header__back, .site-control,
-  .profile-card-modal__panel, .lazy-video-play, .link-item, .island,
-  .award-card, .section-content-shell, .top-bar, .back-btn, .ctrl-btn,
-  .cat-tab, .case-card, .lottie-item, .logo-cell, .poster-item,
-  .volunteer-card, .volunteer-tap-hint, .video-item, .unwordle-card,
-  .game-action, .daily-timer, .shyfr-shell, .toast, .connection) {
+/* A single Glisse material owns the fill, frost and bevel. The host no longer
+   applies a second backdrop filter or an opaque legacy glass background. */
+:root {
+  --glisse-fill: rgb(24 22 34 / .24);
+  --glisse-edge: rgb(255 255 255 / .16);
+  --glisse-shine: rgb(255 255 255 / .35);
+  --glisse-shade: rgb(0 0 0 / .2);
+}
+:root.light-theme {
+  --glisse-fill: rgb(255 255 255 / .32);
+  --glisse-edge: rgb(255 255 255 / .55);
+  --glisse-shine: rgb(255 255 255 / .9);
+  --glisse-shade: rgb(65 43 90 / .12);
+}
+/* Layered important declarations take precedence over legacy hover/theme
+   declarations as well as performance-mode. Only this material paints glass. */
+@layer glisse-replacement {
+html body [data-site-glass] {
+  isolation: isolate;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  border-color: color-mix(in srgb, var(--glass-border, #fff3) 70%, #ffffff 30%);
+  transform-style: flat;
 }
-
-/* Glisse's size-specific refraction is reserved for a few controls. */
-html:not(.performance-mode) .glisse-lens {
-  -webkit-backdrop-filter: blur(3px) var(--lg-filter) !important;
-  backdrop-filter: blur(3px) var(--lg-filter) !important;
+html body [data-site-glass] > .site-glass-material.is-visible {
+  -webkit-backdrop-filter: blur(2px) var(--glisse-filter) !important;
+  backdrop-filter: blur(2px) var(--glisse-filter) !important;
 }
+}
+.site-glass-positioned { position: relative; }
+html body [data-site-glass] > .site-glass-material {
+  display: block;
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  --glisse-filter: saturate(1.35);
+  background: linear-gradient(135deg, rgb(255 255 255 / .09), transparent 42%, rgb(255 255 255 / .025)), var(--glisse-fill);
+  box-shadow: inset 0 0 0 1px var(--glisse-edge), inset 1px 1px 0 var(--glisse-shine), inset -1px -1px 0 var(--glisse-shade), 0 8px 24px rgb(0 0 0 / .12);
+}
+.portfolio-cta, .game-action--primary, .cat-tab.active, .cat-tab:hover { --glisse-fill: rgb(122 65 185 / .36); }
+.cat-tab.active { --glisse-edge: rgb(192 145 255 / .7); }
+.light-theme .cat-tab.active, .light-theme .cat-tab:hover { --glisse-fill: rgb(140 61 193 / .16); }
+.award-gold { --glisse-fill: rgb(128 91 26 / .2); }
+.award-silver { --glisse-fill: rgb(120 126 144 / .18); }
+.source-badge { --glisse-fill: rgb(140 61 193 / .55); }
+.connection { --glisse-fill: rgb(245 242 234 / .68); }
+.profile-card-modal__panel { --glisse-fill: rgb(24 22 34 / .7); }
+.light-theme .profile-card-modal__panel { --glisse-fill: rgb(255 255 255 / .78); }
+/* Media labels always sit on photographs, including in the light theme. */
+.lazy-video-play, .volunteer-tap-hint { --glisse-fill: rgb(0 0 0 / .42); }

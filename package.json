@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/shyfr-content.mjs validate && node scripts/hvylia-build.mjs",
+    "build": "node scripts/glisse-build.mjs && node scripts/shyfr-content.mjs validate && node scripts/hvylia-build.mjs",
+    "build:glass": "node scripts/glisse-build.mjs",
     "build:hvylia": "node scripts/hvylia-build.mjs",
     "dev:hvylia": "node scripts/hvylia-build.mjs && wrangler dev --config wrangler.hvylia.jsonc --port 8787",
     "deploy:hvylia": "node scripts/hvylia-build.mjs && wrangler deploy --config wrangler.hvylia.jsonc",
