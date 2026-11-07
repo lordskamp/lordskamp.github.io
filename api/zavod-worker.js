@@ -222,19 +222,30 @@ async function recognizePhoto(env, id, telegramId, options, knownFileId = null) 
               signal: AbortSignal.timeout(timeout),
             });
           } catch {
+            console.error(JSON.stringify({ event: 'gemini_request_failed', model, category: 'network' }));
             response = null; lastFailure = 'unavailable';
             continue;
           }
           if (response.ok) break;
-          console.error('Gemini request failed:', model, 'HTTP status:', response.status);
+          const category = response.status === 429 ? 'quota' : response.status === 401 ? 'authentication'
+            : response.status === 403 || response.status === 404 ? 'model_access'
+              : response.status === 400 ? 'invalid_request' : 'unavailable';
+          console.error(JSON.stringify({ event: 'gemini_request_failed', model, status: response.status, category }));
           if (response.status === 429 || response.status === 408 || response.status >= 500) {
             lastFailure = response.status === 429 ? 'quota' : 'unavailable';
             response = null;
             continue;
           }
+          if (response.status === 403 || response.status === 404) {
+            lastFailure = 'model_access'; response = null; continue;
+          }
+          if (response.status === 401) fail(503, 'Не вдалося авторизувати Gemini. Перевір налаштування ключа API.');
+          if (response.status === 400) fail(502, 'Gemini відхилив запит або формат фото. Перевір фото та налаштування розпізнавання.');
           fail(502, 'Gemini не зміг розпізнати фото. Спробуй ще раз.');
         }
-        if (!response) fail(503, lastFailure === 'quota' ? 'Ліміт Gemini тимчасово вичерпано. Спробуй пізніше.' : 'Gemini тимчасово недоступний. Спробуй надіслати фото пізніше.');
+        if (!response) fail(503, lastFailure === 'quota' ? 'Ліміт Gemini тимчасово вичерпано. Спробуй пізніше.'
+          : lastFailure === 'model_access' ? 'Gemini недоступний для цього ключа або моделі. Перевір доступ і налаштування API.'
+            : 'Gemini тимчасово недоступний. Спробуй надіслати фото пізніше.');
         let result; try { result = await response.json(); } catch { fail(502, 'Gemini повернув некоректну відповідь.'); }
         const candidate = result?.candidates?.[0];
         if (candidate?.finishReason && candidate.finishReason !== 'STOP') fail(502, 'Gemini не завершив розпізнавання фото. Спробуй ще раз.');
@@ -342,7 +353,7 @@ export async function processPhotoBatches(env, now = new Date()) {
     } catch (error) {
       console.error('photo recognition failed:', error instanceof HttpError ? error.status + ' ' + error.message : 'unexpected error');
       await env.DB.prepare("UPDATE photo_processing SET status = 'failed', updated_at = ? WHERE batch_id = ?").bind(new Date().toISOString(), batch.batch_id).run();
-      const failureMessage = error instanceof HttpError && error.status === 503 ? error.message : 'Не вдалося розпізнати добірку. Надішли від 1 до 10 фото ще раз або вибери раніше надіслані фото у плануванні.';
+      const failureMessage = error instanceof HttpError ? error.message : 'Не вдалося розпізнати добірку. Надішли від 1 до 10 фото ще раз або вибери раніше надіслані фото у плануванні.';
       try { await photoTelegram(env, batch, failureMessage, true); } catch { /* The error stays visible in the app. */ }
     }
   }

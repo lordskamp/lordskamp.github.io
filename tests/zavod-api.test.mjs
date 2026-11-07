@@ -774,7 +774,7 @@ test('highlighted rows survive completion notification retries', async t => {
   assert.ok(db.prepare('SELECT completion_notified_at FROM photo_processing').get().completion_notified_at);
 });
 
-test('Gemini falls back on quota, server failure and network errors, but not a bad request', async t => {
+test('Gemini falls back on inaccessible models, quota, server failure and network errors; invalid requests and authentication stop', async t => {
   const {call,db,env}=fixture(); t.after(()=>db.close()); env.GEMINI_API_KEY='test-gemini-secret';
   db.prepare('INSERT INTO photo_inbox(update_id,telegram_id,file_id,received_at) VALUES(?,?,?,?)').run(10,'200','file','2026-10-27T00:00:00Z');
   const oldFetch=globalThis.fetch; t.after(()=>{globalThis.fetch=oldFetch;}); let mode, calls;
@@ -787,7 +787,7 @@ test('Gemini falls back on quota, server failure and network errors, but not a b
     if(calls.length===1 && typeof mode==='number') return Response.json({error:{}},{status:mode});
     return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({rows:[{cableId:'pv3--pv3',section:1.5,highlighted:true}]})}]}}]});
   };
-  for(mode of [429,503,'network']) {
+  for(mode of [403,404,429,503,'network']) {
     calls=[];
     const result=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
     assert.equal(result.status,200); assert.equal(result.data.rows[0].highlighted,true);
@@ -797,7 +797,42 @@ test('Gemini falls back on quota, server failure and network errors, but not a b
   }
   mode=400; calls=[];
   const invalid=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
-  assert.equal(invalid.status,502); assert.equal(calls.length,1);
+  assert.equal(invalid.status,502); assert.match(invalid.data.error,/відхилив запит або формат фото/); assert.equal(calls.length,1);
+  mode=401; calls=[];
+  const unauthorized=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
+  assert.equal(unauthorized.status,503); assert.match(unauthorized.data.error,/ключа API/); assert.equal(calls.length,1);
+});
+
+test('inaccessible Gemini models report actionable errors and never log provider bodies or secrets', async t => {
+  const {call,db,env}=fixture(); t.after(()=>db.close()); env.GEMINI_API_KEY='test-private-gemini-key';
+  db.prepare('INSERT INTO photo_inbox(update_id,telegram_id,file_id,received_at) VALUES(?,?,?,?)').run(10,'200','file','2026-10-27T00:00:00Z');
+  const oldFetch=globalThis.fetch, oldError=console.error, logs=[]; let calls=0;
+  t.after(()=>{globalThis.fetch=oldFetch;console.error=oldError;});
+  console.error=(...args)=>logs.push(args.join(' '));
+  globalThis.fetch=async url=>String(url).endsWith('/getFile') ? Response.json({ok:true,result:{file_path:'photo/a.jpg',file_size:4}})
+    : String(url).includes('/file/bot') ? new Response(new Uint8Array([255,216,255,0]))
+      : (calls++,Response.json({error:{message:'test-private-gemini-key private upstream error'}},{status:403}));
+  const response=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
+  assert.equal(response.status,503); assert.match(response.data.error,/доступ.*налаштування API/i); assert.equal(calls,2);
+  assert.equal(logs.length,2); assert(logs.every(log=>JSON.parse(log).category==='model_access'));
+  assert(!JSON.stringify({logs,response}).includes('test-private-gemini-key')); assert(!logs.join(' ').includes('private upstream error'));
+});
+
+test('scheduled photo processing gives the user the safe Gemini request error', async t => {
+  const {db,env}=fixture(); t.after(()=>db.close()); env.TELEGRAM_WEBHOOK_SECRET='0123456789abcdef'; env.GEMINI_API_KEY='test-secret';
+  const oldFetch=globalThis.fetch, sent=[]; t.after(()=>{globalThis.fetch=oldFetch;});
+  globalThis.fetch=async (url,options={})=>{
+    url=String(url);
+    if(url.endsWith('/getFile')) return Response.json({ok:true,result:{file_path:'photo/a.jpg',file_size:4}});
+    if(url.includes('/file/bot')) return new Response(new Uint8Array([255,216,255,0]));
+    if(url.includes('generativelanguage.googleapis.com')) return Response.json({error:{message:'secret provider detail'}},{status:400});
+    sent.push(JSON.parse(options.body)); return Response.json({ok:true,result:{message_id:42}});
+  };
+  const request=new Request('https://test.invalid/telegram/webhook',{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':env.TELEGRAM_WEBHOOK_SECRET},body:JSON.stringify({update_id:1,message:{from:{id:200},chat:{id:200,type:'private'},photo:[{file_id:'photo'}]}})});
+  await worker.fetch(request,env); await processPhotoBatches(env,new Date(Date.now()+30000));
+  assert.match(sent.at(-1).text,/відхилив запит або формат фото/);
+  assert(!sent.at(-1).text.includes('secret provider detail'));
+  assert.equal(db.prepare('SELECT status FROM photo_processing').get().status,'failed');
 });
 
 test('Gemini quota errors remain visible and are not mistaken for success', async t => {
