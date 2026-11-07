@@ -754,6 +754,38 @@ test('Telegram image documents and photos share a batch and Gemini receives the 
   assert.doesNotMatch(sent.at(-1).text,/Фото 2, рядок 2/);
 });
 
+test('photo recognition requests class inheritance for arrow-marked matching sections and returns each row', async t => {
+  const {call,db,env}=fixture(); t.after(()=>db.close()); env.GEMINI_API_KEY='test-secret';
+  db.prepare('INSERT INTO photo_inbox(update_id,telegram_id,file_id,received_at) VALUES(?,?,?,?)').run(10,'200','file','2026-11-07T00:00:00Z');
+  const rows = [
+    {cableId:'pv3--pv3',section:.5,coreClass:5,colors:['orange']},
+    {cableId:'pv3--pv3',section:.5,coreClass:5,colors:['green']},
+    {cableId:'pv3--pv3',section:.5,coreClass:5,colors:['blue']},
+    {cableId:'pv3--pv3',section:.75,coreClass:3,colors:['black']},
+    {cableId:'pv3--pv3',section:.75,coreClass:3,colors:['red']},
+    {cableId:'pv3--pv3',section:2.5,coreClass:4,colors:['black']},
+    {cableId:'pv3--pv3',section:4,coreClass:null,uncertain:true}
+  ];
+  const oldFetch=globalThis.fetch; t.after(()=>{globalThis.fetch=oldFetch;}); let prompt='';
+  globalThis.fetch=async (url,options={})=>{
+    url=String(url);
+    if(url.endsWith('/getFile')) return Response.json({ok:true,result:{file_path:'photo/a.jpg',file_size:4}});
+    if(url.includes('/file/bot')) return new Response(new Uint8Array([255,216,255,0]));
+    prompt=JSON.parse(options.body).contents[0].parts[0].text;
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({rows})}]}}]});
+  };
+  const result=await call('/photos/recognize',{method:'POST',body:{ids:[10]},initData:signed({id:200})});
+  assert.equal(result.status,200);
+  assert.deepEqual(result.data.rows.map(row=>[row.section,row.coreClass]),[[.5,5],[.5,5],[.5,5],[.75,3],[.75,3],[2.5,4],[4,null]]);
+  assert.equal(result.data.rows.at(-1).uncertain,true);
+  assert.match(prompt,/down(?:ward)?[ -]+arrow/i);
+  assert.match(prompt,/same cable and (?:cross[- ]section|section)/i);
+  assert.match(prompt,/stop carrying the class when the cable or cross[- ]section changes/i);
+  assert.match(prompt,/new class/i);
+  assert.match(prompt,/do not propagate a class without a visible downward arrow/i);
+  assert.match(prompt,/leave the affected coreClass null and set uncertain=true/i);
+});
+
 test('highlighted rows survive completion notification retries', async t => {
   const {db,env}=fixture(); t.after(()=>db.close()); env.TELEGRAM_WEBHOOK_SECRET='0123456789abcdef'; env.GEMINI_API_KEY='test-secret';
   const oldFetch=globalThis.fetch, sent=[]; let allowFinal=false; t.after(()=>{globalThis.fetch=oldFetch;});
