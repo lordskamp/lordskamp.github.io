@@ -30,6 +30,7 @@
         uk: {
             back: 'Про мене',
             author: 'Про автора',
+            projects: 'Проєкти',
             brand: 'Lordskamp',
             language: 'Мова',
             themeLight: 'Світла тема',
@@ -44,6 +45,7 @@
         en: {
             back: 'About me',
             author: 'Про автора',
+            projects: 'Projects',
             brand: 'Lordskamp',
             language: 'Language',
             themeLight: 'Light theme',
@@ -78,6 +80,7 @@
         Resume: '#8b5cf6',
         Portfolio: '#8c3dc1',
         KobzaReverse: '#72bf6a',
+        Attachment: '#ed83c2',
         Lordskamp: '#8c3dc1'
     };
 
@@ -281,18 +284,20 @@
         const page = mount.dataset.sitePage || (location.pathname.includes('portfolio') ? 'portfolio' : 'home');
         document.body.classList.add('has-site-header', `site-page-${page}`);
 
-        const isBackPage = page === 'portfolio' || page === 'unwordle' || page === 'shyfr';
+        const isBackPage = ['portfolio', 'unwordle', 'shyfr', 'attachment'].includes(page);
+        const backLabel = { unwordle: 'author', attachment: 'projects' }[page] || 'back';
+        const backHref = page === 'attachment' ? '/#side-projects' : '/';
         const primary = isBackPage
-            ? `<a class="site-header__back" id="backBtn" href="/" data-brand="Portfolio">
+            ? `<a class="site-header__back" id="backBtn" href="${backHref}" data-brand="Portfolio">
                     <i class="fas fa-arrow-left" aria-hidden="true"></i>
-                    <span data-ui-i18n="${page === 'unwordle' ? 'author' : 'back'}">${page === 'unwordle' ? 'Про автора' : 'Back'}</span>
+                    <span data-ui-i18n="${backLabel}">${t(backLabel)}</span>
                </a>`
             : `<button class="site-header__brand" id="brandProfileBtn" type="button" data-brand="Lordskamp" aria-haspopup="dialog" aria-controls="lordskampCardModal" aria-label="Lordskamp">
                     <i class="fas fa-palette" aria-hidden="true"></i>
                     <span data-ui-i18n="brand">Lordskamp</span>
                </button>`;
 
-        const actions = page === 'unwordle' || page === 'shyfr'
+        const actions = ['unwordle', 'shyfr', 'attachment'].includes(page)
             ? `<button class="site-control site-control--theme" id="themeBtn" type="button" data-brand="Theme"></button>`
             : `<button class="site-control site-control--language" id="langBtn" type="button" data-brand="Language">
                     <i class="fas fa-globe" aria-hidden="true"></i>

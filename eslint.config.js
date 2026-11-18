@@ -42,7 +42,7 @@ export default [
     rules: { 'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }] }
   },
   {
-    files: ['Zavod/*.js'],
+    files: ['Zavod/*.js', 'attachment/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

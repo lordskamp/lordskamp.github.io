@@ -1,0 +1,510 @@
+.attachment-page {
+    --attachment-ink: #faf4ff;
+    --attachment-muted: #d0c3da;
+    --attachment-accent: #ebadf7;
+    --attachment-line: rgb(232 207 255 / .22);
+    --attachment-wash: rgb(230 189 255 / .08);
+    --attachment-selected: rgb(207 132 249 / .19);
+    --attachment-plot: rgb(22 14 36 / .72);
+    --attachment-background:
+        radial-gradient(ellipse at 13% 6%, #50224d 0, transparent 52%),
+        radial-gradient(ellipse at 91% 71%, #332259 0, transparent 61%),
+        #120f1b;
+    color: var(--attachment-ink);
+    background: #120f1b;
+}
+
+.light-theme .attachment-page {
+    --attachment-ink: #251533;
+    --attachment-muted: #594765;
+    --attachment-accent: #6a2c86;
+    --attachment-line: rgb(90 46 122 / .24);
+    --attachment-wash: rgb(255 255 255 / .44);
+    --attachment-selected: rgb(153 85 196 / .18);
+    --attachment-plot: rgb(255 251 255 / .67);
+    --attachment-background:
+        radial-gradient(ellipse at 13% 6%, #f2d4e9 0, transparent 52%),
+        radial-gradient(ellipse at 91% 71%, #ddd1f6 0, transparent 61%),
+        #f5f0f8;
+    background: #f5f0f8;
+}
+
+.attachment-backdrop {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: var(--attachment-background);
+}
+
+.attachment-backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(var(--attachment-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--attachment-line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 95% 65%, #000 2%, transparent 70%);
+    opacity: .35;
+}
+
+.attachment {
+    position: relative;
+    display: grid;
+    gap: 1rem;
+    width: min(100%, 61rem);
+    margin-inline: auto;
+    padding: calc(var(--safe-top) + clamp(5.75rem, 12vh, 8rem))
+        max(1rem, var(--safe-right)) calc(2rem + var(--safe-bottom)) max(1rem, var(--safe-left));
+}
+
+.attachment .attachment-panel {
+    --glisse-fill: rgb(29 19 43 / .7);
+    padding: clamp(1.25rem, 4.6vw, 3.3rem);
+    border: 1px solid var(--attachment-line);
+    border-radius: clamp(1.5rem, 4vw, 2.35rem);
+    background: var(--glisse-fill);
+    transform: none;
+}
+
+.light-theme .attachment .attachment-panel {
+    --glisse-fill: rgb(255 252 255 / .62);
+}
+
+.attachment [hidden] {
+    display: none !important;
+}
+
+.attachment h1,
+.attachment h2 {
+    font-weight: 700;
+    letter-spacing: -.045em;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+.attachment h1 {
+    font-size: clamp(2.15rem, 5.9vw, 4.65rem);
+}
+
+.attachment h2 {
+    font-size: clamp(1.85rem, 4.25vw, 3.1rem);
+}
+
+.attachment p,
+.attachment dd,
+.attachment-method li {
+    line-height: 1.55;
+}
+
+.attachment-eyebrow {
+    color: var(--attachment-accent);
+    font-size: .735rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.attachment-eyebrow span {
+    margin-inline: .25em;
+}
+
+.attachment-intro {
+    display: grid;
+    grid-template-columns: 1.45fr 1fr;
+    align-items: center;
+    gap: clamp(.75rem, 3vw, 2.5rem);
+}
+
+.attachment-intro-copy {
+    display: grid;
+    justify-items: start;
+    gap: 1.15rem;
+}
+
+.attachment-intro-copy > p:not(.attachment-lead, .attachment-eyebrow) {
+    color: var(--attachment-muted);
+    font-size: .91rem;
+}
+
+.attachment-lead {
+    font-size: clamp(1rem, 2.2vw, 1.15rem);
+}
+
+.attachment-art {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    height: clamp(13rem, 34vw, 21rem);
+    background:
+        radial-gradient(ellipse at 32% 40%, rgb(236 118 185 / .3), transparent 55%),
+        radial-gradient(ellipse at 66% 56%, rgb(163 99 249 / .34), transparent 59%);
+}
+
+.attachment-art::after {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, var(--attachment-line) 1px, transparent 1.5px) 0 0 / 16px 16px;
+    mask-image: radial-gradient(ellipse, #000 3%, transparent 69%);
+    content: '';
+    z-index: -1;
+}
+
+.attachment-orbit {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(47%, 10.75rem);
+    aspect-ratio: .75;
+    border: 2px solid var(--orbit-light);
+    border-radius: 50%;
+    background: linear-gradient(150deg, rgb(255 255 255 / .15), transparent 45%, var(--orbit-color));
+    box-shadow:
+        inset 3px 3px 5px rgb(255 255 255 / .45),
+        inset 0 0 22px var(--orbit-color),
+        0 0 28px var(--orbit-color);
+}
+
+.attachment-orbit.is-pink {
+    --orbit-light: #f5b8df;
+    --orbit-color: rgb(225 91 181 / .37);
+    transform: translate(-75%, -54%) rotate(-37deg);
+}
+
+.attachment-orbit.is-violet {
+    --orbit-light: #c1a3ff;
+    --orbit-color: rgb(146 88 239 / .42);
+    transform: translate(-27%, -46%) rotate(37deg);
+}
+
+.attachment-button {
+    display: inline-flex;
+    min-height: 46px;
+    align-items: center;
+    justify-content: center;
+    gap: .6rem;
+    padding: .65rem 1rem;
+    border: 1px solid var(--attachment-line);
+    border-radius: .9rem;
+    background: var(--attachment-wash);
+    color: var(--attachment-ink);
+    font: 650 .91rem/1.25 Inter, sans-serif;
+    cursor: pointer;
+}
+
+.attachment-button.is-primary {
+    border-color: rgb(255 255 255 / .23);
+    background: linear-gradient(115deg, #7736aa, #a2377b);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .26), 0 9px 22px rgb(103 32 133 / .22);
+}
+
+.attachment-button:not(:disabled):hover {
+    border-color: var(--attachment-accent);
+    filter: brightness(1.12);
+}
+
+.attachment-button:disabled {
+    opacity: .5;
+    cursor: default;
+}
+
+.attachment :is(button, a, summary):focus-visible,
+.attachment-options label:has(input:focus-visible) {
+    outline: 2px solid var(--attachment-accent);
+    outline-offset: 3px;
+}
+
+.attachment :is(h1, h2):focus {
+    outline: none;
+}
+
+.attachment-quiz,
+.attachment-method,
+.attachment-privacy {
+    width: min(100%, 44rem);
+    margin-inline: auto;
+}
+
+.attachment-progress {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.05rem;
+}
+
+.attachment-progress progress {
+    width: min(38%, 10rem);
+    height: .45rem;
+    overflow: hidden;
+    appearance: none;
+    border: 0;
+    border-radius: 99px;
+    background: var(--attachment-line);
+    color: var(--attachment-accent);
+}
+
+.attachment-progress progress::-webkit-progress-bar { background: var(--attachment-line); }
+.attachment-progress progress::-webkit-progress-value { background: var(--attachment-accent); }
+.attachment-progress progress::-moz-progress-bar { background: var(--attachment-accent); }
+
+.attachment-quiz h2 {
+    font-size: clamp(1.4rem, 3.65vw, 2.35rem);
+    line-height: 1.18;
+}
+
+#answer-hint {
+    margin-top: .6rem;
+    color: var(--attachment-muted);
+    font-size: .88rem;
+}
+
+.attachment-options {
+    display: grid;
+    gap: .4rem;
+    min-inline-size: 0;
+    margin-block: 1rem 1.2rem;
+    border: 0;
+}
+
+.attachment-options label {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    min-height: 43px;
+    padding: .4rem .7rem;
+    border: 1px solid var(--attachment-line);
+    border-radius: .7rem;
+    background: var(--attachment-wash);
+    font-size: .9rem;
+    cursor: pointer;
+}
+
+.attachment-options label:hover,
+.attachment-options label:has(input:checked) {
+    border-color: var(--attachment-accent);
+}
+
+.attachment-options label:has(input:checked) {
+    background: var(--attachment-selected);
+}
+
+.attachment-options input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+}
+
+.attachment-options label span {
+    display: grid;
+    flex: 0 0 1.6rem;
+    height: 1.6rem;
+    place-items: center;
+    border: 1px solid var(--attachment-line);
+    border-radius: 50%;
+    color: var(--attachment-accent);
+    font-size: .75rem;
+    font-weight: 700;
+}
+
+.attachment-options input:checked + span {
+    background: var(--attachment-accent);
+    color: var(--attachment-plot);
+}
+
+.light-theme .attachment-options input:checked + span {
+    color: #fff;
+}
+
+.attachment-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .65rem;
+}
+
+.attachment-result-copy,
+.attachment-result-data {
+    display: grid;
+    gap: .85rem;
+}
+
+.attachment-result-copy > p:last-child {
+    max-width: 61ch;
+}
+
+.attachment-result-data {
+    grid-template-columns: 1.15fr 1fr;
+    margin-block: 1.4rem 1rem;
+}
+
+.attachment-chart,
+.attachment-score {
+    padding: 1rem;
+    border: 1px solid var(--attachment-line);
+    border-radius: 1rem;
+    background: var(--attachment-wash);
+}
+
+.attachment-chart-content {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: .55rem;
+    margin-top: .8rem;
+}
+
+.attachment-axis-x,
+.attachment-axis-y {
+    color: var(--attachment-muted);
+    font-size: .72rem;
+    font-weight: 600;
+}
+
+.attachment-axis-x {
+    grid-column: 2;
+    text-align: right;
+}
+
+.attachment-axis-y {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+}
+
+.attachment-plot {
+    position: relative;
+    display: grid;
+    grid-template: 1fr 1fr / 1fr 1fr;
+    min-height: 10.5rem;
+    border: 1px solid var(--attachment-line);
+    border-radius: .6rem;
+    background: var(--attachment-plot);
+}
+
+.attachment-quadrant {
+    display: grid;
+    place-items: center;
+    min-inline-size: 0;
+    padding: .35rem;
+    color: var(--attachment-muted);
+    font-size: clamp(.68rem, 1.65vw, .82rem);
+    font-weight: 600;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.attachment-quadrant:nth-child(odd) { border-inline-end: 1px solid var(--attachment-line); }
+.attachment-quadrant:nth-child(-n+2) { border-block-end: 1px solid var(--attachment-line); }
+.attachment-quadrant:nth-child(1) { border-start-start-radius: inherit; }
+.attachment-quadrant:nth-child(2) { border-start-end-radius: inherit; }
+.attachment-quadrant:nth-child(3) { border-end-start-radius: inherit; }
+.attachment-quadrant:nth-child(4) { border-end-end-radius: inherit; }
+
+.attachment-quadrant.is-match {
+    background: var(--attachment-selected);
+    color: var(--attachment-ink);
+}
+
+.attachment-marker {
+    position: absolute;
+    bottom: var(--avoidance, 50%);
+    left: var(--anxiety, 50%);
+    width: .9rem;
+    height: .9rem;
+    transform: translate(-50%, 50%);
+    border: 2px solid var(--attachment-ink);
+    border-radius: 50%;
+    background: var(--attachment-accent);
+    box-shadow: 0 0 0 4px var(--attachment-selected);
+}
+
+.attachment-scores {
+    display: grid;
+    gap: .7rem;
+}
+
+.attachment-score dt {
+    font-size: .88rem;
+    font-weight: 650;
+}
+
+.attachment-score dd,
+.attachment-result-note {
+    color: var(--attachment-muted);
+    font-size: .83rem;
+}
+
+.attachment-score .attachment-score-number {
+    margin-block: .15rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.attachment-score-number strong {
+    color: var(--attachment-accent);
+    font-size: 1.75rem;
+    line-height: 1.15;
+}
+
+.attachment-result-note {
+    margin-bottom: 1.25rem;
+}
+
+.attachment-method {
+    color: var(--attachment-muted);
+    font-size: .85rem;
+}
+
+.attachment-method summary {
+    width: fit-content;
+    margin: 0 auto;
+    padding: .35rem;
+    color: var(--attachment-ink);
+    cursor: pointer;
+}
+
+.attachment-method-copy {
+    display: grid;
+    gap: .7rem;
+    margin-top: .55rem;
+    padding: 1rem 1.2rem;
+    border: 1px solid var(--attachment-line);
+    border-radius: 1rem;
+    background: var(--attachment-plot);
+}
+
+.attachment-method ul {
+    padding-inline-start: 1.05rem;
+}
+
+.attachment-method a {
+    color: var(--attachment-accent);
+    text-underline-offset: .15em;
+}
+
+.attachment-privacy {
+    color: var(--attachment-muted);
+    font-size: .78rem;
+    text-align: center;
+}
+
+.attachment-privacy i {
+    margin-inline-end: .25rem;
+}
+
+@media (max-width: 650px) {
+    .attachment-intro,
+    .attachment-result-data {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .attachment-art {
+        height: 7.5rem;
+    }
+
+    .attachment-orbit {
+        width: min(25%, 4.65rem);
+    }
+}
