@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#201831">
+    <title>Музичний метч | Lordskamp</title>
+    <meta name="description" content="Порівняй музичні смаки за двома посиланнями на плейлисти Spotify або YouTube Music.">
+    <link rel="canonical" href="https://lordskamp.github.io/music-match/">
+    <link rel="icon" href="../fav/favicon.ico">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="../home.css?v=20261104-motion">
+    <link rel="stylesheet" href="../site-ui.css?v=20261104-motion">
+    <link rel="stylesheet" href="../assets/glisse/site-glass.css?v=3">
+    <link rel="stylesheet" href="./style.css">
+    <script defer src="../site-ui.js?v=20261118-music-match"></script>
+    <script defer src="../assets/glisse/site-glass.js?v=3"></script>
+    <script type="module" src="./app.js"></script>
+</head>
+<body class="music-match-page">
+    <div id="siteHeaderMount" data-site-page="music-match" data-force-language="uk"></div>
+    <main class="music-match">
+        <header class="island match-hero">
+            <div>
+                <h1>Музичний<br>метч<span>.</span></h1>
+                <p>Наскільки схожі ваші плейлисти?</p>
+                <ul class="match-platforms" aria-label="Джерела плейлистів">
+                    <li class="match-spotify"><i class="fa-brands fa-spotify" aria-hidden="true"></i> Spotify</li>
+                    <li class="match-youtube"><i class="fa-brands fa-youtube" aria-hidden="true"></i> YouTube Music</li>
+                </ul>
+            </div>
+            <div class="match-art" aria-hidden="true">
+                <div class="match-disc match-disc-a"></div>
+                <div class="match-disc match-disc-b"></div>
+            </div>
+        </header>
+
+        <form id="match-form" novalidate aria-describedby="match-instructions">
+            <div class="match-instructions" id="match-instructions">
+                <p>Встав два посилання на плейлисти, доступні без входу.</p>
+                <button class="match-text-button" id="match-demo" type="button" disabled>Спробувати приклад <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+            </div>
+            <div class="match-decks">
+                <fieldset class="match-deck" data-deck>
+                    <legend>Твій плейлист</legend>
+                    <input class="match-input" id="match-url-a" data-link type="url" inputmode="url" autocomplete="off" spellcheck="false" maxlength="1024" placeholder="Посилання Spotify або YouTube Music" aria-label="Посилання на твій плейлист" aria-describedby="match-error-a" required>
+                    <a class="match-source" data-source target="_blank" rel="noopener noreferrer" hidden></a>
+                    <p class="match-error" id="match-error-a" data-error role="alert" hidden></p>
+                </fieldset>
+
+                <fieldset class="match-deck" data-deck>
+                    <legend>Інший плейлист</legend>
+                    <input class="match-input" id="match-url-b" data-link type="url" inputmode="url" autocomplete="off" spellcheck="false" maxlength="1024" placeholder="Посилання Spotify або YouTube Music" aria-label="Посилання на інший плейлист" aria-describedby="match-error-b" required>
+                    <a class="match-source" data-source target="_blank" rel="noopener noreferrer" hidden></a>
+                    <p class="match-error" id="match-error-b" data-error role="alert" hidden></p>
+                </fieldset>
+            </div>
+            <button class="match-button match-submit" id="match-submit" type="submit" disabled>
+                <span id="match-submit-label" role="status">Порівняти плейлисти</span> <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+            </button>
+        </form>
+
+        <section class="island match-result" id="match-result" aria-labelledby="match-result-title" hidden>
+            <div class="match-result-summary">
+                <h2 id="match-result-title" tabindex="-1">Збіг плейлистів</h2>
+                <p class="match-score"><strong id="match-score"></strong><span>%</span></p>
+                <p id="match-result-context"></p>
+                <p id="match-coverage" hidden></p>
+                <p id="match-small-sample" hidden>У принаймні одному списку менше 10 унікальних треків.</p>
+            </div>
+            <div class="match-result-detail">
+                <dl class="match-metrics" id="match-metrics"></dl>
+                <div class="match-overlaps" id="match-overlaps"></div>
+            </div>
+        </section>
+
+        <div class="match-info">
+            <details>
+                <summary>Як рахується збіг</summary>
+                <p>Треки зіставляються за назвою і виконавцем. Повторення тієї самої пісні рахується один раз. Для виконавців порівнюються їхні частки у двох списках.</p>
+                <p>Оцінка за посиланнями враховує треки й виконавців. Для кожного списку беруться до 100 треків, які платформа показує без входу.</p>
+            </details>
+            <p><i class="fa-solid fa-lock" aria-hidden="true"></i> Без входу в акаунт.</p>
+        </div>
+        <noscript><p>Для порівняння плейлистів увімкни JavaScript.</p></noscript>
+    </main>
+</body>
+</html>

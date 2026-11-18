@@ -42,11 +42,11 @@ export default [
     rules: { 'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }] }
   },
   {
-    files: ['Zavod/*.js', 'attachment/*.js'],
+    files: ['Zavod/*.js', 'attachment/*.js', 'music-match/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: { ...sharedGlobals, window: 'readonly', document: 'readonly', navigator: 'readonly', localStorage: 'readonly', FormData: 'readonly' }
+      globals: { ...sharedGlobals, window: 'readonly', document: 'readonly', navigator: 'readonly', localStorage: 'readonly', FormData: 'readonly', AbortController: 'readonly' }
     }
   },
   {

@@ -1,0 +1,12 @@
+name = "music-match"
+main = "api/music-match-worker.js"
+compatibility_date = "2026-11-18"
+workers_dev = true
+
+[vars]
+SITE_ORIGIN = "https://lordskamp.github.io"
+
+[[ratelimits]]
+name = "PLAYLIST_LIMIT"
+namespace_id = "3107"
+simple = { limit = 24, period = 60 }
