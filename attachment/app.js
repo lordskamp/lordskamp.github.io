@@ -1,9 +1,9 @@
-import { matchAttachmentStyles, scale, scoreAttachment, statements } from './assessment.js';
+import { matchAttachmentStyles, scale, scoreAttachment, statements } from './assessment.js?v=ecr-r';
 
 const styles = {
     secure: {
         name: 'Надійний',
-        description: 'У цих стосунках тобі здебільшого комфортно відкриватися й покладатися на іншу людину. Твої відповіді також вказують, що ти рідше хвилюєшся через можливе відкидання.'
+        description: 'У романтичних стосунках тобі здебільшого комфортно відкриватися й покладатися на іншу людину. Твої відповіді також вказують, що ти рідше хвилюєшся через можливе відкидання.'
     },
     anxious: {
         name: 'Тривожний',
@@ -15,19 +15,39 @@ const styles = {
     },
     fearful: {
         name: 'Тривожно-уникаючий',
-        description: 'Занепокоєння, що тебе можуть відкинути, поєднується з дискомфортом від близькості. У цих стосунках тобі може бути складно і відкриватися, і почуватися впевнено у взаємності.'
+        description: 'Занепокоєння, що тебе можуть відкинути, поєднується з дискомфортом від близькості. Тобі може бути складно і відкриватися, і почуватися впевнено у взаємності.'
     }
 };
 
 const byId = id => document.getElementById(id);
 const screens = [byId('intro'), byId('question'), byId('result')];
 const form = byId('quiz');
-const choices = [...form.querySelectorAll('input[name="agreement"]')];
+const slider = byId('agreement');
+const agreementValue = byId('agreement-value');
+const agreementLabels = [
+    'Зовсім не погоджуюся',
+    'Не погоджуюся',
+    'Скоріше не погоджуюся',
+    'Нейтрально',
+    'Скоріше погоджуюся',
+    'Погоджуюся',
+    'Повністю погоджуюся'
+];
 const next = byId('next');
 const plot = byId('plot');
 const numberFormat = new Intl.NumberFormat('uk', { maximumFractionDigits: 2 });
 const answers = Array(statements.length).fill(null);
+let order = shuffleStatements();
 let step = 0;
+
+function shuffleStatements() {
+    const indices = statements.map((_, index) => index);
+    for (let index = indices.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [indices[index], indices[swapIndex]] = [indices[swapIndex], indices[index]];
+    }
+    return indices;
+}
 
 function showScreen(screen) {
     screens.forEach(section => { section.hidden = section !== screen; });
@@ -41,13 +61,29 @@ function showIntro() {
 }
 
 function showQuestion() {
+    const item = order[step];
     byId('progress-label').textContent = `Твердження ${step + 1} із ${statements.length}`;
     byId('progress').value = step + 1;
-    byId('question-title').textContent = statements[step];
-    choices.forEach(input => { input.checked = Number(input.value) === answers[step]; });
-    next.disabled = answers[step] === null;
+    byId('question-title').textContent = statements[item];
+    slider.value = answers[item] ?? scale.neutral;
+    renderAgreement(answers[item]);
     byId('next-label').textContent = step === statements.length - 1 ? 'Показати результат' : 'Далі';
     showScreen(screens[1]);
+}
+
+function renderAgreement(value) {
+    const chosen = value !== null;
+    const label = chosen ? `${value} із ${scale.max} · ${agreementLabels[value - scale.min]}` : 'Обери позицію на шкалі';
+    agreementValue.textContent = label;
+    slider.setAttribute('aria-valuetext', chosen ? label : 'Нейтральна позиція. Натисни пробіл, щоб її обрати.');
+    slider.classList.toggle('is-answered', chosen);
+    next.disabled = !chosen;
+}
+
+function chooseAgreement() {
+    const value = Number(slider.value);
+    answers[order[step]] = value;
+    renderAgreement(value);
 }
 
 function plotPosition(score) {
@@ -58,7 +94,7 @@ function showResult() {
     const { anxiety, avoidance } = scoreAttachment(answers);
     const matches = matchAttachmentStyles({ anxiety, avoidance });
     const isClear = matches.length === 1;
-    byId('result-label').textContent = isClear ? 'Орієнтовний стиль у цих стосунках' : 'Твій профіль у цих стосунках';
+    byId('result-label').textContent = isClear ? 'Орієнтовний стиль прив’язаності' : 'Твій профіль прив’язаності';
     byId('result-title').textContent = isClear ? styles[matches[0]].name : 'Профіль на межі стилів';
     let description;
     if (isClear) {
@@ -80,15 +116,17 @@ function showResult() {
     showScreen(screens[2]);
 }
 
-form.addEventListener('change', event => {
-    if (event.target.name !== 'agreement') return;
-    answers[step] = Number(event.target.value);
-    next.disabled = false;
+slider.addEventListener('input', chooseAgreement);
+slider.addEventListener('click', chooseAgreement);
+slider.addEventListener('keydown', event => {
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    event.preventDefault();
+    chooseAgreement();
 });
 
 form.addEventListener('submit', event => {
     event.preventDefault();
-    if (answers[step] === null) return;
+    if (answers[order[step]] === null) return;
     if (step === statements.length - 1) {
         showResult();
         return;
@@ -110,6 +148,7 @@ byId('start').addEventListener('click', showQuestion);
 byId('edit').addEventListener('click', showQuestion);
 byId('restart').addEventListener('click', () => {
     answers.fill(null);
+    order = shuffleStatements();
     step = 0;
     showIntro();
 });

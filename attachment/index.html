@@ -5,17 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#8c3dc1">
     <title>Тест на тип прив’язаності | Lordskamp</title>
-    <meta name="description" content="Дев’ять тверджень про романтичні стосунки. Оціни тривожність і уникання близькості за методикою ECR-RS.">
+    <meta name="description" content="36 тверджень про романтичні стосунки. Оціни тривожність і уникання близькості за методикою ECR-R.">
     <link rel="canonical" href="https://lordskamp.github.io/attachment/">
     <link rel="icon" href="../fav/favicon.ico">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../home.css?v=20261104-motion">
     <link rel="stylesheet" href="../site-ui.css?v=20261104-motion">
     <link rel="stylesheet" href="../assets/glisse/site-glass.css?v=3">
-    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="./style.css?v=ecr-r">
     <script defer src="../site-ui.js?v=20261118-attachment"></script>
     <script defer src="../assets/glisse/site-glass.js?v=3"></script>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=ecr-r"></script>
 </head>
 <body class="attachment-page">
     <div class="attachment-backdrop" aria-hidden="true"></div>
@@ -23,10 +23,10 @@
     <main class="attachment">
         <section class="island attachment-panel attachment-intro" id="intro" aria-labelledby="intro-title">
             <div class="attachment-intro-copy">
-                <p class="attachment-eyebrow">9 тверджень <span aria-hidden="true">·</span> ≈ 2 хв</p>
-                <h1 id="intro-title" tabindex="-1">Тест на тип<br>прив’язаності</h1>
+                <p class="attachment-eyebrow">36 тверджень <span aria-hidden="true">·</span> ≈ 6 хв</p>
+                <h1 id="intro-title" tabindex="-1"><span>Тест на тип</span> <span>прив’язаності</span></h1>
                 <p class="attachment-lead">Як ти почуваєшся, коли зближуєшся з людиною? Цей тест допоможе оцінити тривожність і уникання близькості в романтичних стосунках.</p>
-                <p>Думай про одну й ту саму людину протягом тесту — теперішнього або колишнього партнера чи партнерку. Якщо романтичного досвіду ще не було, уяви такі стосунки. У цьому разі результат описуватиме твої очікування.</p>
+                <p>Згадай, як ти зазвичай почуваєшся в романтичних стосунках. Якщо такого досвіду ще не було, уяви ці стосунки. Тоді результат описуватиме твої очікування.</p>
                 <button type="button" class="attachment-button is-primary" id="start" disabled>
                     <span id="start-label">Почати тест</span> <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
                 </button>
@@ -44,16 +44,18 @@
                     <progress id="progress" aria-labelledby="progress-label"></progress>
                 </div>
                 <h2 id="question-title" tabindex="-1"></h2>
-                <p id="answer-hint">Оціни, наскільки ти погоджуєшся з цим твердженням.</p>
-                <fieldset class="attachment-options" aria-labelledby="question-title" aria-describedby="answer-hint">
-                    <label><input type="radio" name="agreement" value="1" required><span aria-hidden="true">1</span> Зовсім не погоджуюся</label>
-                    <label><input type="radio" name="agreement" value="2"><span aria-hidden="true">2</span> Не погоджуюся</label>
-                    <label><input type="radio" name="agreement" value="3"><span aria-hidden="true">3</span> Скоріше не погоджуюся</label>
-                    <label><input type="radio" name="agreement" value="4"><span aria-hidden="true">4</span> Ані згоди, ані незгоди</label>
-                    <label><input type="radio" name="agreement" value="5"><span aria-hidden="true">5</span> Скоріше погоджуюся</label>
-                    <label><input type="radio" name="agreement" value="6"><span aria-hidden="true">6</span> Погоджуюся</label>
-                    <label><input type="radio" name="agreement" value="7"><span aria-hidden="true">7</span> Повністю погоджуюся</label>
-                </fieldset>
+                <div class="attachment-spectrum">
+                    <label class="attachment-spectrum-label" for="agreement">Наскільки ти погоджуєшся?</label>
+                    <p class="attachment-agreement-value" id="agreement-value">Обери позицію на шкалі</p>
+                    <input class="attachment-range" type="range" id="agreement" name="agreement"
+                        min="1" max="7" step="1" value="4" aria-describedby="question-title">
+                    <div class="attachment-range-ticks" aria-hidden="true">
+                        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span>
+                    </div>
+                    <div class="attachment-range-ends" aria-hidden="true">
+                        <span>Зовсім не погоджуюся</span><span>Повністю погоджуюся</span>
+                    </div>
+                </div>
                 <div class="attachment-actions">
                     <button type="button" class="attachment-button" id="previous"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Назад</button>
                     <button type="submit" class="attachment-button is-primary" id="next" disabled><span id="next-label">Далі</span> <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
@@ -63,7 +65,7 @@
 
         <section class="island attachment-panel attachment-result" id="result" aria-labelledby="result-title" hidden>
             <div class="attachment-result-copy">
-                <p class="attachment-eyebrow" id="result-label">Орієнтовний стиль у цих стосунках</p>
+                <p class="attachment-eyebrow" id="result-label">Орієнтовний стиль прив’язаності</p>
                 <h2 id="result-title" tabindex="-1"></h2>
                 <p id="result-description"></p>
             </div>
@@ -106,12 +108,12 @@
         <details class="attachment-method">
             <summary>Як працює тест</summary>
             <div class="attachment-method-copy">
-                <p>Вебверсія використовує український переклад дев’яти тверджень ECR-RS для одних романтичних стосунків і 7-бальну шкалу з дослідження 2011 року. Окремо в Україні досліджували адаптацію ECR-RS на вибірці студентів віком 18–35 років.</p>
-                <p>Уникання близькості — середнє для тверджень 1–6 після обернення відповідей на перші чотири (8 мінус відповідь). Тривожність — середнє для тверджень 7–9.</p>
+                <p>Вебверсія використовує український переклад повного опитувальника ECR-R Фрейлі, Воллера й Бреннан (2000). Вона містить 36 тверджень із відповідями від 1 до 7. Переклад потребує окремої психометричної перевірки.</p>
+                <p>Кожен бал — середнє за 18 твердженнями відповідної шкали. Для 14 зворотних тверджень береться 8 мінус відповідь. Порядок показу перемішується, а ключ підрахунку прив’язаний до самих тверджень.</p>
                 <p>Дослідження підтримують інтерпретацію прив’язаності за двома шкалами. Назви чотирьох стилів на карті — орієнтири. Лінії карти проходять через 4, середину шкали. Якщо хоча б один бал у межах 3,5–4,5, вебверсія показує кілька можливих стилів. Цей діапазон обрано для відображення результату.</p>
                 <ul>
-                    <li><a href="https://labs.psychology.illinois.edu/~rcfraley/measures/relstructures.htm">Fraley та ін., 2011. ECR-RS і ключ оцінювання</a> · <a href="https://relascale.com/relationships/pdfs/ECR-RS-2011.pdf">Умови поширення CC BY-NC 4.0</a></li>
-                    <li><a href="https://doi.org/10.24195/2414-4665-2022-4-8">Казанжи й Вторнікова, 2022. Україномовна адаптація</a></li>
+                    <li><a href="https://labs.psychology.illinois.edu/~rcfraley/measures/ecrritems.htm">Fraley, Waller і Brennan, 2000. Твердження ECR-R і ключ оцінювання</a></li>
+                    <li><a href="https://pubmed.ncbi.nlm.nih.gov/16207771/">Sibley, Fischer і Liu, 2005. Перевірка надійності та валідності ECR-R</a></li>
                     <li><a href="https://pubmed.ncbi.nlm.nih.gov/1920064/">Bartholomew і Horowitz, 1991. Чотири стилі</a></li>
                     <li><a href="https://pubmed.ncbi.nlm.nih.gov/25559192/">Fraley та ін., 2015. Прив’язаність як дві шкали</a></li>
                 </ul>

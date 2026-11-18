@@ -83,7 +83,14 @@
 }
 
 .attachment h1 {
-    font-size: clamp(2.15rem, 5.9vw, 4.65rem);
+    font-size: clamp(1.65rem, 4.55vw, 4.5rem);
+    font-size: min(4.5rem, 14cqi);
+    overflow-wrap: normal;
+}
+
+.attachment h1 span {
+    display: block;
+    white-space: nowrap;
 }
 
 .attachment h2 {
@@ -110,12 +117,13 @@
 
 .attachment-intro {
     display: grid;
-    grid-template-columns: 1.45fr 1fr;
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
     align-items: center;
     gap: clamp(.75rem, 3vw, 2.5rem);
 }
 
 .attachment-intro-copy {
+    container-type: inline-size;
     display: grid;
     justify-items: start;
     gap: 1.15rem;
@@ -208,8 +216,7 @@
     cursor: default;
 }
 
-.attachment :is(button, a, summary):focus-visible,
-.attachment-options label:has(input:focus-visible) {
+.attachment :is(button, a, summary, input):focus-visible {
     outline: 2px solid var(--attachment-accent);
     outline-offset: 3px;
 }
@@ -253,69 +260,102 @@
     line-height: 1.18;
 }
 
-#answer-hint {
-    margin-top: .6rem;
-    color: var(--attachment-muted);
-    font-size: .88rem;
-}
-
-.attachment-options {
+.attachment-spectrum {
+    --thumb-size: 1.65rem;
     display: grid;
-    gap: .4rem;
-    min-inline-size: 0;
-    margin-block: 1rem 1.2rem;
-    border: 0;
+    margin-block: clamp(1.25rem, 4vw, 2.25rem);
+    padding: clamp(.85rem, 3vw, 1.5rem);
+    border: 1px solid var(--attachment-line);
+    border-radius: 1rem;
+    background: var(--attachment-wash);
 }
 
-.attachment-options label {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: .75rem;
-    min-height: 43px;
-    padding: .4rem .7rem;
-    border: 1px solid var(--attachment-line);
-    border-radius: .7rem;
-    background: var(--attachment-wash);
+.attachment-spectrum-label {
+    color: var(--attachment-muted);
     font-size: .9rem;
+    font-weight: 500;
+}
+
+.attachment-agreement-value {
+    margin-top: .2rem;
+    color: var(--attachment-accent);
+    font-size: 1rem;
+    font-weight: 650;
+}
+
+.attachment-range {
+    --range-track: linear-gradient(90deg, #835cc6, #b269d4 50%, #de73b2);
+    --range-thumb-fill: var(--attachment-plot);
+    --range-thumb-edge: var(--attachment-ink);
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    margin-top: .4rem;
+    appearance: none;
+    border-radius: .55rem;
+    background: transparent;
     cursor: pointer;
 }
 
-.attachment-options label:hover,
-.attachment-options label:has(input:checked) {
-    border-color: var(--attachment-accent);
+.attachment-range.is-answered {
+    --range-thumb-fill: var(--attachment-accent);
 }
 
-.attachment-options label:has(input:checked) {
-    background: var(--attachment-selected);
+.attachment-range::-webkit-slider-runnable-track {
+    height: .5rem;
+    border-radius: 99px;
+    background: var(--range-track);
 }
 
-.attachment-options input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    clip-path: inset(50%);
+.attachment-range::-moz-range-track {
+    height: .5rem;
+    border-radius: 99px;
+    background: var(--range-track);
 }
 
-.attachment-options label span {
-    display: grid;
-    flex: 0 0 1.6rem;
-    height: 1.6rem;
-    place-items: center;
-    border: 1px solid var(--attachment-line);
+.attachment-range::-webkit-slider-thumb {
+    width: var(--thumb-size);
+    height: var(--thumb-size);
+    margin-top: calc((.5rem - var(--thumb-size)) / 2);
+    appearance: none;
+    border: 2px solid var(--range-thumb-edge);
     border-radius: 50%;
-    color: var(--attachment-accent);
+    background: var(--range-thumb-fill);
+    box-shadow: 0 0 0 4px var(--attachment-selected);
+}
+
+.attachment-range::-moz-range-thumb {
+    box-sizing: border-box;
+    width: var(--thumb-size);
+    height: var(--thumb-size);
+    border: 2px solid var(--range-thumb-edge);
+    border-radius: 50%;
+    background: var(--range-thumb-fill);
+    box-shadow: 0 0 0 4px var(--attachment-selected);
+}
+
+.attachment-range-ticks,
+.attachment-range-ends {
+    display: flex;
+    justify-content: space-between;
+    color: var(--attachment-muted);
     font-size: .75rem;
-    font-weight: 700;
+    line-height: 1.4;
 }
 
-.attachment-options input:checked + span {
-    background: var(--attachment-accent);
-    color: var(--attachment-plot);
+.attachment-range-ticks {
+    padding-inline: calc(var(--thumb-size) / 2 - .5ch);
+    font-variant-numeric: tabular-nums;
 }
 
-.light-theme .attachment-options input:checked + span {
-    color: #fff;
+.attachment-range-ends {
+    gap: 1rem;
+    margin-top: .6rem;
+}
+
+.attachment-range-ends span:last-child {
+    text-align: right;
 }
 
 .attachment-actions {
